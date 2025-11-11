@@ -40,3 +40,21 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .agents/package-lock.json
 .agents/pnpm-lock.yaml
 .agents/bun.lockb
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# Python Testing
+.pytest_cache/
+.coverage
+coverage.json
+htmlcov/
+.tox/

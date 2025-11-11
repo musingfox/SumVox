@@ -78,7 +78,7 @@ run_test() {
     echo -e "${GREEN}Executing hook...${NC}"
     echo ""
 
-    if echo "$event_json" | python "$HOOK_SCRIPT"; then
+    if echo "$event_json" | python3 "$HOOK_SCRIPT"; then
         echo ""
         echo -e "${GREEN}✓ Hook executed successfully${NC}"
     else
