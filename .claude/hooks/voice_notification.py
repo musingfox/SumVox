@@ -185,11 +185,19 @@ class VoiceNotificationHook:
         Returns:
             Summary text that was spoken, or None if skipped
         """
+        import time
+
+        pipeline_start = time.time()
+
         self.logger.info(f"Processing hook input: duration={hook_input.get('duration')}s, exit_code={hook_input.get('exit_code')}")
 
         # Check if should trigger
+        trigger_start = time.time()
         if not self.should_trigger(hook_input):
+            self.logger.info(f"Hook skipped (trigger check: {time.time() - trigger_start:.3f}s)")
             return None
+        trigger_time = time.time() - trigger_start
+        self.logger.debug(f"Trigger check completed in {trigger_time:.3f}s")
 
         # Extract output
         output = hook_input.get('output', '')
@@ -205,6 +213,7 @@ class VoiceNotificationHook:
         DEFAULT_FALLBACK = 'Task completed'
 
         try:
+            summary_start = time.time()
             fallback_msg = self.advanced.get('fallback_message', DEFAULT_FALLBACK)
             summary = self.summarizer.summarize(output, max_length=max_length, fallback=fallback_msg)
 
@@ -212,27 +221,37 @@ class VoiceNotificationHook:
                 self.logger.warning("Summarizer returned empty result, using fallback")
                 summary = fallback_msg
 
-            self.logger.info(f"Generated summary: {summary}")
+            summary_time = time.time() - summary_start
+            self.logger.info(f"Generated summary in {summary_time:.3f}s: {summary}")
 
         except Exception as e:
-            self.logger.error(f"Failed to generate summary: {e}")
+            summary_time = time.time() - summary_start
+            self.logger.error(f"Failed to generate summary after {summary_time:.3f}s: {e}")
             summary = self.advanced.get('fallback_message', DEFAULT_FALLBACK)
 
         # Speak the summary
         try:
+            voice_start = time.time()
             is_async = self.config['voice'].get('async', True)
 
             if is_async:
                 self.voice_engine.speak_async(summary)
-                self.logger.info("Voice notification triggered (async)")
+                voice_time = time.time() - voice_start
+                self.logger.info(f"Voice notification triggered (async) in {voice_time:.3f}s")
             else:
                 self.voice_engine.speak(summary)
-                self.logger.info("Voice notification completed (sync)")
+                voice_time = time.time() - voice_start
+                self.logger.info(f"Voice notification completed (sync) in {voice_time:.3f}s")
+
+            pipeline_time = time.time() - pipeline_start
+            self.logger.info(f"Pipeline completed in {pipeline_time:.3f}s (trigger: {trigger_time:.3f}s, summary: {summary_time:.3f}s, voice: {voice_time:.3f}s)")
 
             return summary
 
         except Exception as e:
-            self.logger.error(f"Failed to play voice notification: {e}")
+            voice_time = time.time() - voice_start
+            pipeline_time = time.time() - pipeline_start
+            self.logger.error(f"Failed to play voice notification after {voice_time:.3f}s (total: {pipeline_time:.3f}s): {e}")
             return None
 
     def run(self):
