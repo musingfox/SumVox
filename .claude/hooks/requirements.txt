@@ -1,0 +1,12 @@
+# LLM Integration
+litellm>=1.52.0
+
+# Configuration
+pyyaml>=6.0.1
+
+# Development Dependencies (optional)
+pytest>=8.0.0
+pytest-cov>=4.1.0
+black>=24.0.0
+pylint>=3.0.0
+mypy>=1.8.0

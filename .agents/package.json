@@ -1,0 +1,14 @@
+{
+  "name": ".agents",
+  "module": "index.ts",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  }
+}

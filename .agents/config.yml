@@ -1,0 +1,17 @@
+# Agent Workspace Configuration
+# This file contains DYNAMIC state and runtime information
+
+workspace:
+  version: "1.0.0"
+  initialized_at: "2025-11-11T11:35:00Z"
+  location: ".agents/"
+
+task_management:
+  system: "Local"
+  # Configuration details are stored in project root CLAUDE.md
+  # This section tracks runtime state only
+
+runtime:
+  last_cleanup: null
+  total_tasks_created: 0
+  total_tasks_completed: 0
