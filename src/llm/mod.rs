@@ -4,9 +4,11 @@ use async_trait::async_trait;
 
 pub use cost_tracker::CostTracker;
 pub use gemini::GeminiProvider;
+pub use ollama::OllamaProvider;
 
 pub mod cost_tracker;
 pub mod gemini;
+pub mod ollama;
 
 use crate::error::LlmResult;
 

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use config::VoiceConfig;
 use error::Result;
-use llm::{CostTracker, GeminiProvider, GenerationRequest, LlmProvider};
+use llm::{CostTracker, GeminiProvider, GenerationRequest, LlmProvider, OllamaProvider};
 use transcript::TranscriptReader;
 use voice::VoiceEngine;
 
@@ -175,8 +175,31 @@ async fn generate_summary(config: &VoiceConfig, prompt: &str) -> Result<String> 
             Ok(response.text.trim().to_string())
         }
         Err(e) => {
-            tracing::error!("Failed to generate summary: {}", e);
-            Ok(String::new())
+            tracing::warn!("Primary provider failed: {}, trying Ollama fallback", e);
+
+            // Try Ollama as fallback
+            let fallback_model = llm_config
+                .models
+                .fallback
+                .as_ref()
+                .map(String::as_str)
+                .unwrap_or("llama3.1");
+
+            let ollama = OllamaProvider::new(
+                fallback_model.to_string(),
+                Duration::from_secs(llm_config.parameters.timeout),
+            );
+
+            match ollama.generate(&request).await {
+                Ok(response) => {
+                    tracing::info!("Ollama fallback succeeded");
+                    Ok(response.text.trim().to_string())
+                }
+                Err(e) => {
+                    tracing::error!("Ollama fallback also failed: {}", e);
+                    Ok(String::new())
+                }
+            }
         }
     }
 }
