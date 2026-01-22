@@ -1,0 +1,32 @@
+{
+  "name": "claude-voice",
+  "version": "1.0.0",
+  "description": "Voice notification plugin for Claude Code - Rust rewrite for high performance",
+  "author": "Nick Huang",
+  "homepage": "https://github.com/nickhuang/claude-voice",
+  "license": "MIT",
+  "entry_point": "target/release/claude-voice",
+  "hooks": {
+    "stop": {
+      "command": "target/release/claude-voice",
+      "description": "Speak task completion summary using macOS voice",
+      "async": true,
+      "timeout": 30000
+    }
+  },
+  "requirements": {
+    "platform": ["darwin"],
+    "minimum_os_version": "10.15",
+    "environment_variables": {
+      "optional": [
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY"
+      ]
+    }
+  },
+  "configuration": {
+    "config_file": ".claude/hooks/voice_config.json",
+    "schema": ".claude/hooks/voice_config.schema.json"
+  }
+}

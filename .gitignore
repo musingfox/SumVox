@@ -58,3 +58,7 @@ ENV/
 coverage.json
 htmlcov/
 .tox/
+
+# Rust
+target/
+Cargo.lock

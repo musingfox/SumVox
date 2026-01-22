@@ -1,0 +1,36 @@
+[package]
+name = "claude-voice"
+version = "1.0.0"
+edition = "2021"
+authors = ["Nick Huang"]
+description = "Voice notification hook for Claude Code - Rust rewrite"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5"
+async-trait = "0.1"
+shellexpand = "3"
+
+[dev-dependencies]
+mockito = "1"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = "z"  # Optimize for size
+
+[[bin]]
+name = "claude-voice"
+path = "src/main.rs"

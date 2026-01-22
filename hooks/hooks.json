@@ -1,0 +1,16 @@
+{
+  "$schema": "https://claude.ai/hooks/schema.json",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$PLUGIN_DIR/target/release/claude-voice"
+          }
+        ]
+      }
+    ]
+  }
+}
