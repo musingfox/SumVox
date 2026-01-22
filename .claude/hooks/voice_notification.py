@@ -235,11 +235,11 @@ class VoiceNotificationHook:
             is_async = self.config['voice'].get('async', True)
 
             if is_async:
-                self.voice_engine.speak_async(summary)
+                self.voice_engine.speak(summary, blocking=False)
                 voice_time = time.time() - voice_start
                 self.logger.info(f"Voice notification triggered (async) in {voice_time:.3f}s")
             else:
-                self.voice_engine.speak(summary)
+                self.voice_engine.speak(summary, blocking=True)
                 voice_time = time.time() - voice_start
                 self.logger.info(f"Voice notification completed (sync) in {voice_time:.3f}s")
 
