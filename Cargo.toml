@@ -31,6 +31,10 @@ panic = "abort"
 strip = true
 opt-level = "z"  # Optimize for size
 
+[lib]
+name = "claude_voice"
+path = "src/lib.rs"
+
 [[bin]]
 name = "claude-voice"
 path = "src/main.rs"
