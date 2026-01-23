@@ -1,9 +1,12 @@
 // claude-voice: Voice notification hook for Claude Code
 // Rust rewrite - single binary, zero dependencies deployment
 
+mod cli;
 mod config;
+mod credentials;
 mod error;
 mod llm;
+mod provider_factory;
 mod transcript;
 mod voice;
 
@@ -11,9 +14,13 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use clap::Parser;
+use cli::{Cli, Commands, CredentialAction};
 use config::VoiceConfig;
+use credentials::CredentialManager;
 use error::Result;
-use llm::{CostTracker, GeminiProvider, GenerationRequest, LlmProvider, OllamaProvider};
+use llm::{CostTracker, GenerationRequest, LlmProvider};
+use provider_factory::ProviderFactory;
 use transcript::TranscriptReader;
 use voice::VoiceEngine;
 
@@ -30,6 +37,9 @@ struct HookInput {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -37,6 +47,11 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    // Handle credentials subcommand
+    if let Some(Commands::Credentials { action }) = cli.command {
+        return handle_credentials_command(action).await;
+    }
 
     tracing::info!("claude-voice starting");
 
@@ -89,7 +104,7 @@ async fn main() -> Result<()> {
     tracing::debug!("Extracted {} text blocks, total length: {}", texts.len(), context.len());
 
     // Build summarization prompt
-    let max_length = config.voice.max_summary_length;
+    let max_length = cli.max_length;
     let prompt = config
         .summarization
         .prompt_template
@@ -97,7 +112,7 @@ async fn main() -> Result<()> {
         .replace("{context}", &context);
 
     // Generate summary with LLM
-    let summary = generate_summary(&config, &prompt).await?;
+    let summary = generate_summary(&config, &cli, &prompt).await?;
 
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
@@ -112,7 +127,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn generate_summary(config: &VoiceConfig, prompt: &str) -> Result<String> {
+async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Result<String> {
     let llm_config = &config.llm;
 
     // Initialize cost tracker
@@ -133,21 +148,50 @@ async fn generate_summary(config: &VoiceConfig, prompt: &str) -> Result<String> 
         }
     }
 
-    // Try primary provider (Gemini)
-    let api_key = llm_config
-        .api_keys
-        .get("gemini")
-        .cloned()
-        .unwrap_or_default();
+    // Determine provider and model
+    let provider_name = cli
+        .provider
+        .as_deref()
+        .or_else(|| llm_config.models.primary.split(':').next())
+        .unwrap_or("google");
 
-    let provider = GeminiProvider::new(
-        api_key,
-        llm_config.models.primary.clone(),
-        Duration::from_secs(llm_config.parameters.timeout),
-    );
+    let model_name = cli
+        .model
+        .as_deref()
+        .unwrap_or(&llm_config.models.primary);
+
+    let timeout = Duration::from_secs(cli.timeout);
+
+    // Create provider using factory
+    let credential_manager = CredentialManager::new();
+    let provider = match ProviderFactory::create(
+        provider_name,
+        model_name,
+        timeout,
+        &credential_manager,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Failed to create provider {}: {}", provider_name, e);
+
+            // Try fallback to Ollama
+            if let Some(fallback_model) = &llm_config.models.fallback {
+                tracing::info!("Trying Ollama fallback with model: {}", fallback_model);
+                match ProviderFactory::create("ollama", fallback_model, timeout, &credential_manager) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!("Ollama fallback also failed: {}", e);
+                        return Ok(String::new());
+                    }
+                }
+            } else {
+                return Ok(String::new());
+            }
+        }
+    };
 
     if !provider.is_available() {
-        tracing::warn!("Primary provider (Gemini) not available");
+        tracing::warn!("Provider {} not available", provider.name());
         return Ok(String::new());
     }
 
@@ -175,31 +219,8 @@ async fn generate_summary(config: &VoiceConfig, prompt: &str) -> Result<String> 
             Ok(response.text.trim().to_string())
         }
         Err(e) => {
-            tracing::warn!("Primary provider failed: {}, trying Ollama fallback", e);
-
-            // Try Ollama as fallback
-            let fallback_model = llm_config
-                .models
-                .fallback
-                .as_ref()
-                .map(String::as_str)
-                .unwrap_or("llama3.1");
-
-            let ollama = OllamaProvider::new(
-                fallback_model.to_string(),
-                Duration::from_secs(llm_config.parameters.timeout),
-            );
-
-            match ollama.generate(&request).await {
-                Ok(response) => {
-                    tracing::info!("Ollama fallback succeeded");
-                    Ok(response.text.trim().to_string())
-                }
-                Err(e) => {
-                    tracing::error!("Ollama fallback also failed: {}", e);
-                    Ok(String::new())
-                }
-            }
+            tracing::error!("Provider {} failed: {}", provider.name(), e);
+            Ok(String::new())
         }
     }
 }
@@ -209,6 +230,70 @@ async fn speak_summary(config: &VoiceConfig, summary: &str) -> Result<()> {
 
     let is_async = config.voice.async_mode;
     voice_engine.speak(summary, Some(!is_async)).await?;
+
+    Ok(())
+}
+
+async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
+    use error::VoiceError;
+
+    let manager = CredentialManager::new();
+
+    match action {
+        CredentialAction::Set { provider } => {
+            // Interactive API key input (hidden)
+            eprint!("Enter API key for {}: ", provider);
+            let api_key = rpassword::read_password()
+                .map_err(|e| VoiceError::Config(format!("Failed to read password: {}", e)))?;
+
+            if api_key.trim().is_empty() {
+                return Err(VoiceError::Config("API key cannot be empty".into()));
+            }
+
+            manager.save_api_key(&provider, api_key.trim())?;
+            eprintln!("✓ API key saved for {}", provider);
+        }
+        CredentialAction::List => {
+            let providers = manager.list_providers();
+            if providers.is_empty() {
+                eprintln!("No credentials configured.");
+                eprintln!();
+                eprintln!("To set an API key, run:");
+                eprintln!("  claude-voice credentials set <provider>");
+                eprintln!();
+                eprintln!("Available providers: google, anthropic, openai");
+            } else {
+                eprintln!("Configured providers:");
+                for p in providers {
+                    eprintln!("  - {}", p);
+                }
+            }
+        }
+        CredentialAction::Test { provider } => {
+            // Test if API key is valid by checking if it can be loaded
+            match manager.load_api_key(&provider) {
+                Some(key) => {
+                    if key.is_empty() {
+                        eprintln!("✗ API key for {} is empty", provider);
+                    } else {
+                        eprintln!("✓ API key found for {}", provider);
+                        eprintln!("  Key: {}...{}", &key[..4.min(key.len())],
+                                  if key.len() > 8 { &key[key.len()-4..] } else { "" });
+                    }
+                }
+                None => {
+                    eprintln!("✗ No API key found for {}", provider);
+                    eprintln!();
+                    eprintln!("To set an API key, run:");
+                    eprintln!("  claude-voice credentials set {}", provider);
+                }
+            }
+        }
+        CredentialAction::Remove { provider } => {
+            manager.remove_provider(&provider)?;
+            eprintln!("✓ Credentials removed for {}", provider);
+        }
+    }
 
     Ok(())
 }

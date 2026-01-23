@@ -19,6 +19,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
 async-trait = "0.1"
 shellexpand = "3"
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
 
 [dev-dependencies]
 mockito = "1"
