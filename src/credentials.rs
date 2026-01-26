@@ -124,11 +124,12 @@ impl CredentialManager {
     }
 
     /// Get environment variable name for provider
-    fn env_var_name(provider: &str) -> &'static str {
+    pub fn env_var_name(provider: &str) -> &'static str {
         match provider {
             "google" | "gemini" => "GEMINI_API_KEY",
             "anthropic" => "ANTHROPIC_API_KEY",
             "openai" => "OPENAI_API_KEY",
+            "google_tts" => "GOOGLE_TTS_API_KEY",
             _ => panic!("Unknown provider: {}", provider),
         }
     }
@@ -266,6 +267,7 @@ mod tests {
         assert_eq!(CredentialManager::env_var_name("gemini"), "GEMINI_API_KEY");
         assert_eq!(CredentialManager::env_var_name("anthropic"), "ANTHROPIC_API_KEY");
         assert_eq!(CredentialManager::env_var_name("openai"), "OPENAI_API_KEY");
+        assert_eq!(CredentialManager::env_var_name("google_tts"), "GOOGLE_TTS_API_KEY");
     }
 
     #[test]

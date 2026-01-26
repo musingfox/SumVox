@@ -21,6 +21,8 @@ async-trait = "0.1"
 shellexpand = "3"
 clap = { version = "4", features = ["derive"] }
 rpassword = "7"
+base64 = "0.22"
+rodio = { version = "0.19", default-features = false, features = ["mp3"] }
 
 [dev-dependencies]
 mockito = "1"

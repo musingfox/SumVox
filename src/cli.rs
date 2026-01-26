@@ -19,11 +19,17 @@ pub struct Cli {
     #[arg(long, default_value = "10")]
     pub timeout: u64,
 
-    /// macOS voice name
-    #[arg(long, default_value = "Ting-Ting")]
-    pub voice: String,
+    /// TTS engine: macos, google
+    #[arg(long, default_value = "macos")]
+    pub tts: String,
 
-    /// Speech rate (90-300)
+    /// TTS voice name (engine-specific)
+    /// For --tts macos: Ting-Ting, Meijia, etc.
+    /// For --tts google: Aoede, Charon, Fenrir, Kore, Puck, Orus (Gemini TTS)
+    #[arg(long)]
+    pub tts_voice: Option<String>,
+
+    /// Speech rate for macOS say (90-300), ignored for Google TTS
     #[arg(long, default_value = "200")]
     pub rate: u32,
 
@@ -77,7 +83,8 @@ mod tests {
         assert_eq!(cli.provider, None);
         assert_eq!(cli.model, None);
         assert_eq!(cli.timeout, 10);
-        assert_eq!(cli.voice, "Ting-Ting");
+        assert_eq!(cli.tts, "macos");
+        assert_eq!(cli.tts_voice, None);
         assert_eq!(cli.rate, 200);
         assert_eq!(cli.max_length, 50);
         assert!(cli.command.is_none());
@@ -108,8 +115,10 @@ mod tests {
             "gpt-4o-mini",
             "--timeout",
             "30",
-            "--voice",
-            "Samantha",
+            "--tts",
+            "google",
+            "--tts-voice",
+            "zh-TW-Wavenet-A",
             "--rate",
             "180",
             "--max-length",
@@ -120,7 +129,8 @@ mod tests {
         assert_eq!(cli.provider, Some("openai".to_string()));
         assert_eq!(cli.model, Some("gpt-4o-mini".to_string()));
         assert_eq!(cli.timeout, 30);
-        assert_eq!(cli.voice, "Samantha");
+        assert_eq!(cli.tts, "google");
+        assert_eq!(cli.tts_voice, Some("zh-TW-Wavenet-A".to_string()));
         assert_eq!(cli.rate, 180);
         assert_eq!(cli.max_length, 100);
     }

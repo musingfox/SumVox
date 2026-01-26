@@ -7,4 +7,5 @@ pub mod error;
 pub mod llm;
 pub mod provider_factory;
 pub mod transcript;
+pub mod tts;
 pub mod voice;

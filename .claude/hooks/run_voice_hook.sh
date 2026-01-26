@@ -11,9 +11,10 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     export $(grep -v '^#' "$PROJECT_DIR/.env" | xargs)
 fi
 
-# Use Rust binary if available, otherwise fall back to Python
+# Use Rust binary with Gemini TTS
 if [ -x "$RUST_BINARY" ]; then
-    exec "$RUST_BINARY"
+    exec "$RUST_BINARY" --tts google --tts-voice Aoede
 else
-    cd "$PROJECT_DIR" && uv run python "$SCRIPT_DIR/voice_notification.py"
+    echo "Error: Rust binary not found at $RUST_BINARY" >&2
+    exit 1
 fi

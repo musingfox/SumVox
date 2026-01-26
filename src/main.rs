@@ -8,6 +8,7 @@ mod error;
 mod llm;
 mod provider_factory;
 mod transcript;
+mod tts;
 mod voice;
 
 use std::io::Read;
@@ -19,10 +20,10 @@ use cli::{Cli, Commands, CredentialAction};
 use config::VoiceConfig;
 use credentials::CredentialManager;
 use error::Result;
-use llm::{CostTracker, GenerationRequest, LlmProvider};
+use llm::{CostTracker, GenerationRequest};
 use provider_factory::ProviderFactory;
 use transcript::TranscriptReader;
-use voice::VoiceEngine;
+use tts::{GoogleTtsProvider, MacOsTtsProvider, TtsEngine, TtsProvider};
 
 use serde::Deserialize;
 
@@ -114,13 +115,16 @@ async fn main() -> Result<()> {
     // Generate summary with LLM
     let summary = generate_summary(&config, &cli, &prompt).await?;
 
+    // Create credential manager for TTS
+    let credential_manager = CredentialManager::new();
+
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
         let fallback = &config.advanced.fallback_message;
-        speak_summary(&config, fallback).await?;
+        speak_summary(&cli, &config, fallback, &credential_manager).await?;
     } else {
         tracing::info!("Generated summary: {}", summary);
-        speak_summary(&config, &summary).await?;
+        speak_summary(&cli, &config, &summary, &credential_manager).await?;
     }
 
     tracing::info!("claude-voice completed successfully");
@@ -225,12 +229,59 @@ async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Resu
     }
 }
 
-async fn speak_summary(config: &VoiceConfig, summary: &str) -> Result<()> {
-    let voice_engine = VoiceEngine::new(config.voice.clone());
+async fn speak_summary(
+    cli: &Cli,
+    config: &VoiceConfig,
+    summary: &str,
+    credential_manager: &CredentialManager,
+) -> Result<()> {
+    // Determine TTS engine from CLI or config
+    let tts_engine = TtsEngine::from_str(&cli.tts).unwrap_or(TtsEngine::MacOS);
 
-    let is_async = config.voice.async_mode;
-    voice_engine.speak(summary, Some(!is_async)).await?;
+    let provider: Box<dyn TtsProvider> = match tts_engine {
+        TtsEngine::MacOS => {
+            let is_async = config.voice.async_mode;
+            let voice = cli.tts_voice.clone().unwrap_or_else(|| "Ting-Ting".to_string());
+            Box::new(MacOsTtsProvider::new(voice, cli.rate, is_async))
+        }
+        TtsEngine::Google => {
+            // Get Google Cloud project ID: credentials file > env var
+            let project_id = credential_manager
+                .load_api_key("google_tts")
+                .or_else(|| std::env::var("GOOGLE_CLOUD_PROJECT").ok())
+                .or_else(|| std::env::var("GCP_PROJECT").ok());
 
+            match project_id {
+                Some(id) if !id.is_empty() => {
+                    // Default to "Aoede" for Gemini TTS
+                    let voice = cli.tts_voice.clone().unwrap_or_else(|| "Aoede".to_string());
+                    Box::new(GoogleTtsProvider::new(id, Some(voice)))
+                }
+                _ => {
+                    return Err(crate::error::VoiceError::Config(
+                        "Google Cloud project not found. Run: claude-voice credentials set google_tts (enter project ID)".into()
+                    ));
+                }
+            }
+        }
+    };
+
+    if !provider.is_available() {
+        tracing::warn!("TTS provider {} not available", provider.name());
+        return Ok(());
+    }
+
+    // Estimate and log cost for cloud providers
+    let cost = provider.estimate_cost(summary.len());
+    if cost > 0.0 {
+        tracing::info!(
+            "TTS cost estimate: ${:.6} for {} chars",
+            cost,
+            summary.len()
+        );
+    }
+
+    provider.speak(summary).await?;
     Ok(())
 }
 
@@ -261,7 +312,7 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
                 eprintln!("To set an API key, run:");
                 eprintln!("  claude-voice credentials set <provider>");
                 eprintln!();
-                eprintln!("Available providers: google, anthropic, openai");
+                eprintln!("Available providers: google, anthropic, openai, google_tts");
             } else {
                 eprintln!("Configured providers:");
                 for p in providers {
