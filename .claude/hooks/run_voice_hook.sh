@@ -11,9 +11,9 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     export $(grep -v '^#' "$PROJECT_DIR/.env" | xargs)
 fi
 
-# Use Rust binary with Gemini TTS
+# Use Rust binary with auto TTS fallback (config chain: Google → macOS)
 if [ -x "$RUST_BINARY" ]; then
-    exec "$RUST_BINARY" --tts google --tts-voice Aoede
+    exec "$RUST_BINARY" --tts auto --tts-voice Aoede
 else
     echo "Error: Rust binary not found at $RUST_BINARY" >&2
     exit 1

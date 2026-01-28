@@ -1,4 +1,4 @@
-// Google Cloud Text-to-Speech API provider (Gemini 2.5 Flash TTS)
+// Gemini 2.5 Flash TTS provider using Google AI Studio API
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -9,10 +9,11 @@ use std::time::Duration;
 use super::TtsProvider;
 use crate::error::{Result, VoiceError};
 
-/// Google Cloud TTS API endpoint
-const GOOGLE_TTS_API: &str = "https://texttospeech.googleapis.com/v1/text:synthesize";
+/// Gemini TTS API endpoint
+const GEMINI_TTS_API: &str =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent";
 
-/// Cost per character for Gemini TTS
+/// Cost per character for Gemini TTS (estimated)
 const COST_PER_CHAR: f64 = 0.000016;
 
 /// Available Gemini TTS voices
@@ -25,47 +26,81 @@ pub const GEMINI_TTS_VOICES: &[&str] = &[
     "Orus",
 ];
 
-/// Google Cloud TTS provider using Gemini 2.5 Flash TTS
+/// Gemini TTS provider using Google AI Studio API
 pub struct GoogleTtsProvider {
-    project_id: String,
+    api_key: String,
     voice_name: String,
 }
 
 #[derive(Debug, Serialize)]
-struct TtsRequest {
-    input: TtsInput,
-    voice: TtsVoice,
-    #[serde(rename = "audioConfig")]
-    audio_config: AudioConfig,
+struct GeminiTtsRequest {
+    contents: Vec<Content>,
+    #[serde(rename = "generationConfig")]
+    generation_config: GenerationConfig,
 }
 
 #[derive(Debug, Serialize)]
-struct TtsInput {
+struct Content {
+    parts: Vec<Part>,
+}
+
+#[derive(Debug, Serialize)]
+struct Part {
     text: String,
-    prompt: String,
 }
 
 #[derive(Debug, Serialize)]
-struct TtsVoice {
-    #[serde(rename = "languageCode")]
-    language_code: String,
-    name: String,
-    model_name: String,
+struct GenerationConfig {
+    #[serde(rename = "responseModalities")]
+    response_modalities: Vec<String>,
+    #[serde(rename = "speechConfig")]
+    speech_config: SpeechConfig,
 }
 
 #[derive(Debug, Serialize)]
-struct AudioConfig {
-    #[serde(rename = "audioEncoding")]
-    audio_encoding: String,
-    #[serde(rename = "speakingRate")]
-    speaking_rate: f32,
-    pitch: f32,
+struct SpeechConfig {
+    #[serde(rename = "voiceConfig")]
+    voice_config: VoiceConfig,
+}
+
+#[derive(Debug, Serialize)]
+struct VoiceConfig {
+    #[serde(rename = "prebuiltVoiceConfig")]
+    prebuilt_voice_config: PrebuiltVoiceConfig,
+}
+
+#[derive(Debug, Serialize)]
+struct PrebuiltVoiceConfig {
+    #[serde(rename = "voiceName")]
+    voice_name: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct TtsResponse {
-    #[serde(rename = "audioContent")]
-    audio_content: String, // Base64 encoded MP3
+struct GeminiTtsResponse {
+    candidates: Vec<Candidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Candidate {
+    content: ResponseContent,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseContent {
+    parts: Vec<ResponsePart>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponsePart {
+    #[serde(rename = "inlineData", default)]
+    inline_data: Option<InlineData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InlineData {
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    data: String, // Base64 encoded audio
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,11 +114,11 @@ struct TtsErrorDetail {
 }
 
 impl GoogleTtsProvider {
-    pub fn new(project_id: String, voice_name: Option<String>) -> Self {
+    pub fn new(api_key: String, voice_name: Option<String>) -> Self {
         let voice = voice_name.unwrap_or_else(|| "Aoede".to_string());
 
         Self {
-            project_id,
+            api_key,
             voice_name: voice,
         }
     }
@@ -91,6 +126,7 @@ impl GoogleTtsProvider {
     /// Create HTTP client lazily (avoids issues in parallel tests)
     fn create_client() -> Result<Client> {
         Client::builder()
+            .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| crate::error::VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
@@ -98,42 +134,22 @@ impl GoogleTtsProvider {
 
     /// Create provider from environment variable
     pub fn from_env(voice_name: Option<String>) -> Option<Self> {
-        std::env::var("GOOGLE_CLOUD_PROJECT")
+        std::env::var("GEMINI_API_KEY")
             .ok()
+            .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
             .filter(|k| !k.is_empty())
-            .map(|project_id| Self::new(project_id, voice_name))
+            .map(|api_key| Self::new(api_key, voice_name))
     }
 
-    /// Get access token using gcloud CLI
-    fn get_access_token() -> Result<String> {
-        use std::process::Command;
-
-        let output = Command::new("gcloud")
-            .args(["auth", "application-default", "print-access-token"])
-            .output()
-            .map_err(|e| VoiceError::Voice(format!("Failed to run gcloud: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(VoiceError::Voice(format!(
-                "gcloud auth failed: {}. Run 'gcloud auth application-default login' first.",
-                stderr.trim()
-            )));
-        }
-
-        let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(token)
-    }
-
-    /// Play LINEAR16 audio data using rodio
-    fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
+    /// Play audio data using rodio
+    fn play_audio(&self, audio_data: &[u8], mime_type: &str) -> Result<()> {
         use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 
-        // Convert bytes to i16 samples (LINEAR16 = signed 16-bit little-endian)
-        let samples: Vec<i16> = audio_data
-            .chunks_exact(2)
-            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect();
+        tracing::debug!(
+            "Playing audio: {} bytes, mime_type: {}",
+            audio_data.len(),
+            mime_type
+        );
 
         // Create output stream
         let (_stream, stream_handle) = OutputStream::try_default()
@@ -143,7 +159,16 @@ impl GoogleTtsProvider {
         let sink = Sink::try_new(&stream_handle)
             .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
 
-        // Create samples buffer (24kHz mono, as per Google TTS)
+        // Gemini TTS returns LINEAR16 PCM format (16-bit signed little-endian at 24kHz)
+        // Convert bytes to i16 samples
+        let samples: Vec<i16> = audio_data
+            .chunks_exact(2)
+            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+
+        tracing::debug!("Converted {} samples for playback", samples.len());
+
+        // Create samples buffer (24kHz mono, as per Gemini TTS)
         let source = SamplesBuffer::new(1, 24000, samples);
 
         // Play and wait for completion
@@ -161,7 +186,7 @@ impl TtsProvider for GoogleTtsProvider {
     }
 
     fn is_available(&self) -> bool {
-        !self.project_id.is_empty()
+        !self.api_key.is_empty()
     }
 
     async fn speak(&self, text: &str) -> Result<bool> {
@@ -176,39 +201,39 @@ impl TtsProvider for GoogleTtsProvider {
             text.len()
         );
 
-        // Build request using Gemini 2.5 Flash TTS
-        let request = TtsRequest {
-            input: TtsInput {
-                text: text.to_string(),
-                prompt: "Read aloud in a professional and kind tone.".to_string(),
-            },
-            voice: TtsVoice {
-                language_code: "cmn-tw".to_string(),
-                name: self.voice_name.clone(),
-                model_name: "gemini-2.5-flash-tts".to_string(),
-            },
-            audio_config: AudioConfig {
-                audio_encoding: "LINEAR16".to_string(),
-                speaking_rate: 1.0,
-                pitch: 0.0,
+        // Build request using Gemini 2.5 Flash TTS API format
+        // IMPORTANT: Must include TTS instruction prefix for the model to generate audio
+        let tts_text = format!("Read this aloud: {}", text);
+
+        let request = GeminiTtsRequest {
+            contents: vec![Content {
+                parts: vec![Part {
+                    text: tts_text,
+                }],
+            }],
+            generation_config: GenerationConfig {
+                response_modalities: vec!["AUDIO".to_string()],
+                speech_config: SpeechConfig {
+                    voice_config: VoiceConfig {
+                        prebuilt_voice_config: PrebuiltVoiceConfig {
+                            voice_name: self.voice_name.clone(),
+                        },
+                    },
+                },
             },
         };
-
-        // Get access token from gcloud
-        let access_token = Self::get_access_token()?;
 
         // Create client and make API call
         let client = Self::create_client()?;
 
         let response = client
-            .post(GOOGLE_TTS_API)
-            .header("Authorization", format!("Bearer {}", access_token))
-            .header("x-goog-user-project", &self.project_id)
+            .post(GEMINI_TTS_API)
+            .header("x-goog-api-key", &self.api_key)
             .header("Content-Type", "application/json")
             .json(&request)
             .send()
             .await
-            .map_err(|e| VoiceError::Voice(format!("Google TTS API request failed: {}", e)))?;
+            .map_err(|e| VoiceError::Voice(format!("Gemini TTS API request failed: {}", e)))?;
 
         let status = response.status();
 
@@ -218,31 +243,43 @@ impl TtsProvider for GoogleTtsProvider {
             // Try to parse error response
             if let Ok(error) = serde_json::from_str::<TtsError>(&error_text) {
                 return Err(VoiceError::Voice(format!(
-                    "Google TTS API error ({}): {}",
+                    "Gemini TTS API error ({}): {}",
                     status, error.error.message
                 )));
             }
 
             return Err(VoiceError::Voice(format!(
-                "Google TTS API error ({}): {}",
+                "Gemini TTS API error ({}): {}",
                 status, error_text
             )));
         }
 
         // Parse response
-        let tts_response: TtsResponse = response.json().await.map_err(|e| {
-            VoiceError::Voice(format!("Failed to parse Google TTS response: {}", e))
+        let tts_response: GeminiTtsResponse = response.json().await.map_err(|e| {
+            VoiceError::Voice(format!("Failed to parse Gemini TTS response: {}", e))
         })?;
+
+        // Extract audio data from response
+        let inline_data = tts_response
+            .candidates
+            .get(0)
+            .and_then(|c| c.content.parts.get(0))
+            .and_then(|p| p.inline_data.as_ref())
+            .ok_or_else(|| VoiceError::Voice("No audio data in response".into()))?;
 
         // Decode base64 audio
         let audio_data = base64::engine::general_purpose::STANDARD
-            .decode(&tts_response.audio_content)
+            .decode(&inline_data.data)
             .map_err(|e| VoiceError::Voice(format!("Failed to decode audio: {}", e)))?;
 
-        tracing::debug!("Received {} bytes of audio data", audio_data.len());
+        tracing::debug!(
+            "Received {} bytes of audio data ({})",
+            audio_data.len(),
+            inline_data.mime_type
+        );
 
         // Play audio (blocking)
-        self.play_audio(&audio_data)?;
+        self.play_audio(&audio_data, &inline_data.mime_type)?;
 
         tracing::debug!("Voice playback completed");
         Ok(true)
@@ -259,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_google_provider_creation() {
-        let provider = GoogleTtsProvider::new("test-project".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.voice_name, "Aoede");
         assert!(provider.is_available());
@@ -268,19 +305,19 @@ mod tests {
     #[test]
     fn test_custom_voice() {
         let provider =
-            GoogleTtsProvider::new("test-project".to_string(), Some("Charon".to_string()));
+            GoogleTtsProvider::new("test-api-key".to_string(), Some("Charon".to_string()));
         assert_eq!(provider.voice_name, "Charon");
     }
 
     #[test]
-    fn test_empty_project_id() {
+    fn test_empty_api_key() {
         let provider = GoogleTtsProvider::new(String::new(), None);
         assert!(!provider.is_available());
     }
 
     #[test]
     fn test_cost_estimation() {
-        let provider = GoogleTtsProvider::new("project".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
 
         // 50 chars (typical summary length)
         let cost_50 = provider.estimate_cost(50);
@@ -301,12 +338,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = GoogleTtsProvider::new("test-project".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
 
-    // Integration test - requires gcloud CLI and GOOGLE_CLOUD_PROJECT
+    // Integration test - requires valid GEMINI_API_KEY
     #[tokio::test]
     #[ignore]
     async fn test_speak_integration() {

@@ -18,12 +18,11 @@ use std::time::Duration;
 use clap::Parser;
 use cli::{Cli, Commands, CredentialAction};
 use config::VoiceConfig;
-use credentials::CredentialManager;
 use error::Result;
 use llm::{CostTracker, GenerationRequest};
 use provider_factory::ProviderFactory;
 use transcript::TranscriptReader;
-use tts::{GoogleTtsProvider, MacOsTtsProvider, TtsEngine, TtsProvider};
+use tts::{create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
 
 use serde::Deserialize;
 
@@ -31,6 +30,7 @@ use serde::Deserialize;
 struct HookInput {
     session_id: String,
     transcript_path: String,
+    #[allow(dead_code)]
     permission_mode: String,
     hook_event_name: String,
     stop_hook_active: Option<bool>,
@@ -49,9 +49,15 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    // Handle credentials subcommand
-    if let Some(Commands::Credentials { action }) = cli.command {
-        return handle_credentials_command(action).await;
+    // Handle subcommands
+    match &cli.command {
+        Some(Commands::Credentials { action }) => {
+            return handle_credentials_command(action.clone()).await;
+        }
+        Some(Commands::Init) => {
+            return handle_init_command().await;
+        }
+        None => {}
     }
 
     tracing::info!("claude-voice starting");
@@ -60,7 +66,7 @@ async fn main() -> Result<()> {
     let mut input_buffer = String::new();
     std::io::stdin()
         .read_to_string(&mut input_buffer)
-        .map_err(|e| error::VoiceError::Io(e))?;
+        .map_err(error::VoiceError::Io)?;
 
     let hook_input: HookInput = serde_json::from_str(&input_buffer)?;
 
@@ -76,14 +82,8 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Load configuration
-    let config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(".claude")
-        .join("hooks")
-        .join("voice_config.json");
-
-    let mut config = VoiceConfig::load(config_path)?;
-    config.expand_env_vars();
+    // Load configuration from ~/.claude/claude-voice.json
+    let config = VoiceConfig::load_from_home()?;
 
     if !config.enabled {
         tracing::info!("Voice notifications disabled in config");
@@ -102,7 +102,11 @@ async fn main() -> Result<()> {
     }
 
     let context = texts.join("\n\n");
-    tracing::debug!("Extracted {} text blocks, total length: {}", texts.len(), context.len());
+    tracing::debug!(
+        "Extracted {} text blocks, total length: {}",
+        texts.len(),
+        context.len()
+    );
 
     // Build summarization prompt
     let max_length = cli.max_length;
@@ -115,16 +119,13 @@ async fn main() -> Result<()> {
     // Generate summary with LLM
     let summary = generate_summary(&config, &cli, &prompt).await?;
 
-    // Create credential manager for TTS
-    let credential_manager = CredentialManager::new();
-
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
         let fallback = &config.advanced.fallback_message;
-        speak_summary(&cli, &config, fallback, &credential_manager).await?;
+        speak_summary(&cli, &config, fallback).await?;
     } else {
         tracing::info!("Generated summary: {}", summary);
-        speak_summary(&cli, &config, &summary, &credential_manager).await?;
+        speak_summary(&cli, &config, &summary).await?;
     }
 
     tracing::info!("claude-voice completed successfully");
@@ -152,46 +153,25 @@ async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Resu
         }
     }
 
-    // Determine provider and model
-    let provider_name = cli
-        .provider
-        .as_deref()
-        .or_else(|| llm_config.models.primary.split(':').next())
-        .unwrap_or("google");
+    // Create provider: CLI override or config fallback chain
+    let provider = if cli.provider.is_some() || cli.model.is_some() {
+        // CLI specified - create specific provider
+        let provider_name = cli.provider.as_deref().unwrap_or("google");
+        let model_name = cli.model.as_deref().unwrap_or("gemini-2.5-flash");
+        let timeout = Duration::from_secs(cli.timeout);
 
-    let model_name = cli
-        .model
-        .as_deref()
-        .unwrap_or(&llm_config.models.primary);
+        // Try to get API key from config or env
+        let api_key = config
+            .llm
+            .providers
+            .iter()
+            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
+            .and_then(|p| p.get_api_key());
 
-    let timeout = Duration::from_secs(cli.timeout);
-
-    // Create provider using factory
-    let credential_manager = CredentialManager::new();
-    let provider = match ProviderFactory::create(
-        provider_name,
-        model_name,
-        timeout,
-        &credential_manager,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("Failed to create provider {}: {}", provider_name, e);
-
-            // Try fallback to Ollama
-            if let Some(fallback_model) = &llm_config.models.fallback {
-                tracing::info!("Trying Ollama fallback with model: {}", fallback_model);
-                match ProviderFactory::create("ollama", fallback_model, timeout, &credential_manager) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::error!("Ollama fallback also failed: {}", e);
-                        return Ok(String::new());
-                    }
-                }
-            } else {
-                return Ok(String::new());
-            }
-        }
+        ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref())?
+    } else {
+        // Use config fallback chain
+        ProviderFactory::create_from_config(&llm_config.providers)?
     };
 
     if !provider.is_available() {
@@ -229,40 +209,37 @@ async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Resu
     }
 }
 
-async fn speak_summary(
-    cli: &Cli,
-    config: &VoiceConfig,
-    summary: &str,
-    credential_manager: &CredentialManager,
-) -> Result<()> {
-    // Determine TTS engine from CLI or config
-    let tts_engine = TtsEngine::from_str(&cli.tts).unwrap_or(TtsEngine::MacOS);
+async fn speak_summary(cli: &Cli, config: &VoiceConfig, summary: &str) -> Result<()> {
+    let tts_engine = TtsEngine::from_str(&cli.tts).unwrap_or(TtsEngine::Auto);
 
+    // Create TTS provider: CLI override or config fallback chain
     let provider: Box<dyn TtsProvider> = match tts_engine {
+        TtsEngine::Auto => {
+            // Use config fallback chain
+            create_tts_from_config(&config.tts.providers, true)?
+        }
         TtsEngine::MacOS => {
-            let is_async = config.voice.async_mode;
-            let voice = cli.tts_voice.clone().unwrap_or_else(|| "Ting-Ting".to_string());
-            Box::new(MacOsTtsProvider::new(voice, cli.rate, is_async))
+            let voice = cli
+                .tts_voice
+                .clone()
+                .unwrap_or_else(|| "Ting-Ting".to_string());
+            create_tts_by_name("macos", Some(voice), cli.rate, true, None)?
         }
         TtsEngine::Google => {
-            // Get Google Cloud project ID: credentials file > env var
-            let project_id = credential_manager
-                .load_api_key("google_tts")
-                .or_else(|| std::env::var("GOOGLE_CLOUD_PROJECT").ok())
-                .or_else(|| std::env::var("GCP_PROJECT").ok());
+            // Get API key from config or env
+            let api_key = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == "google")
+                .and_then(|p| p.get_api_key());
 
-            match project_id {
-                Some(id) if !id.is_empty() => {
-                    // Default to "Aoede" for Gemini TTS
-                    let voice = cli.tts_voice.clone().unwrap_or_else(|| "Aoede".to_string());
-                    Box::new(GoogleTtsProvider::new(id, Some(voice)))
-                }
-                _ => {
-                    return Err(crate::error::VoiceError::Config(
-                        "Google Cloud project not found. Run: claude-voice credentials set google_tts (enter project ID)".into()
-                    ));
-                }
-            }
+            let voice = cli
+                .tts_voice
+                .clone()
+                .unwrap_or_else(|| "Aoede".to_string());
+
+            create_tts_by_name("google", Some(voice), cli.rate, true, api_key)?
         }
     };
 
@@ -281,14 +258,19 @@ async fn speak_summary(
         );
     }
 
-    provider.speak(summary).await?;
+    // Speak with error handling (TTS failures should be silent)
+    match provider.speak(summary).await {
+        Ok(_) => tracing::debug!("TTS playback completed"),
+        Err(e) => {
+            tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
+        }
+    }
+
     Ok(())
 }
 
 async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
     use error::VoiceError;
-
-    let manager = CredentialManager::new();
 
     match action {
         CredentialAction::Set { provider } => {
@@ -301,50 +283,143 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
                 return Err(VoiceError::Config("API key cannot be empty".into()));
             }
 
-            manager.save_api_key(&provider, api_key.trim())?;
-            eprintln!("✓ API key saved for {}", provider);
+            // Load config, update, and save
+            let mut config = VoiceConfig::load_from_home()?;
+
+            if provider.to_lowercase() == "google_tts" || provider.to_lowercase() == "gemini_tts" {
+                // For TTS, set Gemini API key
+                config.set_tts_api_key(api_key.trim());
+            } else {
+                config.set_llm_api_key(&provider, api_key.trim());
+            }
+
+            config.save_to_home()?;
+            eprintln!("API key saved for {} in ~/.claude/claude-voice.json", provider);
         }
         CredentialAction::List => {
-            let providers = manager.list_providers();
-            if providers.is_empty() {
-                eprintln!("No credentials configured.");
-                eprintln!();
-                eprintln!("To set an API key, run:");
-                eprintln!("  claude-voice credentials set <provider>");
-                eprintln!();
-                eprintln!("Available providers: google, anthropic, openai, google_tts");
-            } else {
-                eprintln!("Configured providers:");
-                for p in providers {
-                    eprintln!("  - {}", p);
-                }
+            let config = VoiceConfig::load_from_home()?;
+
+            eprintln!("LLM Providers:");
+            for (name, available) in config.list_llm_providers() {
+                let status = if available { "configured" } else { "no key" };
+                eprintln!("  - {} ({})", name, status);
+            }
+
+            eprintln!();
+            eprintln!("TTS Providers:");
+            for (name, available) in config.list_tts_providers() {
+                let status = if available { "configured" } else { "not configured" };
+                eprintln!("  - {} ({})", name, status);
             }
         }
         CredentialAction::Test { provider } => {
-            // Test if API key is valid by checking if it can be loaded
-            match manager.load_api_key(&provider) {
-                Some(key) => {
-                    if key.is_empty() {
-                        eprintln!("✗ API key for {} is empty", provider);
-                    } else {
-                        eprintln!("✓ API key found for {}", provider);
-                        eprintln!("  Key: {}...{}", &key[..4.min(key.len())],
-                                  if key.len() > 8 { &key[key.len()-4..] } else { "" });
-                    }
+            let config = VoiceConfig::load_from_home()?;
+
+            // Check LLM providers
+            let llm_found = config
+                .llm
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == provider.to_lowercase());
+
+            if let Some(p) = llm_found {
+                if let Some(key) = p.get_api_key() {
+                    eprintln!("LLM provider {} found", provider);
+                    eprintln!(
+                        "  Key: {}...{}",
+                        &key[..4.min(key.len())],
+                        if key.len() > 8 {
+                            &key[key.len() - 4..]
+                        } else {
+                            ""
+                        }
+                    );
+                } else {
+                    eprintln!("LLM provider {} found but no API key set", provider);
                 }
-                None => {
-                    eprintln!("✗ No API key found for {}", provider);
-                    eprintln!();
-                    eprintln!("To set an API key, run:");
-                    eprintln!("  claude-voice credentials set {}", provider);
+            } else {
+                eprintln!("LLM provider {} not found in config", provider);
+            }
+
+            // Check TTS providers
+            let tts_found = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == provider.to_lowercase());
+
+            if let Some(p) = tts_found {
+                if p.is_configured() {
+                    eprintln!("TTS provider {} configured", provider);
+                    if let Some(ref api_key) = p.api_key {
+                        eprintln!(
+                            "  API Key: {}...{}",
+                            &api_key[..4.min(api_key.len())],
+                            if api_key.len() > 8 {
+                                &api_key[api_key.len() - 4..]
+                            } else {
+                                ""
+                            }
+                        );
+                    }
+                } else {
+                    eprintln!("TTS provider {} found but not configured", provider);
                 }
             }
         }
         CredentialAction::Remove { provider } => {
-            manager.remove_provider(&provider)?;
-            eprintln!("✓ Credentials removed for {}", provider);
+            let mut config = VoiceConfig::load_from_home()?;
+
+            // Remove from LLM providers
+            config.llm.providers.retain(|p| p.name.to_lowercase() != provider.to_lowercase());
+
+            // Clear TTS API key if it's a TTS provider
+            for p in &mut config.tts.providers {
+                if p.name.to_lowercase() == provider.to_lowercase() {
+                    p.api_key = None;
+                }
+            }
+
+            config.save_to_home()?;
+            eprintln!("Credentials removed for {}", provider);
         }
     }
+
+    Ok(())
+}
+
+async fn handle_init_command() -> Result<()> {
+    use error::VoiceError;
+
+    let config_path = VoiceConfig::config_path()?;
+
+    if config_path.exists() {
+        eprintln!("Config file already exists at: {:?}", config_path);
+        eprintln!();
+        eprintln!("To reset to defaults, delete the file and run init again:");
+        eprintln!("  rm {:?}", config_path);
+        eprintln!("  claude-voice init");
+        return Ok(());
+    }
+
+    // Create default config
+    let config = VoiceConfig::default();
+    config.save_to_home()?;
+
+    eprintln!("Created default config at: {:?}", config_path);
+    eprintln!();
+    eprintln!("Next steps:");
+    eprintln!("1. Set your preferred LLM API key:");
+    eprintln!("   claude-voice credentials set google");
+    eprintln!("   # or: claude-voice credentials set anthropic");
+    eprintln!("   # or: claude-voice credentials set openai");
+    eprintln!();
+    eprintln!("2. (Optional) Set Gemini API key for TTS:");
+    eprintln!("   claude-voice credentials set google_tts");
+    eprintln!("   # Note: Google TTS uses the same Gemini API key");
+    eprintln!();
+    eprintln!("3. Test the configuration:");
+    eprintln!("   claude-voice credentials list");
 
     Ok(())
 }

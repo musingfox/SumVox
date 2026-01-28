@@ -19,8 +19,11 @@ pub struct Cli {
     #[arg(long, default_value = "10")]
     pub timeout: u64,
 
-    /// TTS engine: macos, google
-    #[arg(long, default_value = "macos")]
+    /// TTS engine: auto, macos, google
+    /// - auto: Use config fallback chain (default)
+    /// - macos: macOS say command
+    /// - google: Google Cloud TTS (Gemini 2.5 Flash TTS)
+    #[arg(long, default_value = "auto")]
     pub tts: String,
 
     /// TTS voice name (engine-specific)
@@ -43,6 +46,9 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Initialize config file at ~/.claude/claude-voice.json
+    Init,
+
     /// Manage API credentials
     Credentials {
         #[command(subcommand)]
@@ -50,11 +56,11 @@ pub enum Commands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CredentialAction {
     /// Set API key for a provider
     Set {
-        /// Provider name: google, anthropic, openai
+        /// Provider name: google, anthropic, openai, google_tts
         provider: String,
     },
     /// List configured providers
@@ -83,7 +89,7 @@ mod tests {
         assert_eq!(cli.provider, None);
         assert_eq!(cli.model, None);
         assert_eq!(cli.timeout, 10);
-        assert_eq!(cli.tts, "macos");
+        assert_eq!(cli.tts, "auto"); // Changed from "macos"
         assert_eq!(cli.tts_voice, None);
         assert_eq!(cli.rate, 200);
         assert_eq!(cli.max_length, 50);
@@ -118,7 +124,7 @@ mod tests {
             "--tts",
             "google",
             "--tts-voice",
-            "zh-TW-Wavenet-A",
+            "Aoede",
             "--rate",
             "180",
             "--max-length",
@@ -130,9 +136,16 @@ mod tests {
         assert_eq!(cli.model, Some("gpt-4o-mini".to_string()));
         assert_eq!(cli.timeout, 30);
         assert_eq!(cli.tts, "google");
-        assert_eq!(cli.tts_voice, Some("zh-TW-Wavenet-A".to_string()));
+        assert_eq!(cli.tts_voice, Some("Aoede".to_string()));
         assert_eq!(cli.rate, 180);
         assert_eq!(cli.max_length, 100);
+    }
+
+    #[test]
+    fn test_parse_init_command() {
+        let cli = Cli::try_parse_from(["claude-voice", "init"]).unwrap();
+
+        assert!(matches!(cli.command, Some(Commands::Init)));
     }
 
     #[test]

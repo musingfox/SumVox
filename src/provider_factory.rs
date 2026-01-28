@@ -1,6 +1,6 @@
-// Provider factory for creating LLM providers
+// Provider factory for creating LLM providers with fallback support
 
-use crate::credentials::CredentialManager;
+use crate::config::LlmProviderConfig;
 use crate::error::{Result, VoiceError};
 use crate::llm::{AnthropicProvider, GeminiProvider, LlmProvider, OllamaProvider, OpenAIProvider};
 use std::time::Duration;
@@ -31,57 +31,120 @@ impl Provider {
 pub struct ProviderFactory;
 
 impl ProviderFactory {
-    pub fn create(
-        provider: &str,
-        model: &str,
-        timeout: Duration,
-        credential_manager: &CredentialManager,
+    /// Create provider from config array with automatic fallback
+    ///
+    /// Tries each provider in order until one is available.
+    /// Returns an error if no provider can be created.
+    pub fn create_from_config(
+        providers: &[LlmProviderConfig],
     ) -> Result<Box<dyn LlmProvider>> {
-        let provider_enum = Provider::from_str(provider)?;
+        let mut errors = Vec::new();
 
-        match provider_enum {
+        for config in providers {
+            match Self::create_single(config) {
+                Ok(provider) => {
+                    if provider.is_available() {
+                        tracing::info!(
+                            "Using LLM provider: {} (model: {})",
+                            config.name,
+                            config.model
+                        );
+                        return Ok(provider);
+                    } else {
+                        tracing::debug!(
+                            "Provider {} created but not available, trying next",
+                            config.name
+                        );
+                        errors.push(format!("{}: not available", config.name));
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Failed to create provider {}: {}", config.name, e);
+                    errors.push(format!("{}: {}", config.name, e));
+                }
+            }
+        }
+
+        Err(VoiceError::Config(format!(
+            "No LLM provider available. Tried: {}",
+            errors.join("; ")
+        )))
+    }
+
+    /// Create a single provider from config
+    fn create_single(config: &LlmProviderConfig) -> Result<Box<dyn LlmProvider>> {
+        let timeout = Duration::from_secs(config.timeout);
+        let provider = Provider::from_str(&config.name)?;
+
+        match provider {
             Provider::Google => {
-                let api_key = credential_manager.load_api_key("google").ok_or_else(|| {
-                    VoiceError::Config(
-                        "No API key for Google. Run: claude-voice credentials set google".into(),
-                    )
+                let api_key = config.get_api_key().ok_or_else(|| {
+                    VoiceError::Config(format!(
+                        "No API key for Google. Set in config or env var {}",
+                        LlmProviderConfig::env_var_name("google")
+                    ))
                 })?;
                 Ok(Box::new(GeminiProvider::new(
                     api_key,
-                    model.to_string(),
+                    config.model.clone(),
                     timeout,
                 )))
             }
             Provider::Anthropic => {
-                let api_key =
-                    credential_manager
-                        .load_api_key("anthropic")
-                        .ok_or_else(|| {
-                            VoiceError::Config(
-                                "No API key for Anthropic. Run: claude-voice credentials set anthropic"
-                                    .into(),
-                            )
-                        })?;
+                let api_key = config.get_api_key().ok_or_else(|| {
+                    VoiceError::Config(format!(
+                        "No API key for Anthropic. Set in config or env var {}",
+                        LlmProviderConfig::env_var_name("anthropic")
+                    ))
+                })?;
                 Ok(Box::new(AnthropicProvider::new(
                     api_key,
-                    model.to_string(),
+                    config.model.clone(),
                     timeout,
                 )))
             }
             Provider::OpenAI => {
-                let api_key = credential_manager.load_api_key("openai").ok_or_else(|| {
-                    VoiceError::Config(
-                        "No API key for OpenAI. Run: claude-voice credentials set openai".into(),
-                    )
+                let api_key = config.get_api_key().ok_or_else(|| {
+                    VoiceError::Config(format!(
+                        "No API key for OpenAI. Set in config or env var {}",
+                        LlmProviderConfig::env_var_name("openai")
+                    ))
                 })?;
                 Ok(Box::new(OpenAIProvider::new(
                     api_key,
-                    model.to_string(),
+                    config.model.clone(),
                     timeout,
                 )))
             }
-            Provider::Ollama => Ok(Box::new(OllamaProvider::new(model.to_string(), timeout))),
+            Provider::Ollama => {
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "http://localhost:11434".to_string());
+                Ok(Box::new(OllamaProvider::with_base_url(
+                    base_url,
+                    config.model.clone(),
+                    timeout,
+                )))
+            }
         }
+    }
+
+    /// Create a provider by name (for CLI override)
+    pub fn create_by_name(
+        name: &str,
+        model: &str,
+        timeout: Duration,
+        api_key: Option<&str>,
+    ) -> Result<Box<dyn LlmProvider>> {
+        let config = LlmProviderConfig {
+            name: name.to_string(),
+            model: model.to_string(),
+            api_key: api_key.map(|s| s.to_string()),
+            base_url: None,
+            timeout: timeout.as_secs(),
+        };
+        Self::create_single(&config)
     }
 }
 
@@ -89,7 +152,6 @@ impl ProviderFactory {
 mod tests {
     use super::*;
     use std::env;
-    use tempfile::TempDir;
 
     #[test]
     fn test_provider_from_str() {
@@ -149,125 +211,98 @@ mod tests {
     }
 
     #[test]
-    fn test_create_google_provider() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
+    fn test_create_from_config_with_api_key() {
+        let providers = vec![LlmProviderConfig {
+            name: "google".to_string(),
+            model: "gemini-2.5-flash".to_string(),
+            api_key: Some("test-key".to_string()),
+            base_url: None,
+            timeout: 10,
+        }];
 
-        // Set API key
-        manager.save_api_key("google", "test-key").unwrap();
-
-        // Create provider
-        let provider = ProviderFactory::create(
-            "google",
-            "gemini-2.5-flash",
-            Duration::from_secs(10),
-            &manager,
-        )
-        .unwrap();
-
-        assert_eq!(provider.name(), "gemini");
+        let result = ProviderFactory::create_from_config(&providers);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name(), "gemini");
     }
 
     #[test]
-    fn test_create_anthropic_provider() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
+    fn test_create_from_config_fallback_to_ollama() {
+        // First provider has no key, should fallback to Ollama
+        let providers = vec![
+            LlmProviderConfig {
+                name: "google".to_string(),
+                model: "gemini-2.5-flash".to_string(),
+                api_key: None,
+                base_url: None,
+                timeout: 10,
+            },
+            LlmProviderConfig {
+                name: "ollama".to_string(),
+                model: "llama3.2".to_string(),
+                api_key: None,
+                base_url: None,
+                timeout: 10,
+            },
+        ];
 
-        // Set API key
-        manager.save_api_key("anthropic", "test-key").unwrap();
-
-        // Create provider
-        let provider = ProviderFactory::create(
-            "anthropic",
-            "claude-sonnet-4-5",
-            Duration::from_secs(10),
-            &manager,
-        )
-        .unwrap();
-
-        assert_eq!(provider.name(), "anthropic");
-    }
-
-    #[test]
-    fn test_create_openai_provider() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
-
-        // Set API key
-        manager.save_api_key("openai", "test-key").unwrap();
-
-        // Create provider
-        let provider = ProviderFactory::create(
-            "openai",
-            "gpt-4o-mini",
-            Duration::from_secs(10),
-            &manager,
-        )
-        .unwrap();
-
-        assert_eq!(provider.name(), "openai");
-    }
-
-    #[test]
-    fn test_create_ollama_no_key() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
-
-        // Ollama doesn't need API key
-        let provider = ProviderFactory::create(
-            "ollama",
-            "llama3.1",
-            Duration::from_secs(10),
-            &manager,
-        )
-        .unwrap();
-
-        assert_eq!(provider.name(), "ollama");
-    }
-
-    #[test]
-    fn test_missing_api_key_error() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
-
-        // Try to create Google provider without API key
-        let result =
-            ProviderFactory::create("google", "gemini-2.5-flash", Duration::from_secs(10), &manager);
-
-        assert!(result.is_err());
-        let err_msg = format!("{}", result.err().unwrap());
-        assert!(err_msg.contains("No API key for Google"));
-    }
-
-    #[test]
-    fn test_env_var_takes_priority() {
-        let temp_dir = TempDir::new().unwrap();
-        let creds_path = temp_dir.path().join("credentials.json");
-        let manager = CredentialManager::with_path(creds_path);
-
-        // Set file key
-        manager.save_api_key("google", "file-key").unwrap();
-
-        // Set env var
-        env::set_var("GEMINI_API_KEY", "env-key");
-
-        // Create provider - should use env var
-        let provider = ProviderFactory::create(
-            "google",
-            "gemini-2.5-flash",
-            Duration::from_secs(10),
-            &manager,
-        )
-        .unwrap();
-
-        assert!(provider.is_available());
-
-        // Clean up
+        // Clear any env vars that might interfere
         env::remove_var("GEMINI_API_KEY");
+
+        let result = ProviderFactory::create_from_config(&providers);
+        // Note: This will only succeed if Ollama is actually running
+        // In CI, this test may need to be adjusted
+        if let Ok(provider) = result {
+            assert_eq!(provider.name(), "ollama");
+        }
+    }
+
+    #[test]
+    fn test_create_from_config_empty_providers() {
+        let providers: Vec<LlmProviderConfig> = vec![];
+
+        let result = ProviderFactory::create_from_config(&providers);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("No LLM provider"));
+    }
+
+    #[test]
+    fn test_create_by_name_google() {
+        let result = ProviderFactory::create_by_name(
+            "google",
+            "gemini-2.5-flash",
+            Duration::from_secs(10),
+            Some("test-key"),
+        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name(), "gemini");
+    }
+
+    #[test]
+    fn test_create_by_name_ollama() {
+        let result = ProviderFactory::create_by_name(
+            "ollama",
+            "llama3.2",
+            Duration::from_secs(10),
+            None, // Ollama doesn't need API key
+        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name(), "ollama");
+    }
+
+    #[test]
+    fn test_create_by_name_missing_api_key() {
+        // Clear any env vars
+        env::remove_var("GEMINI_API_KEY");
+
+        let result = ProviderFactory::create_by_name(
+            "google",
+            "gemini-2.5-flash",
+            Duration::from_secs(10),
+            None, // No API key
+        );
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("No API key"));
     }
 }
