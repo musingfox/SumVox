@@ -44,7 +44,19 @@ fn default_temperature() -> f32 {
 }
 
 fn default_prompt_template() -> String {
-    "你是語音通知助手。根據以下 Claude Code 對話內容，生成一句繁體中文摘要（最多 {max_length} 字）。\n\n對話內容：\n{context}\n\n摘要：".to_string()
+    "You are a voice notification assistant. Based on the following Claude Code conversation, generate a concise summary (max {max_length} words).\n\nConversation:\n{context}\n\nSummary:".to_string()
+}
+
+fn default_system_message() -> String {
+    "You are a voice notification assistant for Claude Code. Generate concise summaries suitable for voice playback.".to_string()
+}
+
+fn default_notification_system_message() -> String {
+    "You are a voice notification assistant for Claude Code. Convert important notifications into concise phrases suitable for voice playback.".to_string()
+}
+
+fn default_notification_prompt() -> String {
+    "Convert the following notification message into a concise phrase suitable for voice playback (max 30 words):\n\n{message}\n\nVoice output:".to_string()
 }
 
 // ============================================================================
@@ -281,6 +293,15 @@ pub struct SummarizationConfig {
 
     #[serde(default = "default_prompt_template")]
     pub prompt_template: String,
+
+    #[serde(default = "default_system_message")]
+    pub system_message: String,
+
+    #[serde(default = "default_notification_system_message")]
+    pub notification_system_message: String,
+
+    #[serde(default = "default_notification_prompt")]
+    pub notification_prompt: String,
 }
 
 impl Default for SummarizationConfig {
@@ -288,6 +309,9 @@ impl Default for SummarizationConfig {
         Self {
             max_length: default_max_length(),
             prompt_template: default_prompt_template(),
+            system_message: default_system_message(),
+            notification_system_message: default_notification_system_message(),
+            notification_prompt: default_notification_prompt(),
         }
     }
 }
@@ -435,6 +459,21 @@ impl VoiceConfig {
                     )));
                 }
             }
+        }
+
+        // Validate prompt templates contain required variables (warnings only)
+        if !self.summarization.prompt_template.contains("{max_length}")
+            || !self.summarization.prompt_template.contains("{context}")
+        {
+            tracing::warn!(
+                "Stop hook prompt_template missing required variables: {{max_length}} or {{context}}"
+            );
+        }
+
+        if !self.summarization.notification_prompt.contains("{message}") {
+            tracing::warn!(
+                "Notification hook notification_prompt missing required variable: {{message}}"
+            );
         }
 
         Ok(())

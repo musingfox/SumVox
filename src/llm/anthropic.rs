@@ -16,6 +16,8 @@ struct AnthropicRequest {
     model: String,
     max_tokens: u32,
     messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,6 +98,7 @@ impl LlmProvider for AnthropicProvider {
                 role: "user".to_string(),
                 content: request.prompt.clone(),
             }],
+            system: request.system_message.clone(),
         };
 
         tracing::debug!("Sending request to Anthropic API: {}", self.model);
@@ -230,6 +233,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
@@ -252,6 +256,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,

@@ -99,12 +99,23 @@ impl LlmProvider for OpenAIProvider {
         let model_name = self.extract_model_name();
         let url = format!("{}/chat/completions", OPENAI_API_BASE);
 
+        let mut messages = Vec::new();
+
+        if let Some(ref system_msg) = request.system_message {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: system_msg.clone(),
+            });
+        }
+
+        messages.push(Message {
+            role: "user".to_string(),
+            content: request.prompt.clone(),
+        });
+
         let openai_request = OpenAIRequest {
             model: model_name.to_string(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: request.prompt.clone(),
-            }],
+            messages,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
         };
@@ -257,6 +268,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
@@ -279,6 +291,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,

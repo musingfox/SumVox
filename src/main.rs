@@ -149,8 +149,23 @@ async fn handle_notification_hook(
         return Ok(());
     }
 
-    // Speak the notification message directly (no LLM summarization)
-    speak_summary(cli, config, message).await?;
+    // Process notification message with LLM
+    let user_prompt = config
+        .summarization
+        .notification_prompt
+        .replace("{message}", message);
+
+    let system_message = Some(config.summarization.notification_system_message.clone());
+    let processed_message = generate_summary(config, cli, system_message, &user_prompt).await?;
+
+    // Use original message as fallback if LLM processing fails
+    let final_message = if processed_message.is_empty() {
+        message.clone()
+    } else {
+        processed_message
+    };
+
+    speak_summary(cli, config, &final_message).await?;
 
     Ok(())
 }
@@ -179,14 +194,16 @@ async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cl
 
     // Build summarization prompt
     let max_length = cli.max_length;
-    let prompt = config
+    let user_prompt = config
         .summarization
         .prompt_template
         .replace("{max_length}", &max_length.to_string())
         .replace("{context}", &context);
 
+    let system_message = Some(config.summarization.system_message.clone());
+
     // Generate summary with LLM
-    let summary = generate_summary(config, cli, &prompt).await?;
+    let summary = generate_summary(config, cli, system_message, &user_prompt).await?;
 
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
@@ -200,7 +217,12 @@ async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cl
     Ok(())
 }
 
-async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Result<String> {
+async fn generate_summary(
+    config: &VoiceConfig,
+    cli: &Cli,
+    system_message: Option<String>,
+    prompt: &str,
+) -> Result<String> {
     let llm_config = &config.llm;
 
     // Initialize cost tracker
@@ -248,6 +270,7 @@ async fn generate_summary(config: &VoiceConfig, cli: &Cli, prompt: &str) -> Resu
     }
 
     let request = GenerationRequest {
+        system_message,
         prompt: prompt.to_string(),
         max_tokens: llm_config.parameters.max_tokens,
         temperature: llm_config.parameters.temperature,

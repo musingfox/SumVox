@@ -16,6 +16,8 @@ struct OllamaRequest {
     prompt: String,
     stream: bool,
     options: OllamaOptions,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,6 +104,7 @@ impl LlmProvider for OllamaProvider {
                 temperature: request.temperature,
                 num_predict: request.max_tokens,
             },
+            system: request.system_message.clone(),
         };
 
         tracing::debug!("Sending request to Ollama API: {}", model_name);
@@ -224,6 +227,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Say 'Hello' in one word".to_string(),
             max_tokens: 10,
             temperature: 0.3,

@@ -18,6 +18,7 @@ use crate::error::LlmResult;
 
 #[derive(Debug, Clone)]
 pub struct GenerationRequest {
+    pub system_message: Option<String>,
     pub prompt: String,
     pub max_tokens: u32,
     pub temperature: f32,
@@ -53,11 +54,13 @@ mod tests {
     #[test]
     fn test_generation_request_creation() {
         let request = GenerationRequest {
+            system_message: Some("System instruction".to_string()),
             prompt: "Test prompt".to_string(),
             max_tokens: 100,
             temperature: 0.3,
         };
 
+        assert_eq!(request.system_message, Some("System instruction".to_string()));
         assert_eq!(request.prompt, "Test prompt");
         assert_eq!(request.max_tokens, 100);
         assert_eq!(request.temperature, 0.3);

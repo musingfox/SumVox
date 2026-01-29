@@ -15,6 +15,13 @@ struct GeminiRequest {
     contents: Vec<Content>,
     #[serde(rename = "generationConfig")]
     generation_config: GenerationConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_instruction: Option<SystemInstruction>,
+}
+
+#[derive(Debug, Serialize)]
+struct SystemInstruction {
+    parts: Vec<Part>,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,6 +127,12 @@ impl LlmProvider for GeminiProvider {
             GEMINI_API_BASE, model_name, self.api_key
         );
 
+        let system_instruction = request.system_message.as_ref().map(|msg| {
+            SystemInstruction {
+                parts: vec![Part { text: msg.clone() }],
+            }
+        });
+
         let gemini_request = GeminiRequest {
             contents: vec![Content {
                 parts: vec![Part {
@@ -130,6 +143,7 @@ impl LlmProvider for GeminiProvider {
                 temperature: request.temperature,
                 max_output_tokens: request.max_tokens,
             },
+            system_instruction,
         };
 
         tracing::debug!("Sending request to Gemini API: {}", model_name);
@@ -284,6 +298,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
@@ -306,6 +321,7 @@ mod tests {
         );
 
         let request = GenerationRequest {
+            system_message: None,
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,

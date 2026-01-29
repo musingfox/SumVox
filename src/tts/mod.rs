@@ -172,7 +172,7 @@ mod tests {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
             voice: Some("Ting-Ting".to_string()),
-            project_id: None,
+            api_key: None,
             rate: Some(200),
         }];
 
@@ -183,18 +183,18 @@ mod tests {
 
     #[test]
     fn test_create_tts_fallback() {
-        // Google TTS without project ID should fallback to macOS
+        // Google TTS without API key should fallback to macOS
         let providers = vec![
             TtsProviderConfig {
                 name: "google".to_string(),
                 voice: Some("Aoede".to_string()),
-                project_id: None, // No project ID
+                api_key: None, // No API key
                 rate: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
                 voice: Some("Ting-Ting".to_string()),
-                project_id: None,
+                api_key: None,
                 rate: Some(200),
             },
         ];
