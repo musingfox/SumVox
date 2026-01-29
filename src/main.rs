@@ -31,7 +31,7 @@ struct HookInput {
     session_id: String,
     transcript_path: String,
     #[allow(dead_code)]
-    permission_mode: String,
+    permission_mode: Option<String>,
     hook_event_name: String,
     stop_hook_active: Option<bool>,
     // Notification hook specific fields
@@ -160,11 +160,13 @@ async fn handle_notification_hook(
 
     // Use original message as fallback if LLM processing fails
     let final_message = if processed_message.is_empty() {
+        tracing::warn!("LLM returned empty message, using original notification message");
         message.clone()
     } else {
         processed_message
     };
 
+    tracing::info!("Notification message: {}", final_message);
     speak_summary(cli, config, &final_message).await?;
 
     Ok(())
