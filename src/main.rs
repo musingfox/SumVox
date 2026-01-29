@@ -34,6 +34,9 @@ struct HookInput {
     permission_mode: String,
     hook_event_name: String,
     stop_hook_active: Option<bool>,
+    // Notification hook specific fields
+    message: Option<String>,
+    notification_type: Option<String>,
 }
 
 #[tokio::main]
@@ -90,6 +93,72 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // Dispatch based on hook event type
+    match hook_input.hook_event_name.as_str() {
+        "Notification" => {
+            handle_notification_hook(&hook_input, &config, &cli).await?;
+        }
+        "Stop" => {
+            handle_stop_hook(&hook_input, &config, &cli).await?;
+        }
+        _ => {
+            tracing::warn!("Unknown hook event: {}", hook_input.hook_event_name);
+        }
+    }
+
+    tracing::info!("claude-voice completed successfully");
+    Ok(())
+}
+
+/// Handle Notification hook - speak notification message directly
+async fn handle_notification_hook(
+    hook_input: &HookInput,
+    config: &VoiceConfig,
+    cli: &Cli,
+) -> Result<()> {
+    tracing::info!("Processing Notification hook");
+
+    // Get notification message
+    let message = match &hook_input.message {
+        Some(msg) => msg,
+        None => {
+            tracing::warn!("Notification hook has no message field");
+            return Ok(());
+        }
+    };
+
+    let notification_type = hook_input.notification_type.as_deref().unwrap_or("unknown");
+    tracing::info!(
+        "Notification type: {}, message: {}",
+        notification_type,
+        message
+    );
+
+    // Filter: only speak important notifications
+    // - permission_prompt: User needs to approve an action (HIGH priority)
+    // - idle_prompt: Claude waiting 60+ seconds for response (HIGH priority)
+    // - elicitation_dialog: MCP tool needs user input (HIGH priority)
+    // - auth_success: Authentication completed (LOW priority, skipped)
+    let should_speak = matches!(
+        notification_type,
+        "permission_prompt" | "idle_prompt" | "elicitation_dialog"
+    );
+
+    if !should_speak {
+        tracing::debug!("Skipping notification type: {}", notification_type);
+        return Ok(());
+    }
+
+    // Speak the notification message directly (no LLM summarization)
+    speak_summary(cli, config, message).await?;
+
+    Ok(())
+}
+
+/// Handle Stop hook - read transcript and generate summary
+async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cli) -> Result<()> {
+    tracing::info!("Processing Stop hook");
+
     // Read transcript
     let transcript_path = PathBuf::from(&hook_input.transcript_path);
     tracing::debug!("Reading transcript from: {:?}", transcript_path);
@@ -117,18 +186,17 @@ async fn main() -> Result<()> {
         .replace("{context}", &context);
 
     // Generate summary with LLM
-    let summary = generate_summary(&config, &cli, &prompt).await?;
+    let summary = generate_summary(config, cli, &prompt).await?;
 
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
         let fallback = &config.advanced.fallback_message;
-        speak_summary(&cli, &config, fallback).await?;
+        speak_summary(cli, config, fallback).await?;
     } else {
         tracing::info!("Generated summary: {}", summary);
-        speak_summary(&cli, &config, &summary).await?;
+        speak_summary(cli, config, &summary).await?;
     }
 
-    tracing::info!("claude-voice completed successfully");
     Ok(())
 }
 
