@@ -87,8 +87,14 @@ impl TranscriptReader {
 
             match serde_json::from_str::<TranscriptEntry>(&line) {
                 Ok(entry) => {
-                    if let Some(message) = entry.message {
-                        if message.role == "assistant" {
+                    // Support both formats:
+                    // 1. Test format: {"type":"message","message":{"role":"assistant",...}}
+                    // 2. Claude Code format: {"type":"assistant","message":{"role":"assistant",...}}
+                    let is_assistant = entry.entry_type == "assistant"
+                        || (entry.entry_type == "message" && entry.message.as_ref().map_or(false, |m| m.role == "assistant"));
+
+                    if is_assistant {
+                        if let Some(message) = entry.message {
                             for text in message.extract_texts() {
                                 texts.push(text);
                                 if texts.len() >= limit {

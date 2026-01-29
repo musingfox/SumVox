@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
     let transcript_path = PathBuf::from(&hook_input.transcript_path);
     tracing::debug!("Reading transcript from: {:?}", transcript_path);
 
-    let texts = TranscriptReader::read_last_n_texts(&transcript_path, 3).await?;
+    let texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
 
     if texts.is_empty() {
         tracing::warn!("No assistant texts found in transcript");

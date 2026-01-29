@@ -154,9 +154,10 @@ impl LlmProvider for GeminiProvider {
             )));
         }
 
-        let gemini_response: GeminiResponse = response
-            .json()
-            .await
+        let response_text = response.text().await
+            .map_err(|e| LlmError::Request(format!("Failed to read Gemini response: {}", e)))?;
+
+        let gemini_response: GeminiResponse = serde_json::from_str(&response_text)
             .map_err(|e| LlmError::Request(format!("Failed to parse Gemini response: {}", e)))?;
 
         if gemini_response.candidates.is_empty() {
