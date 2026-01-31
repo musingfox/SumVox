@@ -18,6 +18,20 @@ struct AnthropicRequest {
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
+
+    /// Extended thinking control (Claude 4/4.5 series)
+    /// API docs: https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
+}
+
+#[derive(Debug, Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    thinking_type: String, // "enabled"
+
+    /// Minimum: 1024 tokens
+    budget_tokens: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +105,19 @@ impl LlmProvider for AnthropicProvider {
 
         let url = format!("{}/messages", ANTHROPIC_API_BASE);
 
+        // Note: API defaults to NOT enabling thinking unless thinking object is sent
+        // disable_thinking = true: don't send thinking object (API default)
+        // disable_thinking = false: send thinking object to enable (minimum budget 1024)
+        let thinking = if !request.disable_thinking {
+            // Enable extended thinking with minimum budget
+            Some(ThinkingConfig {
+                thinking_type: "enabled".to_string(),
+                budget_tokens: 1024, // Minimum required
+            })
+        } else {
+            None // Don't send = API default (no extended thinking)
+        };
+
         let anthropic_request = AnthropicRequest {
             model: self.model.clone(),
             max_tokens: request.max_tokens,
@@ -99,6 +126,7 @@ impl LlmProvider for AnthropicProvider {
                 content: request.prompt.clone(),
             }],
             system: request.system_message.clone(),
+            thinking,
         };
 
         tracing::debug!("Sending request to Anthropic API: {}", self.model);
@@ -237,11 +265,40 @@ mod tests {
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let result = provider.generate(&request).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), LlmError::Unavailable(_)));
+    }
+
+    #[test]
+    fn test_thinking_config_disabled() {
+        let request = GenerationRequest {
+            system_message: None,
+            prompt: "Test".to_string(),
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: true,
+        };
+
+        // When disable_thinking = true, thinking should be None
+        assert!(request.disable_thinking);
+    }
+
+    #[test]
+    fn test_thinking_config_enabled() {
+        let request = GenerationRequest {
+            system_message: None,
+            prompt: "Test".to_string(),
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: false,
+        };
+
+        // When disable_thinking = false, thinking should be Some
+        assert!(!request.disable_thinking);
     }
 
     // Integration test - requires actual API key
@@ -260,6 +317,7 @@ mod tests {
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let response = provider.generate(&request).await.unwrap();

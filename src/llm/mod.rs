@@ -22,6 +22,7 @@ pub struct GenerationRequest {
     pub prompt: String,
     pub max_tokens: u32,
     pub temperature: f32,
+    pub disable_thinking: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,7 @@ mod tests {
             prompt: "Test prompt".to_string(),
             max_tokens: 100,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         assert_eq!(request.system_message, Some("System instruction".to_string()));

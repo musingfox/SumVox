@@ -16,6 +16,12 @@ struct OpenAIRequest {
     messages: Vec<Message>,
     max_tokens: u32,
     temperature: f32,
+
+    /// Reasoning effort for o1/o3/GPT-5 models
+    /// Values: "low", "medium", "high", "xhigh" (gpt-5.1-codex-max)
+    /// API docs: https://platform.openai.com/docs/guides/reasoning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -113,11 +119,31 @@ impl LlmProvider for OpenAIProvider {
             content: request.prompt.clone(),
         });
 
+        // Check if this is a reasoning model
+        // Supported: o1, o3, o3-mini, GPT-5, gpt-5.1, etc.
+        let is_reasoning_model = model_name.starts_with("o1")
+            || model_name.starts_with("o3")
+            || model_name.starts_with("gpt-5");
+
+        // Set reasoning_effort based on disable_thinking
+        // disable_thinking = true: use "low" to minimize reasoning
+        // disable_thinking = false: use "high" to maximize reasoning
+        let reasoning_effort = if is_reasoning_model {
+            Some(if request.disable_thinking {
+                "low".to_string() // Minimize reasoning
+            } else {
+                "high".to_string() // Maximize reasoning
+            })
+        } else {
+            None // Non-reasoning models, don't send parameter
+        };
+
         let openai_request = OpenAIRequest {
             model: model_name.to_string(),
             messages,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
+            reasoning_effort,
         };
 
         tracing::debug!("Sending request to OpenAI API: {}", model_name);
@@ -272,6 +298,7 @@ mod tests {
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let result = provider.generate(&request).await;
@@ -295,6 +322,7 @@ mod tests {
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let response = provider.generate(&request).await.unwrap();

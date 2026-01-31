@@ -134,40 +134,27 @@ async fn handle_notification_hook(
         message
     );
 
-    // Filter: only speak important notifications
-    // - permission_prompt: User needs to approve an action (HIGH priority)
-    // - idle_prompt: Claude waiting 60+ seconds for response (HIGH priority)
-    // - elicitation_dialog: MCP tool needs user input (HIGH priority)
-    // - auth_success: Authentication completed (LOW priority, skipped)
-    let should_speak = matches!(
-        notification_type,
-        "permission_prompt" | "idle_prompt" | "elicitation_dialog"
-    );
+    // Check filter: should we speak this notification type?
+    let filter = &config.notification_hook.filter;
+    let should_speak = if filter.is_empty() {
+        // Empty filter = disabled
+        false
+    } else if filter.contains(&"*".to_string()) {
+        // Wildcard = all notifications
+        true
+    } else {
+        // Check if notification type is in filter
+        filter.contains(&notification_type.to_string())
+    };
 
     if !should_speak {
-        tracing::debug!("Skipping notification type: {}", notification_type);
+        tracing::debug!("Notification type '{}' not in filter, skipping", notification_type);
         return Ok(());
     }
 
-    // Process notification message with LLM
-    let user_prompt = config
-        .summarization
-        .notification_prompt
-        .replace("{message}", message);
-
-    let system_message = Some(config.summarization.notification_system_message.clone());
-    let processed_message = generate_summary(config, cli, system_message, &user_prompt).await?;
-
-    // Use original message as fallback if LLM processing fails
-    let final_message = if processed_message.is_empty() {
-        tracing::warn!("LLM returned empty message, using original notification message");
-        message.clone()
-    } else {
-        processed_message
-    };
-
-    tracing::info!("Notification message: {}", final_message);
-    speak_summary(cli, config, &final_message).await?;
+    // Speak the notification message directly (no LLM processing)
+    tracing::info!("Speaking notification: {}", message);
+    speak_summary(cli, config, message).await?;
 
     Ok(())
 }
@@ -197,19 +184,19 @@ async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cl
     // Build summarization prompt
     let max_length = cli.max_length;
     let user_prompt = config
-        .summarization
+        .stop_hook
         .prompt_template
         .replace("{max_length}", &max_length.to_string())
         .replace("{context}", &context);
 
-    let system_message = Some(config.summarization.system_message.clone());
+    let system_message = Some(config.stop_hook.system_message.clone());
 
     // Generate summary with LLM
     let summary = generate_summary(config, cli, system_message, &user_prompt).await?;
 
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
-        let fallback = &config.advanced.fallback_message;
+        let fallback = &config.stop_hook.fallback_message;
         speak_summary(cli, config, fallback).await?;
     } else {
         tracing::info!("Generated summary: {}", summary);
@@ -228,18 +215,19 @@ async fn generate_summary(
     let llm_config = &config.llm;
 
     // Initialize cost tracker
-    let cost_tracker = if llm_config.cost_control.usage_tracking {
-        Some(CostTracker::new(&llm_config.cost_control.usage_file))
+    let cost_tracker = if config.cost_control.usage_tracking {
+        Some(CostTracker::new(&config.cost_control.usage_file))
     } else {
         None
     };
 
     // Check budget
     if let Some(ref tracker) = cost_tracker {
-        let daily_limit = llm_config.cost_control.daily_limit_usd;
+        let daily_limit = config.cost_control.daily_limit_usd;
         let under_budget = tracker.check_budget(daily_limit).await?;
 
         if !under_budget {
+            eprintln!("⚠️  Claude Voice: 每日預算 ${:.2} 已超過,語音功能已停用", daily_limit);
             tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
             return Ok(String::new());
         }
@@ -276,6 +264,7 @@ async fn generate_summary(
         prompt: prompt.to_string(),
         max_tokens: llm_config.parameters.max_tokens,
         temperature: llm_config.parameters.temperature,
+        disable_thinking: llm_config.parameters.disable_thinking,
     };
 
     match provider.generate(&request).await {

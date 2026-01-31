@@ -11,12 +11,29 @@ fn default_timeout() -> u64 {
     10
 }
 
+/// Ollama needs longer timeout for local inference
+fn default_ollama_timeout() -> u64 {
+    60
+}
+
+/// 序列化 API key,將 None 轉換為 placeholder
+fn serialize_api_key<S>(key: &Option<String>, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::Serialize;
+    match key {
+        Some(k) if !k.is_empty() && !k.starts_with("${") => k.serialize(serializer),
+        _ => "${PROVIDER_API_KEY}".serialize(serializer),
+    }
+}
+
 fn default_true() -> bool {
     true
 }
 
 fn default_version() -> String {
-    "2.0.0".to_string()
+    "1.0.0".to_string()
 }
 
 fn default_max_length() -> usize {
@@ -36,7 +53,7 @@ fn default_usage_file() -> String {
 }
 
 fn default_max_tokens() -> u32 {
-    100
+    10000
 }
 
 fn default_temperature() -> f32 {
@@ -51,12 +68,8 @@ fn default_system_message() -> String {
     "You are a voice notification assistant for Claude Code. Generate concise summaries suitable for voice playback.".to_string()
 }
 
-fn default_notification_system_message() -> String {
-    "You are a voice notification assistant for Claude Code. Convert important notifications into concise phrases suitable for voice playback.".to_string()
-}
-
-fn default_notification_prompt() -> String {
-    "Convert the following notification message into a concise phrase suitable for voice playback (max 30 words):\n\n{message}\n\nVoice output:".to_string()
+fn default_notification_filter() -> Vec<String> {
+    vec!["permission_prompt".to_string(), "idle_prompt".to_string(), "elicitation_dialog".to_string()]
 }
 
 // ============================================================================
@@ -73,7 +86,7 @@ pub struct LlmProviderConfig {
     pub model: String,
 
     /// API key (optional for ollama)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_api_key")]
     pub api_key: Option<String>,
 
     /// Base URL (optional, for custom endpoints like ollama)
@@ -90,7 +103,7 @@ impl LlmProviderConfig {
     pub fn has_credentials(&self) -> bool {
         match self.name.to_lowercase().as_str() {
             "ollama" | "local" => true, // No API key needed
-            _ => self.api_key.as_ref().map_or(false, |k| !k.is_empty()),
+            _ => self.api_key.as_ref().is_some_and(|k| !k.is_empty()),
         }
     }
 
@@ -127,6 +140,14 @@ pub struct LlmParameters {
 
     #[serde(default = "default_temperature")]
     pub temperature: f32,
+
+    /// Disable thinking/reasoning to reduce token usage
+    /// - Anthropic: disables extended thinking (Claude 3.7 Sonnet)
+    /// - OpenAI: sets reasoning_effort to "low" (o1/o3 models)
+    /// - Gemini: sets thinking_level to "low" (Gemini 3) or thinkingBudget to 0 (Gemini 2.5)
+    /// - Others: ignored
+    #[serde(default)]
+    pub disable_thinking: bool,
 }
 
 impl Default for LlmParameters {
@@ -134,6 +155,7 @@ impl Default for LlmParameters {
         Self {
             max_tokens: default_max_tokens(),
             temperature: default_temperature(),
+            disable_thinking: false, // Enable thinking by default (if model supports)
         }
     }
 }
@@ -170,10 +192,6 @@ pub struct LlmConfig {
     /// Shared parameters for all providers
     #[serde(default)]
     pub parameters: LlmParameters,
-
-    /// Cost control settings
-    #[serde(default)]
-    pub cost_control: CostControlConfig,
 }
 
 impl Default for LlmConfig {
@@ -192,11 +210,10 @@ impl Default for LlmConfig {
                     model: "llama3.2".to_string(),
                     api_key: None,
                     base_url: None,
-                    timeout: default_timeout(),
+                    timeout: default_ollama_timeout(),
                 },
             ],
             parameters: LlmParameters::default(),
-            cost_control: CostControlConfig::default(),
         }
     }
 }
@@ -216,7 +233,7 @@ pub struct TtsProviderConfig {
     pub voice: Option<String>,
 
     /// API key (for google provider - Gemini API key)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_api_key")]
     pub api_key: Option<String>,
 
     /// Speech rate for macOS (90-300)
@@ -283,53 +300,64 @@ impl Default for TtsConfig {
 }
 
 // ============================================================================
-// Summarization Configuration
+// Hook Configuration
 // ============================================================================
 
+/// Stop hook configuration (when task completes)
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SummarizationConfig {
+pub struct StopHookConfig {
+    /// Maximum summary length in characters
     #[serde(default = "default_max_length")]
     pub max_length: usize,
 
-    #[serde(default = "default_prompt_template")]
-    pub prompt_template: String,
-
+    /// System message for summarization
     #[serde(default = "default_system_message")]
     pub system_message: String,
 
-    #[serde(default = "default_notification_system_message")]
-    pub notification_system_message: String,
+    /// Prompt template for summarization
+    #[serde(default = "default_prompt_template")]
+    pub prompt_template: String,
 
-    #[serde(default = "default_notification_prompt")]
-    pub notification_prompt: String,
-}
-
-impl Default for SummarizationConfig {
-    fn default() -> Self {
-        Self {
-            max_length: default_max_length(),
-            prompt_template: default_prompt_template(),
-            system_message: default_system_message(),
-            notification_system_message: default_notification_system_message(),
-            notification_prompt: default_notification_prompt(),
-        }
-    }
-}
-
-// ============================================================================
-// Advanced Configuration
-// ============================================================================
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AdvancedConfig {
+    /// Fallback message when summarization fails
     #[serde(default = "default_fallback_message")]
     pub fallback_message: String,
 }
 
-impl Default for AdvancedConfig {
+impl Default for StopHookConfig {
     fn default() -> Self {
         Self {
+            max_length: default_max_length(),
+            system_message: default_system_message(),
+            prompt_template: default_prompt_template(),
             fallback_message: default_fallback_message(),
+        }
+    }
+}
+
+/// Notification hook configuration (for notifications)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NotificationHookConfig {
+    /// Filter: which notification types to speak (speaks the notification message directly)
+    ///
+    /// Available notification types:
+    /// - "permission_prompt": User permission required
+    /// - "idle_prompt": Agent waiting for user action
+    /// - "elicitation_dialog": MCP tool needs user input
+    /// - "auth_success": Authentication completed
+    /// - "*": All notifications (default)
+    ///
+    /// Examples:
+    /// - ["*"]: Speak all notifications
+    /// - ["permission_prompt", "idle_prompt"]: Only speak prompts
+    /// - []: Disable all notifications
+    #[serde(default = "default_notification_filter")]
+    pub filter: Vec<String>,
+}
+
+impl Default for NotificationHookConfig {
+    fn default() -> Self {
+        Self {
+            filter: default_notification_filter(),
         }
     }
 }
@@ -353,10 +381,14 @@ pub struct VoiceConfig {
     pub tts: TtsConfig,
 
     #[serde(default)]
-    pub summarization: SummarizationConfig,
+    pub stop_hook: StopHookConfig,
 
     #[serde(default)]
-    pub advanced: AdvancedConfig,
+    pub notification_hook: NotificationHookConfig,
+
+    /// Unified cost control for all API usage (LLM + TTS)
+    #[serde(default)]
+    pub cost_control: CostControlConfig,
 }
 
 impl Default for VoiceConfig {
@@ -366,8 +398,9 @@ impl Default for VoiceConfig {
             enabled: true,
             llm: LlmConfig::default(),
             tts: TtsConfig::default(),
-            summarization: SummarizationConfig::default(),
-            advanced: AdvancedConfig::default(),
+            stop_hook: StopHookConfig::default(),
+            notification_hook: NotificationHookConfig::default(),
+            cost_control: CostControlConfig::default(),
         }
     }
 }
@@ -443,7 +476,7 @@ impl VoiceConfig {
         }
 
         // Validate cost control
-        if self.llm.cost_control.daily_limit_usd < 0.0 {
+        if self.cost_control.daily_limit_usd < 0.0 {
             return Err(VoiceError::Config(
                 "daily_limit_usd cannot be negative".to_string(),
             ));
@@ -452,7 +485,7 @@ impl VoiceConfig {
         // Validate TTS rate if specified
         for tts in &self.tts.providers {
             if let Some(rate) = tts.rate {
-                if rate < 90 || rate > 300 {
+                if !(90..=300).contains(&rate) {
                     return Err(VoiceError::Config(format!(
                         "TTS rate {} out of range [90-300] for provider {}",
                         rate, tts.name
@@ -461,18 +494,12 @@ impl VoiceConfig {
             }
         }
 
-        // Validate prompt templates contain required variables (warnings only)
-        if !self.summarization.prompt_template.contains("{max_length}")
-            || !self.summarization.prompt_template.contains("{context}")
+        // Validate stop hook prompt template contains required variables (warnings only)
+        if !self.stop_hook.prompt_template.contains("{max_length}")
+            || !self.stop_hook.prompt_template.contains("{context}")
         {
             tracing::warn!(
                 "Stop hook prompt_template missing required variables: {{max_length}} or {{context}}"
-            );
-        }
-
-        if !self.summarization.notification_prompt.contains("{message}") {
-            tracing::warn!(
-                "Notification hook notification_prompt missing required variable: {{message}}"
             );
         }
 
@@ -570,7 +597,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = VoiceConfig::default();
-        assert_eq!(config.version, "2.0.0");
+        assert_eq!(config.version, "1.0.0");
         assert!(config.enabled);
         assert!(!config.llm.providers.is_empty());
         assert!(!config.tts.providers.is_empty());
@@ -579,7 +606,7 @@ mod tests {
     #[test]
     fn test_load_new_format() {
         let config_json = r#"{
-            "version": "2.0.0",
+            "version": "1.0.0",
             "enabled": true,
             "llm": {
                 "providers": [
@@ -615,7 +642,7 @@ mod tests {
         let path = temp_file.path().to_path_buf();
 
         let config = VoiceConfig::load(path).unwrap();
-        assert_eq!(config.version, "2.0.0");
+        assert_eq!(config.version, "1.0.0");
         assert_eq!(config.llm.providers.len(), 2);
         assert_eq!(config.llm.providers[0].name, "google");
         assert_eq!(
@@ -760,5 +787,89 @@ mod tests {
             "ANTHROPIC_API_KEY"
         );
         assert_eq!(LlmProviderConfig::env_var_name("openai"), "OPENAI_API_KEY");
+    }
+
+    #[test]
+    fn test_api_key_placeholder_serialization() {
+        let provider = LlmProviderConfig {
+            name: "google".to_string(),
+            model: "gemini-2.5-flash".to_string(),
+            api_key: None,
+            base_url: None,
+            timeout: 10,
+        };
+
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(json.contains("${PROVIDER_API_KEY}"));
+    }
+
+    #[test]
+    fn test_ollama_timeout_60_seconds() {
+        let config = LlmConfig::default();
+        let ollama = config
+            .providers
+            .iter()
+            .find(|p| p.name == "ollama")
+            .unwrap();
+        assert_eq!(ollama.timeout, 60);
+    }
+
+    #[test]
+    fn test_cost_control_at_top_level() {
+        let config = VoiceConfig::default();
+        assert!(config.cost_control.daily_limit_usd > 0.0);
+    }
+
+    #[test]
+    fn test_new_hook_config_structure() {
+        let config = VoiceConfig::default();
+
+        // 驗證 stop_hook
+        assert_eq!(config.stop_hook.max_length, 50);
+        assert!(!config.stop_hook.fallback_message.is_empty());
+
+        // 驗證 notification_hook
+        assert!(!config.notification_hook.filter.is_empty());
+        assert_eq!(
+            config.notification_hook.filter,
+            vec!["permission_prompt", "idle_prompt", "elicitation_dialog"]
+        );
+    }
+
+    #[test]
+    fn test_max_tokens_default_10000() {
+        let params = LlmParameters::default();
+        assert_eq!(params.max_tokens, 10000);
+    }
+
+    #[test]
+    fn test_disable_thinking_default_false() {
+        let params = LlmParameters::default();
+        assert!(!params.disable_thinking);
+    }
+
+    #[test]
+    fn test_llm_parameters_serialization() {
+        let params = LlmParameters {
+            max_tokens: 10000,
+            temperature: 0.3,
+            disable_thinking: true,
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"max_tokens\":10000"));
+        assert!(json.contains("\"temperature\":0.3"));
+        assert!(json.contains("\"disable_thinking\":true"));
+    }
+
+    #[test]
+    fn test_llm_parameters_deserialization_backward_compatible() {
+        // 舊配置檔案沒有 disable_thinking 欄位
+        let json = r#"{"max_tokens":100,"temperature":0.3}"#;
+        let params: LlmParameters = serde_json::from_str(json).unwrap();
+
+        assert_eq!(params.max_tokens, 100);
+        assert_eq!(params.temperature, 0.3);
+        assert!(!params.disable_thinking); // 預設值
     }
 }

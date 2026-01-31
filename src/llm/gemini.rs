@@ -39,6 +39,17 @@ struct GenerationConfig {
     temperature: f32,
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: u32,
+
+    /// Gemini 3 thinking control
+    /// Values: "low", "high"
+    /// API docs: https://ai.google.dev/gemini-api/docs/thinking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking_level: Option<String>,
+
+    /// Gemini 2.5 thinking control (backward compatibility)
+    /// Values: 0 = disable, -1 = dynamic, >0 = token budget
+    #[serde(skip_serializing_if = "Option::is_none", rename = "thinkingBudget")]
+    thinking_budget: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +144,42 @@ impl LlmProvider for GeminiProvider {
             }
         });
 
+        // Detect model generation
+        let is_gemini_3 = model_name.contains("gemini-3");
+        let is_gemini_2_5 = model_name.contains("2.5") || model_name.contains("2-5");
+
+        // Set thinking parameters based on model and disable_thinking
+        let (thinking_level, thinking_budget) = if is_gemini_3 {
+            // Gemini 3: use thinking_level
+            let level = if request.disable_thinking {
+                Some("low".to_string())
+            } else {
+                Some("high".to_string())
+            };
+            (level, None)
+        } else if is_gemini_2_5 {
+            // Gemini 2.5: use thinkingBudget
+            let budget = if request.disable_thinking {
+                Some(0) // Disable
+            } else {
+                Some(-1) // Dynamic adjustment
+            };
+            (None, budget)
+        } else {
+            // Other models: try both (API will ignore unsupported)
+            let level = if request.disable_thinking {
+                Some("low".to_string())
+            } else {
+                Some("high".to_string())
+            };
+            let budget = if request.disable_thinking {
+                Some(0)
+            } else {
+                Some(-1)
+            };
+            (level, budget)
+        };
+
         let gemini_request = GeminiRequest {
             contents: vec![Content {
                 parts: vec![Part {
@@ -142,6 +189,8 @@ impl LlmProvider for GeminiProvider {
             generation_config: GenerationConfig {
                 temperature: request.temperature,
                 max_output_tokens: request.max_tokens,
+                thinking_level,
+                thinking_budget,
             },
             system_instruction,
         };
@@ -302,6 +351,7 @@ mod tests {
             prompt: "Test".to_string(),
             max_tokens: 100,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let result = provider.generate(&request).await;
@@ -325,6 +375,7 @@ mod tests {
             prompt: "Say 'Hello' in Traditional Chinese".to_string(),
             max_tokens: 50,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let response = provider.generate(&request).await.unwrap();

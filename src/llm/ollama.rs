@@ -231,6 +231,7 @@ mod tests {
             prompt: "Say 'Hello' in one word".to_string(),
             max_tokens: 10,
             temperature: 0.3,
+            disable_thinking: false,
         };
 
         let response = provider.generate(&request).await.unwrap();
