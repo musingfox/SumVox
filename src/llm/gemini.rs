@@ -144,9 +144,15 @@ impl LlmProvider for GeminiProvider {
             }
         });
 
-        // Detect model generation
+        // Detect model generation and thinking support
+        // Only certain models support thinking parameters:
+        // - Gemini 3: uses thinking_level ("low"/"high")
+        // - Gemini 2.5 Pro with -exp or -thinking suffix: uses thinkingBudget
+        // - gemini-2.5-flash does NOT support thinking parameters
         let is_gemini_3 = model_name.contains("gemini-3");
-        let is_gemini_2_5 = model_name.contains("2.5") || model_name.contains("2-5");
+        let is_gemini_2_5_thinking = (model_name.contains("2.5") || model_name.contains("2-5"))
+            && model_name.contains("pro")
+            && (model_name.contains("-exp") || model_name.contains("-thinking"));
 
         // Set thinking parameters based on model and disable_thinking
         let (thinking_level, thinking_budget) = if is_gemini_3 {
@@ -157,8 +163,8 @@ impl LlmProvider for GeminiProvider {
                 Some("high".to_string())
             };
             (level, None)
-        } else if is_gemini_2_5 {
-            // Gemini 2.5: use thinkingBudget
+        } else if is_gemini_2_5_thinking {
+            // Gemini 2.5 Pro (experimental): use thinkingBudget
             let budget = if request.disable_thinking {
                 Some(0) // Disable
             } else {
@@ -166,18 +172,8 @@ impl LlmProvider for GeminiProvider {
             };
             (None, budget)
         } else {
-            // Other models: try both (API will ignore unsupported)
-            let level = if request.disable_thinking {
-                Some("low".to_string())
-            } else {
-                Some("high".to_string())
-            };
-            let budget = if request.disable_thinking {
-                Some(0)
-            } else {
-                Some(-1)
-            };
-            (level, budget)
+            // Other models (including gemini-2.5-flash): no thinking parameters
+            (None, None)
         };
 
         let gemini_request = GeminiRequest {
