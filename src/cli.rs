@@ -36,6 +36,10 @@ pub struct Cli {
     #[arg(long, default_value = "200")]
     pub rate: u32,
 
+    /// Volume level (0-100), applies to both macOS and Google TTS
+    #[arg(long)]
+    pub volume: Option<u32>,
+
     /// Maximum summary length in characters
     #[arg(long, default_value = "50")]
     pub max_length: usize,
@@ -92,6 +96,7 @@ mod tests {
         assert_eq!(cli.tts, "auto"); // Changed from "macos"
         assert_eq!(cli.tts_voice, None);
         assert_eq!(cli.rate, 200);
+        assert_eq!(cli.volume, None);
         assert_eq!(cli.max_length, 50);
         assert!(cli.command.is_none());
     }
@@ -127,6 +132,8 @@ mod tests {
             "Aoede",
             "--rate",
             "180",
+            "--volume",
+            "75",
             "--max-length",
             "100",
         ])
@@ -138,6 +145,7 @@ mod tests {
         assert_eq!(cli.tts, "google");
         assert_eq!(cli.tts_voice, Some("Aoede".to_string()));
         assert_eq!(cli.rate, 180);
+        assert_eq!(cli.volume, Some(75));
         assert_eq!(cli.max_length, 100);
     }
 

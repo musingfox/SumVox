@@ -247,6 +247,10 @@ pub struct TtsProviderConfig {
     /// Speech rate for macOS (90-300)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate: Option<u32>,
+
+    /// Volume level (0-100), applies to both macOS and Google TTS
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<u32>,
 }
 
 impl TtsProviderConfig {
@@ -295,12 +299,14 @@ impl Default for TtsConfig {
                     voice: Some("Aoede".to_string()),
                     api_key: None,
                     rate: None,
+                    volume: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
                     voice: Some("Ting-Ting".to_string()),
                     api_key: None,
                     rate: Some(200),
+                    volume: None,
                 },
             ],
         }
@@ -500,13 +506,21 @@ impl VoiceConfig {
             ));
         }
 
-        // Validate TTS rate if specified
+        // Validate TTS rate and volume if specified
         for tts in &self.tts.providers {
             if let Some(rate) = tts.rate {
                 if !(90..=300).contains(&rate) {
                     return Err(VoiceError::Config(format!(
                         "TTS rate {} out of range [90-300] for provider {}",
                         rate, tts.name
+                    )));
+                }
+            }
+            if let Some(volume) = tts.volume {
+                if volume > 100 {
+                    return Err(VoiceError::Config(format!(
+                        "TTS volume {} out of range [0-100] for provider {}",
+                        volume, tts.name
                     )));
                 }
             }
@@ -571,6 +585,7 @@ impl VoiceConfig {
                 voice: Some("Aoede".to_string()),
                 api_key: Some(api_key.to_string()),
                 rate: None,
+                volume: None,
             },
         );
         true
@@ -707,6 +722,7 @@ mod tests {
             voice: Some("Ting-Ting".to_string()),
             api_key: None,
             rate: Some(200),
+            volume: None,
         };
         assert!(macos_provider.is_configured());
 
@@ -715,6 +731,7 @@ mod tests {
             voice: Some("Aoede".to_string()),
             api_key: None,
             rate: None,
+            volume: None,
         };
         // This will be false unless GEMINI_API_KEY env var is set
         // In test, we can't guarantee env var state
@@ -761,6 +778,29 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("TTS rate 500 out of range"));
+    }
+
+    #[test]
+    fn test_validate_invalid_tts_volume() {
+        let mut config = VoiceConfig::default();
+        config.tts.providers[0].volume = Some(150);
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("TTS volume 150 out of range"));
+    }
+
+    #[test]
+    fn test_validate_valid_tts_volume() {
+        let mut config = VoiceConfig::default();
+        config.tts.providers[0].volume = Some(75);
+        config.tts.providers[1].volume = Some(100);
+
+        let result = config.validate();
+        assert!(result.is_ok());
     }
 
     #[test]

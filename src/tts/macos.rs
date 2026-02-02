@@ -11,21 +11,23 @@ use crate::error::{Result, VoiceError};
 pub struct MacOsTtsProvider {
     voice_name: String,
     rate: u32,
+    volume: u32,
     async_mode: bool,
 }
 
 impl MacOsTtsProvider {
-    pub fn new(voice_name: String, rate: u32, async_mode: bool) -> Self {
+    pub fn new(voice_name: String, rate: u32, volume: u32, async_mode: bool) -> Self {
         Self {
             voice_name,
             rate,
+            volume,
             async_mode,
         }
     }
 
     /// Default provider with Ting-Ting voice for Traditional Chinese
     pub fn default_chinese() -> Self {
-        Self::new("Ting-Ting".to_string(), 200, true)
+        Self::new("Ting-Ting".to_string(), 200, 100, true)
     }
 
     /// Check if a specific voice is available on the system
@@ -59,10 +61,14 @@ impl TtsProvider for MacOsTtsProvider {
             return Ok(false);
         }
 
+        // Convert 0-100 volume to macOS say's 0.0-1.0 range
+        let volume_float = self.volume as f32 / 100.0;
+
         tracing::info!(
-            "Speaking with macOS say: voice={}, rate={}, async={}",
+            "Speaking with macOS say: voice={}, rate={}, volume={}, async={}",
             self.voice_name,
             self.rate,
+            self.volume,
             self.async_mode
         );
 
@@ -71,6 +77,8 @@ impl TtsProvider for MacOsTtsProvider {
             .arg(&self.voice_name)
             .arg("-r")
             .arg(self.rate.to_string())
+            .arg("--volume")
+            .arg(format!("{:.2}", volume_float))
             .arg(text);
 
         if self.async_mode {
@@ -111,10 +119,11 @@ mod tests {
 
     #[test]
     fn test_macos_provider_creation() {
-        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 180, false);
+        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 180, 75, false);
         assert_eq!(provider.name(), "macos");
         assert_eq!(provider.voice_name, "Ting-Ting");
         assert_eq!(provider.rate, 180);
+        assert_eq!(provider.volume, 75);
         assert!(!provider.async_mode);
     }
 
@@ -123,6 +132,7 @@ mod tests {
         let provider = MacOsTtsProvider::default_chinese();
         assert_eq!(provider.voice_name, "Ting-Ting");
         assert_eq!(provider.rate, 200);
+        assert_eq!(provider.volume, 100);
         assert!(provider.async_mode);
     }
 

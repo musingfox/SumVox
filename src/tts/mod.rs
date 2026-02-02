@@ -106,11 +106,13 @@ fn create_single_tts(
     config: &TtsProviderConfig,
     is_async: bool,
 ) -> Result<Box<dyn TtsProvider>> {
+    let volume = config.volume.unwrap_or(100);
+
     match config.name.to_lowercase().as_str() {
         "macos" | "say" => {
             let voice = config.voice.clone().unwrap_or_else(|| "Ting-Ting".to_string());
             let rate = config.rate.unwrap_or(200);
-            Ok(Box::new(MacOsTtsProvider::new(voice, rate, is_async)))
+            Ok(Box::new(MacOsTtsProvider::new(voice, rate, volume, is_async)))
         }
         "google" | "google_tts" | "gcloud" | "gemini" => {
             let api_key = config.get_api_key().ok_or_else(|| {
@@ -119,7 +121,7 @@ fn create_single_tts(
                 )
             })?;
             let voice = config.voice.clone();
-            Ok(Box::new(GoogleTtsProvider::new(api_key, voice)))
+            Ok(Box::new(GoogleTtsProvider::new(api_key, voice, volume)))
         }
         _ => Err(VoiceError::Config(format!(
             "Unknown TTS provider: {}",
@@ -133,6 +135,7 @@ pub fn create_tts_by_name(
     name: &str,
     voice: Option<String>,
     rate: u32,
+    volume: u32,
     is_async: bool,
     api_key: Option<String>,
 ) -> Result<Box<dyn TtsProvider>> {
@@ -141,6 +144,7 @@ pub fn create_tts_by_name(
         voice,
         api_key,
         rate: Some(rate),
+        volume: Some(volume),
     };
     create_single_tts(&config, is_async)
 }
@@ -174,6 +178,7 @@ mod tests {
             voice: Some("Ting-Ting".to_string()),
             api_key: None,
             rate: Some(200),
+            volume: Some(80),
         }];
 
         let result = create_tts_from_config(&providers, true);
@@ -190,12 +195,14 @@ mod tests {
                 voice: Some("Aoede".to_string()),
                 api_key: None, // No API key
                 rate: None,
+                volume: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
                 voice: Some("Ting-Ting".to_string()),
                 api_key: None,
                 rate: Some(200),
+                volume: None,
             },
         ];
 
@@ -214,6 +221,7 @@ mod tests {
             "macos",
             Some("Ting-Ting".to_string()),
             200,
+            100,
             true,
             None,
         );

@@ -313,49 +313,55 @@ async fn speak_summary(cli: &Cli, config: &VoiceConfig, summary: &str) -> Result
     // Create TTS provider: CLI override or config fallback chain
     let provider: Box<dyn TtsProvider> = match tts_engine {
         TtsEngine::Auto => {
-            // Use config fallback chain
+            // Use config fallback chain (volume from config)
             create_tts_from_config(&config.tts.providers, true)?
         }
         TtsEngine::MacOS => {
-            // Priority: CLI > Config > Default
-            let voice = cli
-                .tts_voice
-                .clone()
-                .or_else(|| {
-                    config
-                        .tts
-                        .providers
-                        .iter()
-                        .find(|p| p.name.to_lowercase() == "macos")
-                        .and_then(|p| p.voice.clone())
-                })
-                .unwrap_or_else(|| "Ting-Ting".to_string());
-            create_tts_by_name("macos", Some(voice), cli.rate, true, None)?
-        }
-        TtsEngine::Google => {
-            // Get API key from config or env
-            let api_key = config
+            // Get macOS config for fallback values
+            let macos_config = config
                 .tts
                 .providers
                 .iter()
-                .find(|p| p.name.to_lowercase() == "google")
-                .and_then(|p| p.get_api_key());
+                .find(|p| p.name.to_lowercase() == "macos");
 
             // Priority: CLI > Config > Default
             let voice = cli
                 .tts_voice
                 .clone()
-                .or_else(|| {
-                    config
-                        .tts
-                        .providers
-                        .iter()
-                        .find(|p| p.name.to_lowercase() == "google")
-                        .and_then(|p| p.voice.clone())
-                })
+                .or_else(|| macos_config.and_then(|p| p.voice.clone()))
+                .unwrap_or_else(|| "Ting-Ting".to_string());
+
+            let volume = cli
+                .volume
+                .or_else(|| macos_config.and_then(|p| p.volume))
+                .unwrap_or(100);
+
+            create_tts_by_name("macos", Some(voice), cli.rate, volume, true, None)?
+        }
+        TtsEngine::Google => {
+            // Get Google config for fallback values
+            let google_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == "google");
+
+            // Get API key from config or env
+            let api_key = google_config.and_then(|p| p.get_api_key());
+
+            // Priority: CLI > Config > Default
+            let voice = cli
+                .tts_voice
+                .clone()
+                .or_else(|| google_config.and_then(|p| p.voice.clone()))
                 .unwrap_or_else(|| "Aoede".to_string());
 
-            create_tts_by_name("google", Some(voice), cli.rate, true, api_key)?
+            let volume = cli
+                .volume
+                .or_else(|| google_config.and_then(|p| p.volume))
+                .unwrap_or(100);
+
+            create_tts_by_name("google", Some(voice), cli.rate, volume, true, api_key)?
         }
     };
 

@@ -30,6 +30,7 @@ pub const GEMINI_TTS_VOICES: &[&str] = &[
 pub struct GoogleTtsProvider {
     api_key: String,
     voice_name: String,
+    volume: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,12 +115,13 @@ struct TtsErrorDetail {
 }
 
 impl GoogleTtsProvider {
-    pub fn new(api_key: String, voice_name: Option<String>) -> Self {
+    pub fn new(api_key: String, voice_name: Option<String>, volume: u32) -> Self {
         let voice = voice_name.unwrap_or_else(|| "Aoede".to_string());
 
         Self {
             api_key,
             voice_name: voice,
+            volume,
         }
     }
 
@@ -133,12 +135,12 @@ impl GoogleTtsProvider {
     }
 
     /// Create provider from environment variable
-    pub fn from_env(voice_name: Option<String>) -> Option<Self> {
+    pub fn from_env(voice_name: Option<String>, volume: u32) -> Option<Self> {
         std::env::var("GEMINI_API_KEY")
             .ok()
             .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
             .filter(|k| !k.is_empty())
-            .map(|api_key| Self::new(api_key, voice_name))
+            .map(|api_key| Self::new(api_key, voice_name, volume))
     }
 
     /// Play audio data using rodio
@@ -146,9 +148,10 @@ impl GoogleTtsProvider {
         use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
 
         tracing::debug!(
-            "Playing audio: {} bytes, mime_type: {}",
+            "Playing audio: {} bytes, mime_type: {}, volume: {}",
             audio_data.len(),
-            mime_type
+            mime_type,
+            self.volume
         );
 
         // Create output stream
@@ -158,6 +161,9 @@ impl GoogleTtsProvider {
         // Create sink for playback
         let sink = Sink::try_new(&stream_handle)
             .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
+
+        // Set volume (0-100 to 0.0-1.0)
+        sink.set_volume(self.volume as f32 / 100.0);
 
         // Gemini TTS returns LINEAR16 PCM format (16-bit signed little-endian at 24kHz)
         // Convert bytes to i16 samples
@@ -296,28 +302,30 @@ mod tests {
 
     #[test]
     fn test_google_provider_creation() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.voice_name, "Aoede");
+        assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
     }
 
     #[test]
     fn test_custom_voice() {
         let provider =
-            GoogleTtsProvider::new("test-api-key".to_string(), Some("Charon".to_string()));
+            GoogleTtsProvider::new("test-api-key".to_string(), Some("Charon".to_string()), 75);
         assert_eq!(provider.voice_name, "Charon");
+        assert_eq!(provider.volume, 75);
     }
 
     #[test]
     fn test_empty_api_key() {
-        let provider = GoogleTtsProvider::new(String::new(), None);
+        let provider = GoogleTtsProvider::new(String::new(), None, 100);
         assert!(!provider.is_available());
     }
 
     #[test]
     fn test_cost_estimation() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
 
         // 50 chars (typical summary length)
         let cost_50 = provider.estimate_cost(50);
@@ -338,7 +346,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None);
+        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
@@ -347,7 +355,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_speak_integration() {
-        let provider = GoogleTtsProvider::from_env(None);
+        let provider = GoogleTtsProvider::from_env(None, 100);
         if let Some(p) = provider {
             let result = p.speak("測試語音").await;
             assert!(result.is_ok());
