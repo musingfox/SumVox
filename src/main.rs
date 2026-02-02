@@ -167,10 +167,26 @@ async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cl
     let transcript_path = PathBuf::from(&hook_input.transcript_path);
     tracing::debug!("Reading transcript from: {:?}", transcript_path);
 
-    let texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
+    // Initial delay to let filesystem sync
+    let initial_delay = Duration::from_millis(config.stop_hook.initial_delay_ms);
+    tracing::debug!("Waiting {}ms for filesystem sync", config.stop_hook.initial_delay_ms);
+    tokio::time::sleep(initial_delay).await;
+
+    let mut texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
+
+    // Retry once if empty (race condition workaround)
+    if texts.is_empty() {
+        tracing::debug!(
+            "No texts found, retrying after {}ms",
+            config.stop_hook.retry_delay_ms
+        );
+        let retry_delay = Duration::from_millis(config.stop_hook.retry_delay_ms);
+        tokio::time::sleep(retry_delay).await;
+        texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
+    }
 
     if texts.is_empty() {
-        tracing::warn!("No assistant texts found in transcript");
+        tracing::warn!("No assistant texts found in transcript after retry");
         return Ok(());
     }
 
@@ -301,9 +317,18 @@ async fn speak_summary(cli: &Cli, config: &VoiceConfig, summary: &str) -> Result
             create_tts_from_config(&config.tts.providers, true)?
         }
         TtsEngine::MacOS => {
+            // Priority: CLI > Config > Default
             let voice = cli
                 .tts_voice
                 .clone()
+                .or_else(|| {
+                    config
+                        .tts
+                        .providers
+                        .iter()
+                        .find(|p| p.name.to_lowercase() == "macos")
+                        .and_then(|p| p.voice.clone())
+                })
                 .unwrap_or_else(|| "Ting-Ting".to_string());
             create_tts_by_name("macos", Some(voice), cli.rate, true, None)?
         }
@@ -316,9 +341,18 @@ async fn speak_summary(cli: &Cli, config: &VoiceConfig, summary: &str) -> Result
                 .find(|p| p.name.to_lowercase() == "google")
                 .and_then(|p| p.get_api_key());
 
+            // Priority: CLI > Config > Default
             let voice = cli
                 .tts_voice
                 .clone()
+                .or_else(|| {
+                    config
+                        .tts
+                        .providers
+                        .iter()
+                        .find(|p| p.name.to_lowercase() == "google")
+                        .and_then(|p| p.voice.clone())
+                })
                 .unwrap_or_else(|| "Aoede".to_string());
 
             create_tts_by_name("google", Some(voice), cli.rate, true, api_key)?

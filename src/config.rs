@@ -44,6 +44,14 @@ fn default_fallback_message() -> String {
     "任務已完成".to_string()
 }
 
+fn default_initial_delay_ms() -> u64 {
+    50
+}
+
+fn default_retry_delay_ms() -> u64 {
+    100
+}
+
 fn default_daily_limit() -> f64 {
     0.10
 }
@@ -321,6 +329,14 @@ pub struct StopHookConfig {
     /// Fallback message when summarization fails
     #[serde(default = "default_fallback_message")]
     pub fallback_message: String,
+
+    /// Initial delay in ms before reading transcript (to let filesystem sync)
+    #[serde(default = "default_initial_delay_ms")]
+    pub initial_delay_ms: u64,
+
+    /// Retry delay in ms if first read returns empty
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
 }
 
 impl Default for StopHookConfig {
@@ -330,6 +346,8 @@ impl Default for StopHookConfig {
             system_message: default_system_message(),
             prompt_template: default_prompt_template(),
             fallback_message: default_fallback_message(),
+            initial_delay_ms: default_initial_delay_ms(),
+            retry_delay_ms: default_retry_delay_ms(),
         }
     }
 }
@@ -834,6 +852,40 @@ mod tests {
             config.notification_hook.filter,
             vec!["permission_prompt", "idle_prompt", "elicitation_dialog"]
         );
+    }
+
+    #[test]
+    fn test_stop_hook_delay_defaults() {
+        let config = VoiceConfig::default();
+
+        assert_eq!(config.stop_hook.initial_delay_ms, 50);
+        assert_eq!(config.stop_hook.retry_delay_ms, 100);
+    }
+
+    #[test]
+    fn test_stop_hook_delay_deserialization() {
+        let json = r#"{
+            "max_length": 50,
+            "initial_delay_ms": 75,
+            "retry_delay_ms": 150
+        }"#;
+
+        let stop_hook: StopHookConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(stop_hook.initial_delay_ms, 75);
+        assert_eq!(stop_hook.retry_delay_ms, 150);
+    }
+
+    #[test]
+    fn test_stop_hook_delay_backward_compatible() {
+        // 舊配置檔案沒有 delay 欄位
+        let json = r#"{
+            "max_length": 50,
+            "fallback_message": "Done"
+        }"#;
+
+        let stop_hook: StopHookConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(stop_hook.initial_delay_ms, 50); // 預設值
+        assert_eq!(stop_hook.retry_delay_ms, 100); // 預設值
     }
 
     #[test]
