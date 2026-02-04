@@ -10,8 +10,42 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ALSA dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
   test:
     name: Test
+    needs: [fmt, clippy]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -54,41 +88,9 @@ jobs:
       - name: Run tests with all features
         run: cargo test --all-features --verbose
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install ALSA dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
-
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt -- --check
-
   build:
     name: Build
+    needs: [test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
