@@ -186,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_create_macos_tts() {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
@@ -202,6 +203,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_create_tts_fallback() {
         // Google TTS without API key should fallback to macOS
         let providers = vec![
