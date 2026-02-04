@@ -2,9 +2,10 @@
 
 ## Overview
 
+**Project**: SumVox
 **Language**: Rust
 **Type**: CLI Tool / Claude Code Hook
-**Purpose**: Voice notifications for Claude Code with multi-model LLM support
+**Purpose**: Intelligent voice notifications for AI coding tools with multi-model LLM support
 
 ## Task Management System
 
@@ -34,9 +35,10 @@ echo '{"session_id":"test",...}' | cargo run
 
 ### Configuration
 
-- **Main config**: `~/.claude/claude-voice.json`
-- **Hook script**: `.claude/hooks/run_voice_hook.sh`
-- **Binary location**: `target/release/claude-voice`
+- **Main config**: `~/.config/sumvox/config.json`
+- **Hook script**: `.claude/hooks/run_sumvox_hook.sh`
+- **Binary location**: `target/release/sumvox`
+- **Recommended config**: `config/recommended.json`
 
 ### Environment Variables
 
@@ -71,15 +73,15 @@ cargo test tts::
 
 ```bash
 # Initialize config
-claude-voice init
+sumvox init
 
 # Set credentials
-claude-voice credentials set google
-claude-voice credentials list
+sumvox credentials set google
+sumvox credentials list
 
 # Run with CLI overrides
-claude-voice --provider google --model gemini-2.5-flash
-claude-voice --tts auto --tts-voice Aoede
+sumvox --provider google --model gemini-2.5-flash
+sumvox --tts google --tts-voice Aoede
 ```
 
 ## Architecture
@@ -95,8 +97,58 @@ claude-voice --tts auto --tts-voice Aoede
 
 ### Configuration Format
 
-See `~/.claude/claude-voice.json`:
+See `~/.config/sumvox/config.json`:
 - LLM providers array with fallback chain
 - TTS providers array with fallback chain
 - Summarization settings (max_length, prompt_template)
 - Cost control (daily_limit_usd, usage_tracking)
+
+## Project Structure
+
+```
+sumvox/
+├── src/
+│   ├── main.rs           # Entry point
+│   ├── cli.rs            # CLI parsing
+│   ├── config.rs         # Configuration
+│   ├── transcript.rs     # Transcript parsing
+│   ├── credentials.rs    # Credential management
+│   ├── error.rs          # Error types
+│   ├── llm/              # LLM providers
+│   ├── tts/              # TTS engines
+│   └── provider_factory.rs
+├── config/
+│   └── recommended.json  # Recommended Gemini config
+├── .github/
+│   ├── workflows/        # CI/CD
+│   └── ISSUE_TEMPLATE/   # Issue templates
+├── homebrew/
+│   └── sumvox.rb         # Homebrew formula
+├── Cargo.toml
+├── README.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── LICENSE
+```
+
+## Release Process
+
+See [RELEASING.md](RELEASING.md) for detailed release steps.
+
+Quick version:
+```bash
+# Using justfile
+just release 1.0.0
+
+# Or manually
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+## Recommended Configuration
+
+See `config/recommended.json` for the Gemini-based setup:
+- Google Gemini for LLM (tested and optimized)
+- Google TTS + macOS say for voice output
+- Daily budget limit: $0.10
+- Usage tracking enabled

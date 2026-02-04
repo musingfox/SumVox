@@ -16,16 +16,6 @@ const GEMINI_TTS_API: &str =
 /// Cost per character for Gemini TTS (estimated)
 const COST_PER_CHAR: f64 = 0.000016;
 
-/// Available Gemini TTS voices
-pub const GEMINI_TTS_VOICES: &[&str] = &[
-    "Aoede",   // Default
-    "Charon",
-    "Fenrir",
-    "Kore",
-    "Puck",
-    "Orus",
-];
-
 /// Gemini TTS provider using Google AI Studio API
 pub struct GoogleTtsProvider {
     api_key: String,
@@ -132,15 +122,6 @@ impl GoogleTtsProvider {
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| crate::error::VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
-    }
-
-    /// Create provider from environment variable
-    pub fn from_env(voice_name: Option<String>, volume: u32) -> Option<Self> {
-        std::env::var("GEMINI_API_KEY")
-            .ok()
-            .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
-            .filter(|k| !k.is_empty())
-            .map(|api_key| Self::new(api_key, voice_name, volume))
     }
 
     /// Play audio data using rodio
@@ -268,8 +249,8 @@ impl TtsProvider for GoogleTtsProvider {
         // Extract audio data from response
         let inline_data = tts_response
             .candidates
-            .get(0)
-            .and_then(|c| c.content.parts.get(0))
+            .first()
+            .and_then(|c| c.content.parts.first())
             .and_then(|p| p.inline_data.as_ref())
             .ok_or_else(|| VoiceError::Voice("No audio data in response".into()))?;
 
@@ -336,14 +317,6 @@ mod tests {
         assert!((cost_100 - 0.0016).abs() < 0.0001);
     }
 
-    #[test]
-    fn test_gemini_tts_voices() {
-        assert!(GEMINI_TTS_VOICES.len() >= 6);
-        assert!(GEMINI_TTS_VOICES.contains(&"Aoede"));
-        assert!(GEMINI_TTS_VOICES.contains(&"Charon"));
-        assert!(GEMINI_TTS_VOICES.contains(&"Kore"));
-    }
-
     #[tokio::test]
     async fn test_speak_empty_message() {
         let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
@@ -351,14 +324,4 @@ mod tests {
         assert!(!result);
     }
 
-    // Integration test - requires valid GEMINI_API_KEY
-    #[tokio::test]
-    #[ignore]
-    async fn test_speak_integration() {
-        let provider = GoogleTtsProvider::from_env(None, 100);
-        if let Some(p) = provider {
-            let result = p.speak("測試語音").await;
-            assert!(result.is_ok());
-        }
-    }
 }

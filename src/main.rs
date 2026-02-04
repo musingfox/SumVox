@@ -1,43 +1,27 @@
-// claude-voice: Voice notification hook for Claude Code
-// Rust rewrite - single binary, zero dependencies deployment
+// sumvox: Voice notification CLI for AI coding tools
+// LLM summarization with TTS - supporting multiple AI coding tools
 
 mod cli;
 mod config;
-mod credentials;
 mod error;
+mod hooks;
 mod llm;
 mod provider_factory;
 mod transcript;
 mod tts;
-mod voice;
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Parser;
-use cli::{Cli, Commands, CredentialAction};
-use config::VoiceConfig;
-use error::Result;
+use cli::{Cli, Commands, CredentialAction, InitArgs, JsonArgs, SayArgs, SumArgs};
+use config::SumvoxConfig;
+use error::{Result, VoiceError};
+use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
+use hooks::HookFormat;
 use llm::{CostTracker, GenerationRequest};
 use provider_factory::ProviderFactory;
-use transcript::TranscriptReader;
 use tts::{create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
-
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct HookInput {
-    session_id: String,
-    transcript_path: String,
-    #[allow(dead_code)]
-    permission_mode: Option<String>,
-    hook_event_name: String,
-    stop_hook_active: Option<bool>,
-    // Notification hook specific fields
-    message: Option<String>,
-    notification_type: Option<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -52,348 +36,222 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    // Handle subcommands
-    match &cli.command {
-        Some(Commands::Credentials { action }) => {
-            return handle_credentials_command(action.clone()).await;
-        }
-        Some(Commands::Init) => {
-            return handle_init_command().await;
-        }
-        None => {}
+    // Dispatch subcommands
+    match cli.command {
+        Commands::Say(args) => handle_say(args).await,
+        Commands::Sum(args) => handle_sum(args).await,
+        Commands::Json(args) => handle_json(args).await,
+        Commands::Init(args) => handle_init(args).await,
+        Commands::Credentials { action } => handle_credentials(action).await,
+    }
+}
+
+// ============================================================================
+// Say Command - Direct TTS
+// ============================================================================
+
+async fn handle_say(args: SayArgs) -> Result<()> {
+    tracing::info!("sumvox say: {}", args.text);
+
+    let config = SumvoxConfig::load_from_home()?;
+
+    let tts_opts = TtsOptions {
+        engine: args.tts,
+        voice: args.voice,
+        rate: args.rate,
+        volume: args.volume,
+    };
+
+    speak_text(&config, &tts_opts, &args.text).await?;
+
+    tracing::info!("sumvox say completed");
+    Ok(())
+}
+
+// ============================================================================
+// Sum Command - LLM Summarization + TTS
+// ============================================================================
+
+async fn handle_sum(args: SumArgs) -> Result<()> {
+    // Read text: from stdin if "-", otherwise use provided text
+    let text = if args.text == "-" {
+        let mut buffer = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buffer)
+            .map_err(VoiceError::Io)?;
+        buffer
+    } else {
+        args.text.clone()
+    };
+
+    if text.trim().is_empty() {
+        return Err(VoiceError::Config("Empty text provided".into()));
     }
 
-    tracing::info!("claude-voice starting");
+    tracing::info!("sumvox sum: {} chars", text.len());
 
-    // Read JSON input from stdin
+    let config = SumvoxConfig::load_from_home()?;
+
+    // Build summarization prompt
+    let user_prompt = config
+        .summarization
+        .prompt_template
+        .replace("{max_length}", &args.max_length.to_string())
+        .replace("{context}", &text);
+
+    let system_message = Some(config.summarization.system_message.clone());
+
+    // Generate summary
+    let llm_opts = LlmOptions {
+        provider: args.provider,
+        model: args.model,
+        timeout: args.timeout,
+        max_length: args.max_length,
+    };
+
+    let summary = generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;
+
+    if summary.is_empty() {
+        eprintln!("Warning: Empty summary generated");
+        return Ok(());
+    }
+
+    // Output summary
+    println!("{}", summary);
+
+    // Speak if not --no-speak
+    if !args.no_speak {
+        let tts_opts = TtsOptions {
+            engine: args.tts,
+            voice: args.voice,
+            rate: args.rate,
+            volume: args.volume,
+        };
+
+        speak_text(&config, &tts_opts, &summary).await?;
+    }
+
+    tracing::info!("sumvox sum completed");
+    Ok(())
+}
+
+// ============================================================================
+// Json Command - Hook Mode with Format Detection
+// ============================================================================
+
+async fn handle_json(args: JsonArgs) -> Result<()> {
+    tracing::info!("sumvox json: reading from stdin");
+
+    // Read JSON from stdin
     let mut input_buffer = String::new();
     std::io::stdin()
         .read_to_string(&mut input_buffer)
-        .map_err(error::VoiceError::Io)?;
+        .map_err(VoiceError::Io)?;
 
-    let hook_input: HookInput = serde_json::from_str(&input_buffer)?;
-
-    tracing::info!(
-        "Processing hook: session_id={}, event={}",
-        hook_input.session_id,
-        hook_input.hook_event_name
-    );
-
-    // Prevent infinite loop - if stop_hook is active, exit immediately
-    if hook_input.stop_hook_active.unwrap_or(false) {
-        tracing::warn!("Stop hook already active, preventing infinite loop");
-        return Ok(());
+    if input_buffer.trim().is_empty() {
+        return Err(VoiceError::Config("Empty JSON input".into()));
     }
 
-    // Load configuration from ~/.claude/claude-voice.json
-    let config = VoiceConfig::load_from_home()?;
+    // Detect or use specified format
+    let (_json, detected_format) = hooks::parse_input(&input_buffer)?;
 
-    if !config.enabled {
-        tracing::info!("Voice notifications disabled in config");
-        return Ok(());
-    }
+    let format = args.format.parse().unwrap_or(detected_format);
 
-    // Dispatch based on hook event type
-    match hook_input.hook_event_name.as_str() {
-        "Notification" => {
-            handle_notification_hook(&hook_input, &config, &cli).await?;
+    tracing::info!("Hook format: {:?}", format);
+
+    let config = SumvoxConfig::load_from_home()?;
+
+    match format {
+        HookFormat::ClaudeCode => {
+            let input = ClaudeCodeInput::parse(&input_buffer)?;
+            let tts_opts = TtsOptions::default();
+            let llm_opts = LlmOptions {
+                timeout: args.timeout,
+                ..Default::default()
+            };
+
+            hooks::claude_code::process(&input, &config, &tts_opts, &llm_opts).await?;
         }
-        "Stop" => {
-            handle_stop_hook(&hook_input, &config, &cli).await?;
+        HookFormat::GeminiCli => {
+            // TODO: Implement Gemini CLI hook handler
+            tracing::warn!("Gemini CLI format not yet implemented");
+            eprintln!("Warning: Gemini CLI format not yet implemented");
         }
-        _ => {
-            tracing::warn!("Unknown hook event: {}", hook_input.hook_event_name);
-        }
-    }
+        HookFormat::Generic => {
+            // Generic format: extract text and summarize
+            let generic = hooks::parse_generic(&input_buffer)?;
+            let text = generic.get_text().unwrap(); // Already validated
 
-    tracing::info!("claude-voice completed successfully");
-    Ok(())
-}
+            // Use sum logic
+            let user_prompt = config
+                .summarization
+                .prompt_template
+                .replace("{max_length}", &config.summarization.max_length.to_string())
+                .replace("{context}", text);
 
-/// Handle Notification hook - speak notification message directly
-async fn handle_notification_hook(
-    hook_input: &HookInput,
-    config: &VoiceConfig,
-    cli: &Cli,
-) -> Result<()> {
-    tracing::info!("Processing Notification hook");
+            let system_message = Some(config.summarization.system_message.clone());
 
-    // Get notification message
-    let message = match &hook_input.message {
-        Some(msg) => msg,
-        None => {
-            tracing::warn!("Notification hook has no message field");
-            return Ok(());
-        }
-    };
+            let llm_opts = LlmOptions {
+                timeout: args.timeout,
+                ..Default::default()
+            };
 
-    let notification_type = hook_input.notification_type.as_deref().unwrap_or("unknown");
-    tracing::info!(
-        "Notification type: {}, message: {}",
-        notification_type,
-        message
-    );
+            let summary = generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;
 
-    // Check filter: should we speak this notification type?
-    let filter = &config.notification_hook.filter;
-    let should_speak = if filter.is_empty() {
-        // Empty filter = disabled
-        false
-    } else if filter.contains(&"*".to_string()) {
-        // Wildcard = all notifications
-        true
-    } else {
-        // Check if notification type is in filter
-        filter.contains(&notification_type.to_string())
-    };
-
-    if !should_speak {
-        tracing::debug!("Notification type '{}' not in filter, skipping", notification_type);
-        return Ok(());
-    }
-
-    // Speak the notification message directly (no LLM processing)
-    tracing::info!("Speaking notification: {}", message);
-    speak_summary(cli, config, message).await?;
-
-    Ok(())
-}
-
-/// Handle Stop hook - read transcript and generate summary
-async fn handle_stop_hook(hook_input: &HookInput, config: &VoiceConfig, cli: &Cli) -> Result<()> {
-    tracing::info!("Processing Stop hook");
-
-    // Read transcript
-    let transcript_path = PathBuf::from(&hook_input.transcript_path);
-    tracing::debug!("Reading transcript from: {:?}", transcript_path);
-
-    // Initial delay to let filesystem sync
-    let initial_delay = Duration::from_millis(config.stop_hook.initial_delay_ms);
-    tracing::debug!("Waiting {}ms for filesystem sync", config.stop_hook.initial_delay_ms);
-    tokio::time::sleep(initial_delay).await;
-
-    let mut texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
-
-    // Retry once if empty (race condition workaround)
-    if texts.is_empty() {
-        tracing::debug!(
-            "No texts found, retrying after {}ms",
-            config.stop_hook.retry_delay_ms
-        );
-        let retry_delay = Duration::from_millis(config.stop_hook.retry_delay_ms);
-        tokio::time::sleep(retry_delay).await;
-        texts = TranscriptReader::read_last_n_texts(&transcript_path, 10).await?;
-    }
-
-    if texts.is_empty() {
-        tracing::warn!("No assistant texts found in transcript after retry");
-        return Ok(());
-    }
-
-    let context = texts.join("\n\n");
-    tracing::debug!(
-        "Extracted {} text blocks, total length: {}",
-        texts.len(),
-        context.len()
-    );
-
-    // Build summarization prompt
-    let max_length = cli.max_length;
-    let user_prompt = config
-        .stop_hook
-        .prompt_template
-        .replace("{max_length}", &max_length.to_string())
-        .replace("{context}", &context);
-
-    let system_message = Some(config.stop_hook.system_message.clone());
-
-    // Generate summary with LLM
-    let summary = generate_summary(config, cli, system_message, &user_prompt).await?;
-
-    if summary.is_empty() {
-        tracing::warn!("LLM returned empty summary, using fallback");
-        let fallback = &config.stop_hook.fallback_message;
-        speak_summary(cli, config, fallback).await?;
-    } else {
-        tracing::info!("Generated summary: {}", summary);
-        speak_summary(cli, config, &summary).await?;
-    }
-
-    Ok(())
-}
-
-async fn generate_summary(
-    config: &VoiceConfig,
-    cli: &Cli,
-    system_message: Option<String>,
-    prompt: &str,
-) -> Result<String> {
-    let llm_config = &config.llm;
-
-    // Initialize cost tracker
-    let cost_tracker = if config.cost_control.usage_tracking {
-        Some(CostTracker::new(&config.cost_control.usage_file))
-    } else {
-        None
-    };
-
-    // Check budget
-    if let Some(ref tracker) = cost_tracker {
-        let daily_limit = config.cost_control.daily_limit_usd;
-        let under_budget = tracker.check_budget(daily_limit).await?;
-
-        if !under_budget {
-            eprintln!("⚠️  Claude Voice: 每日預算 ${:.2} 已超過,語音功能已停用", daily_limit);
-            tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
-            return Ok(String::new());
-        }
-    }
-
-    // Create provider: CLI override or config fallback chain
-    let provider = if cli.provider.is_some() || cli.model.is_some() {
-        // CLI specified - create specific provider
-        let provider_name = cli.provider.as_deref().unwrap_or("google");
-        let model_name = cli.model.as_deref().unwrap_or("gemini-2.5-flash");
-        let timeout = Duration::from_secs(cli.timeout);
-
-        // Try to get API key from config or env
-        let api_key = config
-            .llm
-            .providers
-            .iter()
-            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
-            .and_then(|p| p.get_api_key());
-
-        ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref())?
-    } else {
-        // Use config fallback chain
-        ProviderFactory::create_from_config(&llm_config.providers)?
-    };
-
-    if !provider.is_available() {
-        tracing::warn!("Provider {} not available", provider.name());
-        return Ok(String::new());
-    }
-
-    let request = GenerationRequest {
-        system_message,
-        prompt: prompt.to_string(),
-        max_tokens: llm_config.parameters.max_tokens,
-        temperature: llm_config.parameters.temperature,
-        disable_thinking: llm_config.parameters.disable_thinking,
-    };
-
-    match provider.generate(&request).await {
-        Ok(response) => {
-            // Record usage
-            if let Some(ref tracker) = cost_tracker {
-                let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
-                tracker
-                    .record_usage(
-                        &response.model,
-                        response.input_tokens,
-                        response.output_tokens,
-                        cost,
-                    )
-                    .await?;
+            if !summary.is_empty() {
+                println!("{}", summary);
+                let tts_opts = TtsOptions::default();
+                speak_text(&config, &tts_opts, &summary).await?;
             }
-
-            Ok(response.text.trim().to_string())
-        }
-        Err(e) => {
-            tracing::error!("Provider {} failed: {}", provider.name(), e);
-            Ok(String::new())
         }
     }
+
+    tracing::info!("sumvox json completed");
+    Ok(())
 }
 
-async fn speak_summary(cli: &Cli, config: &VoiceConfig, summary: &str) -> Result<()> {
-    let tts_engine = TtsEngine::from_str(&cli.tts).unwrap_or(TtsEngine::Auto);
+// ============================================================================
+// Init Command
+// ============================================================================
 
-    // Create TTS provider: CLI override or config fallback chain
-    let provider: Box<dyn TtsProvider> = match tts_engine {
-        TtsEngine::Auto => {
-            // Use config fallback chain (volume from config)
-            create_tts_from_config(&config.tts.providers, true)?
-        }
-        TtsEngine::MacOS => {
-            // Get macOS config for fallback values
-            let macos_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == "macos");
+async fn handle_init(args: InitArgs) -> Result<()> {
+    let config_path = SumvoxConfig::config_path()?;
 
-            // Priority: CLI > Config > Default
-            let voice = cli
-                .tts_voice
-                .clone()
-                .or_else(|| macos_config.and_then(|p| p.voice.clone()))
-                .unwrap_or_else(|| "Ting-Ting".to_string());
-
-            let volume = cli
-                .volume
-                .or_else(|| macos_config.and_then(|p| p.volume))
-                .unwrap_or(100);
-
-            create_tts_by_name("macos", Some(voice), cli.rate, volume, true, None)?
-        }
-        TtsEngine::Google => {
-            // Get Google config for fallback values
-            let google_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == "google");
-
-            // Get API key from config or env
-            let api_key = google_config.and_then(|p| p.get_api_key());
-
-            // Priority: CLI > Config > Default
-            let voice = cli
-                .tts_voice
-                .clone()
-                .or_else(|| google_config.and_then(|p| p.voice.clone()))
-                .unwrap_or_else(|| "Aoede".to_string());
-
-            let volume = cli
-                .volume
-                .or_else(|| google_config.and_then(|p| p.volume))
-                .unwrap_or(100);
-
-            create_tts_by_name("google", Some(voice), cli.rate, volume, true, api_key)?
-        }
-    };
-
-    if !provider.is_available() {
-        tracing::warn!("TTS provider {} not available", provider.name());
+    if config_path.exists() && !args.force {
+        eprintln!("Config file already exists at: {:?}", config_path);
+        eprintln!();
+        eprintln!("To reset to defaults, use --force:");
+        eprintln!("  sumvox init --force");
         return Ok(());
     }
 
-    // Estimate and log cost for cloud providers
-    let cost = provider.estimate_cost(summary.len());
-    if cost > 0.0 {
-        tracing::info!(
-            "TTS cost estimate: ${:.6} for {} chars",
-            cost,
-            summary.len()
-        );
-    }
+    // Create default config
+    let config = SumvoxConfig::default();
+    config.save_to_home()?;
 
-    // Speak with error handling (TTS failures should be silent)
-    match provider.speak(summary).await {
-        Ok(_) => tracing::debug!("TTS playback completed"),
-        Err(e) => {
-            tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
-        }
-    }
+    eprintln!("Created config at: {:?}", config_path);
+    eprintln!();
+    eprintln!("Next steps:");
+    eprintln!("1. Set your preferred LLM API key:");
+    eprintln!("   sumvox credentials set google");
+    eprintln!("   # or: sumvox credentials set anthropic");
+    eprintln!("   # or: sumvox credentials set openai");
+    eprintln!();
+    eprintln!("2. (Optional) Set Gemini API key for TTS:");
+    eprintln!("   sumvox credentials set google_tts");
+    eprintln!();
+    eprintln!("3. Test with:");
+    eprintln!("   sumvox say \"Hello world\"");
+    eprintln!("   sumvox sum \"Long text to summarize...\"");
 
     Ok(())
 }
 
-async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
-    use error::VoiceError;
+// ============================================================================
+// Credentials Command
+// ============================================================================
 
+async fn handle_credentials(action: CredentialAction) -> Result<()> {
     match action {
         CredentialAction::Set { provider } => {
             // Interactive API key input (hidden)
@@ -406,7 +264,7 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
             }
 
             // Load config, update, and save
-            let mut config = VoiceConfig::load_from_home()?;
+            let mut config = SumvoxConfig::load_from_home()?;
 
             if provider.to_lowercase() == "google_tts" || provider.to_lowercase() == "gemini_tts" {
                 // For TTS, set Gemini API key
@@ -416,10 +274,10 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
             }
 
             config.save_to_home()?;
-            eprintln!("API key saved for {} in ~/.claude/claude-voice.json", provider);
+            eprintln!("API key saved for {}", provider);
         }
         CredentialAction::List => {
-            let config = VoiceConfig::load_from_home()?;
+            let config = SumvoxConfig::load_from_home()?;
 
             eprintln!("LLM Providers:");
             for (name, available) in config.list_llm_providers() {
@@ -435,7 +293,7 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
             }
         }
         CredentialAction::Test { provider } => {
-            let config = VoiceConfig::load_from_home()?;
+            let config = SumvoxConfig::load_from_home()?;
 
             // Check LLM providers
             let llm_found = config
@@ -490,7 +348,7 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
             }
         }
         CredentialAction::Remove { provider } => {
-            let mut config = VoiceConfig::load_from_home()?;
+            let mut config = SumvoxConfig::load_from_home()?;
 
             // Remove from LLM providers
             config.llm.providers.retain(|p| p.name.to_lowercase() != provider.to_lowercase());
@@ -510,38 +368,173 @@ async fn handle_credentials_command(action: CredentialAction) -> Result<()> {
     Ok(())
 }
 
-async fn handle_init_command() -> Result<()> {
-    use error::VoiceError;
+// ============================================================================
+// Shared Utilities
+// ============================================================================
 
-    let config_path = VoiceConfig::config_path()?;
+/// Generate summary using LLM
+async fn generate_summary(
+    config: &SumvoxConfig,
+    llm_opts: &LlmOptions,
+    system_message: Option<String>,
+    prompt: &str,
+) -> Result<String> {
+    let llm_config = &config.llm;
 
-    if config_path.exists() {
-        eprintln!("Config file already exists at: {:?}", config_path);
-        eprintln!();
-        eprintln!("To reset to defaults, delete the file and run init again:");
-        eprintln!("  rm {:?}", config_path);
-        eprintln!("  claude-voice init");
+    // Initialize cost tracker
+    let cost_tracker = if config.cost_control.usage_tracking {
+        Some(CostTracker::new(&config.cost_control.usage_file))
+    } else {
+        None
+    };
+
+    // Check budget
+    if let Some(ref tracker) = cost_tracker {
+        let daily_limit = config.cost_control.daily_limit_usd;
+        let under_budget = tracker.check_budget(daily_limit).await?;
+
+        if !under_budget {
+            eprintln!("Warning: Daily budget ${:.2} exceeded", daily_limit);
+            tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
+            return Ok(String::new());
+        }
+    }
+
+    // Create provider: CLI override or config fallback chain
+    let provider = if llm_opts.provider.is_some() || llm_opts.model.is_some() {
+        // CLI specified - create specific provider
+        let provider_name = llm_opts.provider.as_deref().unwrap_or("google");
+        let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
+        let timeout = Duration::from_secs(llm_opts.timeout);
+
+        // Try to get API key from config or env
+        let api_key = config
+            .llm
+            .providers
+            .iter()
+            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
+            .and_then(|p| p.get_api_key());
+
+        ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref())?
+    } else {
+        // Use config fallback chain
+        ProviderFactory::create_from_config(&llm_config.providers)?
+    };
+
+    if !provider.is_available() {
+        tracing::warn!("Provider {} not available", provider.name());
+        return Ok(String::new());
+    }
+
+    let request = GenerationRequest {
+        system_message,
+        prompt: prompt.to_string(),
+        max_tokens: llm_config.parameters.max_tokens,
+        temperature: llm_config.parameters.temperature,
+        disable_thinking: llm_config.parameters.disable_thinking,
+    };
+
+    match provider.generate(&request).await {
+        Ok(response) => {
+            // Record usage
+            if let Some(ref tracker) = cost_tracker {
+                let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                tracker
+                    .record_usage(
+                        &response.model,
+                        response.input_tokens,
+                        response.output_tokens,
+                        cost,
+                    )
+                    .await?;
+            }
+
+            Ok(response.text.trim().to_string())
+        }
+        Err(e) => {
+            tracing::error!("Provider {} failed: {}", provider.name(), e);
+            Ok(String::new())
+        }
+    }
+}
+
+/// Speak text using TTS
+async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) -> Result<()> {
+    let tts_engine = tts_opts.engine.parse().unwrap_or(TtsEngine::Auto);
+
+    // Create TTS provider: CLI override or config fallback chain
+    let provider: Box<dyn TtsProvider> = match tts_engine {
+        TtsEngine::Auto => {
+            // Use config fallback chain
+            create_tts_from_config(&config.tts.providers, true)?
+        }
+        TtsEngine::MacOS => {
+            // Get macOS config for fallback values
+            let macos_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == "macos");
+
+            // Priority: CLI > Config > Default
+            let voice = tts_opts
+                .voice
+                .clone()
+                .or_else(|| macos_config.and_then(|p| p.voice.clone()))
+                .unwrap_or_else(|| "Ting-Ting".to_string());
+
+            let volume = tts_opts
+                .volume
+                .or_else(|| macos_config.and_then(|p| p.volume))
+                .unwrap_or(100);
+
+            create_tts_by_name("macos", Some(voice), tts_opts.rate, volume, true, None)?
+        }
+        TtsEngine::Google => {
+            // Get Google config for fallback values
+            let google_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| p.name.to_lowercase() == "google");
+
+            // Get API key from config or env
+            let api_key = google_config.and_then(|p| p.get_api_key());
+
+            // Priority: CLI > Config > Default
+            let voice = tts_opts
+                .voice
+                .clone()
+                .or_else(|| google_config.and_then(|p| p.voice.clone()))
+                .unwrap_or_else(|| "Aoede".to_string());
+
+            let volume = tts_opts
+                .volume
+                .or_else(|| google_config.and_then(|p| p.volume))
+                .unwrap_or(100);
+
+            create_tts_by_name("google", Some(voice), tts_opts.rate, volume, true, api_key)?
+        }
+    };
+
+    if !provider.is_available() {
+        tracing::warn!("TTS provider {} not available", provider.name());
         return Ok(());
     }
 
-    // Create default config
-    let config = VoiceConfig::default();
-    config.save_to_home()?;
+    // Estimate and log cost for cloud providers
+    let cost = provider.estimate_cost(text.len());
+    if cost > 0.0 {
+        tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
+    }
 
-    eprintln!("Created default config at: {:?}", config_path);
-    eprintln!();
-    eprintln!("Next steps:");
-    eprintln!("1. Set your preferred LLM API key:");
-    eprintln!("   claude-voice credentials set google");
-    eprintln!("   # or: claude-voice credentials set anthropic");
-    eprintln!("   # or: claude-voice credentials set openai");
-    eprintln!();
-    eprintln!("2. (Optional) Set Gemini API key for TTS:");
-    eprintln!("   claude-voice credentials set google_tts");
-    eprintln!("   # Note: Google TTS uses the same Gemini API key");
-    eprintln!();
-    eprintln!("3. Test the configuration:");
-    eprintln!("   claude-voice credentials list");
+    // Speak with error handling (TTS failures should be silent)
+    match provider.speak(text).await {
+        Ok(_) => tracing::debug!("TTS playback completed"),
+        Err(e) => {
+            tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
+        }
+    }
 
     Ok(())
 }
@@ -551,31 +544,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_hook_input_deserialization() {
-        let json = r#"{
-            "session_id": "test-session",
-            "transcript_path": "/path/to/transcript.jsonl",
-            "permission_mode": "auto",
-            "hook_event_name": "stop",
-            "stop_hook_active": false
-        }"#;
+    fn test_tts_options_from_say_args() {
+        let args = SayArgs {
+            text: "Hello".to_string(),
+            tts: "macos".to_string(),
+            voice: Some("Ting-Ting".to_string()),
+            rate: 200,
+            volume: Some(80),
+        };
 
-        let input: HookInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.session_id, "test-session");
-        assert_eq!(input.hook_event_name, "stop");
-        assert_eq!(input.stop_hook_active, Some(false));
-    }
+        let opts = TtsOptions {
+            engine: args.tts,
+            voice: args.voice,
+            rate: args.rate,
+            volume: args.volume,
+        };
 
-    #[test]
-    fn test_hook_input_without_stop_hook_active() {
-        let json = r#"{
-            "session_id": "test-session",
-            "transcript_path": "/path/to/transcript.jsonl",
-            "permission_mode": "auto",
-            "hook_event_name": "stop"
-        }"#;
-
-        let input: HookInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.stop_hook_active, None);
+        assert_eq!(opts.engine, "macos");
+        assert_eq!(opts.voice, Some("Ting-Ting".to_string()));
+        assert_eq!(opts.rate, 200);
+        assert_eq!(opts.volume, Some(80));
     }
 }

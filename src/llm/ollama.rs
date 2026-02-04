@@ -8,8 +8,6 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
-const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434";
-
 #[derive(Debug, Serialize)]
 struct OllamaRequest {
     model: String,
@@ -46,14 +44,6 @@ pub struct OllamaProvider {
 }
 
 impl OllamaProvider {
-    pub fn new(model: String, timeout: Duration) -> Self {
-        Self {
-            base_url: DEFAULT_OLLAMA_BASE_URL.to_string(),
-            model,
-            timeout,
-        }
-    }
-
     pub fn with_base_url(base_url: String, model: String, timeout: Duration) -> Self {
         Self {
             base_url,
@@ -154,13 +144,14 @@ mod tests {
 
     #[test]
     fn test_ollama_provider_creation() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "llama3.1".to_string(),
             Duration::from_secs(30),
         );
 
         assert_eq!(provider.name(), "ollama");
-        assert_eq!(provider.base_url, DEFAULT_OLLAMA_BASE_URL);
+        assert_eq!(provider.base_url, "http://localhost:11434");
         assert!(provider.is_available());
     }
 
@@ -177,7 +168,8 @@ mod tests {
 
     #[test]
     fn test_is_available() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "llama3.1".to_string(),
             Duration::from_secs(30),
         );
@@ -188,7 +180,8 @@ mod tests {
 
     #[test]
     fn test_extract_model_name() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "ollama/llama3.1".to_string(),
             Duration::from_secs(30),
         );
@@ -198,7 +191,8 @@ mod tests {
 
     #[test]
     fn test_extract_model_name_without_prefix() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "llama3.1".to_string(),
             Duration::from_secs(30),
         );
@@ -208,7 +202,8 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_is_zero() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "llama3.1".to_string(),
             Duration::from_secs(30),
         );
@@ -221,7 +216,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_generate_with_real_ollama() {
-        let provider = OllamaProvider::new(
+        let provider = OllamaProvider::with_base_url(
+            "http://localhost:11434".to_string(),
             "llama3.1".to_string(),
             Duration::from_secs(60),
         );

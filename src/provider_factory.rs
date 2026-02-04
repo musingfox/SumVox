@@ -3,6 +3,7 @@
 use crate::config::LlmProviderConfig;
 use crate::error::{Result, VoiceError};
 use crate::llm::{AnthropicProvider, GeminiProvider, LlmProvider, OllamaProvider, OpenAIProvider};
+use std::str::FromStr;
 use std::time::Duration;
 
 pub enum Provider {
@@ -12,8 +13,10 @@ pub enum Provider {
     Ollama,
 }
 
-impl Provider {
-    pub fn from_str(s: &str) -> Result<Self> {
+impl FromStr for Provider {
+    type Err = VoiceError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "google" | "gemini" => Ok(Provider::Google),
             "anthropic" | "claude" => Ok(Provider::Anthropic),
@@ -21,10 +24,6 @@ impl Provider {
             "ollama" | "local" => Ok(Provider::Ollama),
             _ => Err(VoiceError::Config(format!("Unknown provider: {}", s))),
         }
-    }
-
-    pub fn requires_api_key(&self) -> bool {
-        !matches!(self, Provider::Ollama)
     }
 }
 
@@ -74,7 +73,7 @@ impl ProviderFactory {
     /// Create a single provider from config
     fn create_single(config: &LlmProviderConfig) -> Result<Box<dyn LlmProvider>> {
         let timeout = Duration::from_secs(config.timeout);
-        let provider = Provider::from_str(&config.name)?;
+        let provider: Provider = config.name.parse()?;
 
         match provider {
             Provider::Google => {
@@ -157,57 +156,49 @@ mod tests {
     fn test_provider_from_str() {
         // Google variants
         assert!(matches!(
-            Provider::from_str("google").unwrap(),
+            "google".parse::<Provider>().unwrap(),
             Provider::Google
         ));
         assert!(matches!(
-            Provider::from_str("gemini").unwrap(),
+            "gemini".parse::<Provider>().unwrap(),
             Provider::Google
         ));
 
         // Anthropic variants
         assert!(matches!(
-            Provider::from_str("anthropic").unwrap(),
+            "anthropic".parse::<Provider>().unwrap(),
             Provider::Anthropic
         ));
         assert!(matches!(
-            Provider::from_str("claude").unwrap(),
+            "claude".parse::<Provider>().unwrap(),
             Provider::Anthropic
         ));
 
         // OpenAI variants
         assert!(matches!(
-            Provider::from_str("openai").unwrap(),
+            "openai".parse::<Provider>().unwrap(),
             Provider::OpenAI
         ));
-        assert!(matches!(Provider::from_str("gpt").unwrap(), Provider::OpenAI));
+        assert!(matches!("gpt".parse::<Provider>().unwrap(), Provider::OpenAI));
 
         // Ollama variants
         assert!(matches!(
-            Provider::from_str("ollama").unwrap(),
+            "ollama".parse::<Provider>().unwrap(),
             Provider::Ollama
         ));
         assert!(matches!(
-            Provider::from_str("local").unwrap(),
+            "local".parse::<Provider>().unwrap(),
             Provider::Ollama
         ));
 
         // Case insensitive
         assert!(matches!(
-            Provider::from_str("GOOGLE").unwrap(),
+            "GOOGLE".parse::<Provider>().unwrap(),
             Provider::Google
         ));
 
         // Unknown provider
-        assert!(Provider::from_str("unknown").is_err());
-    }
-
-    #[test]
-    fn test_provider_requires_api_key() {
-        assert!(Provider::Google.requires_api_key());
-        assert!(Provider::Anthropic.requires_api_key());
-        assert!(Provider::OpenAI.requires_api_key());
-        assert!(!Provider::Ollama.requires_api_key());
+        assert!("unknown".parse::<Provider>().is_err());
     }
 
     #[test]

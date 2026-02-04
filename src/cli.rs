@@ -1,12 +1,69 @@
-// CLI argument parsing for claude-voice
+// CLI argument parsing for sumvox
+// Subcommand-based architecture for versatile voice notification
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "claude-voice")]
-#[command(about = "Voice notification for Claude Code")]
+#[command(name = "sumvox")]
+#[command(about = "Voice notification CLI for AI coding tools")]
 #[command(version)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Direct TTS playback - speak text immediately
+    Say(SayArgs),
+
+    /// LLM summarization with TTS - summarize text then speak
+    Sum(SumArgs),
+
+    /// Read JSON from stdin (hook mode) - auto-detect format
+    Json(JsonArgs),
+
+    /// Initialize config file at ~/.config/sumvox/config.json
+    Init(InitArgs),
+
+    /// Manage API credentials
+    Credentials {
+        #[command(subcommand)]
+        action: CredentialAction,
+    },
+}
+
+/// Arguments for 'say' subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct SayArgs {
+    /// Text to speak
+    pub text: String,
+
+    /// TTS engine: auto, macos, google
+    #[arg(long, default_value = "auto")]
+    pub tts: String,
+
+    /// Voice name (engine-specific)
+    /// For macos: Ting-Ting, Meijia, etc.
+    /// For google: Aoede, Charon, Fenrir, Kore, Puck, Orus
+    #[arg(long)]
+    pub voice: Option<String>,
+
+    /// Speech rate for macOS say (90-300), ignored for Google TTS
+    #[arg(long, default_value = "200")]
+    pub rate: u32,
+
+    /// Volume level (0-100)
+    #[arg(long)]
+    pub volume: Option<u32>,
+}
+
+/// Arguments for 'sum' subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct SumArgs {
+    /// Text to summarize (use "-" to read from stdin)
+    pub text: String,
+
     /// LLM provider: google, anthropic, openai, ollama
     #[arg(long)]
     pub provider: Option<String>,
@@ -15,49 +72,53 @@ pub struct Cli {
     #[arg(long)]
     pub model: Option<String>,
 
+    /// Maximum summary length in words
+    #[arg(long, default_value = "50")]
+    pub max_length: usize,
+
+    /// Only output summary, don't speak
+    #[arg(long)]
+    pub no_speak: bool,
+
     /// Request timeout in seconds
     #[arg(long, default_value = "10")]
     pub timeout: u64,
 
     /// TTS engine: auto, macos, google
-    /// - auto: Use config fallback chain (default)
-    /// - macos: macOS say command
-    /// - google: Google Cloud TTS (Gemini 2.5 Flash TTS)
     #[arg(long, default_value = "auto")]
     pub tts: String,
 
-    /// TTS voice name (engine-specific)
-    /// For --tts macos: Ting-Ting, Meijia, etc.
-    /// For --tts google: Aoede, Charon, Fenrir, Kore, Puck, Orus (Gemini TTS)
+    /// Voice name (engine-specific)
     #[arg(long)]
-    pub tts_voice: Option<String>,
+    pub voice: Option<String>,
 
-    /// Speech rate for macOS say (90-300), ignored for Google TTS
+    /// Speech rate for macOS say (90-300)
     #[arg(long, default_value = "200")]
     pub rate: u32,
 
-    /// Volume level (0-100), applies to both macOS and Google TTS
+    /// Volume level (0-100)
     #[arg(long)]
     pub volume: Option<u32>,
-
-    /// Maximum summary length in characters
-    #[arg(long, default_value = "50")]
-    pub max_length: usize,
-
-    #[command(subcommand)]
-    pub command: Option<Commands>,
 }
 
-#[derive(Subcommand, Debug)]
-pub enum Commands {
-    /// Initialize config file at ~/.claude/claude-voice.json
-    Init,
+/// Arguments for 'json' subcommand (hook mode)
+#[derive(Parser, Debug, Clone)]
+pub struct JsonArgs {
+    /// JSON format: auto, claude-code, gemini-cli, generic
+    #[arg(long, default_value = "auto")]
+    pub format: String,
 
-    /// Manage API credentials
-    Credentials {
-        #[command(subcommand)]
-        action: CredentialAction,
-    },
+    /// Request timeout in seconds
+    #[arg(long, default_value = "10")]
+    pub timeout: u64,
+}
+
+/// Arguments for 'init' subcommand
+#[derive(Parser, Debug, Clone)]
+pub struct InitArgs {
+    /// Force overwrite existing config
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -87,81 +148,149 @@ mod tests {
     use clap::CommandFactory;
 
     #[test]
-    fn test_parse_with_defaults() {
-        let cli = Cli::try_parse_from(["claude-voice"]).unwrap();
+    fn test_parse_say_command() {
+        let cli = Cli::try_parse_from(["sumvox", "say", "Hello world"]).unwrap();
 
-        assert_eq!(cli.provider, None);
-        assert_eq!(cli.model, None);
-        assert_eq!(cli.timeout, 10);
-        assert_eq!(cli.tts, "auto"); // Changed from "macos"
-        assert_eq!(cli.tts_voice, None);
-        assert_eq!(cli.rate, 200);
-        assert_eq!(cli.volume, None);
-        assert_eq!(cli.max_length, 50);
-        assert!(cli.command.is_none());
+        match cli.command {
+            Commands::Say(args) => {
+                assert_eq!(args.text, "Hello world");
+                assert_eq!(args.tts, "auto");
+                assert_eq!(args.rate, 200);
+                assert_eq!(args.voice, None);
+                assert_eq!(args.volume, None);
+            }
+            _ => panic!("Expected Say command"),
+        }
     }
 
     #[test]
-    fn test_parse_provider_model() {
+    fn test_parse_say_with_options() {
         let cli = Cli::try_parse_from([
-            "claude-voice",
-            "--provider",
-            "google",
-            "--model",
-            "gemini-2.5-flash",
-        ])
-        .unwrap();
-
-        assert_eq!(cli.provider, Some("google".to_string()));
-        assert_eq!(cli.model, Some("gemini-2.5-flash".to_string()));
-    }
-
-    #[test]
-    fn test_parse_all_options() {
-        let cli = Cli::try_parse_from([
-            "claude-voice",
-            "--provider",
-            "openai",
-            "--model",
-            "gpt-4o-mini",
-            "--timeout",
-            "30",
+            "sumvox",
+            "say",
+            "Hello",
             "--tts",
-            "google",
-            "--tts-voice",
-            "Aoede",
+            "macos",
+            "--voice",
+            "Ting-Ting",
             "--rate",
             "180",
             "--volume",
             "75",
-            "--max-length",
-            "100",
         ])
         .unwrap();
 
-        assert_eq!(cli.provider, Some("openai".to_string()));
-        assert_eq!(cli.model, Some("gpt-4o-mini".to_string()));
-        assert_eq!(cli.timeout, 30);
-        assert_eq!(cli.tts, "google");
-        assert_eq!(cli.tts_voice, Some("Aoede".to_string()));
-        assert_eq!(cli.rate, 180);
-        assert_eq!(cli.volume, Some(75));
-        assert_eq!(cli.max_length, 100);
+        match cli.command {
+            Commands::Say(args) => {
+                assert_eq!(args.text, "Hello");
+                assert_eq!(args.tts, "macos");
+                assert_eq!(args.voice, Some("Ting-Ting".to_string()));
+                assert_eq!(args.rate, 180);
+                assert_eq!(args.volume, Some(75));
+            }
+            _ => panic!("Expected Say command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sum_command() {
+        let cli = Cli::try_parse_from(["sumvox", "sum", "Long text to summarize"]).unwrap();
+
+        match cli.command {
+            Commands::Sum(args) => {
+                assert_eq!(args.text, "Long text to summarize");
+                assert_eq!(args.provider, None);
+                assert_eq!(args.model, None);
+                assert_eq!(args.max_length, 50);
+                assert!(!args.no_speak);
+            }
+            _ => panic!("Expected Sum command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sum_with_options() {
+        let cli = Cli::try_parse_from([
+            "sumvox",
+            "sum",
+            "-",
+            "--provider",
+            "google",
+            "--model",
+            "gemini-2.5-flash",
+            "--max-length",
+            "100",
+            "--no-speak",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Sum(args) => {
+                assert_eq!(args.text, "-");
+                assert_eq!(args.provider, Some("google".to_string()));
+                assert_eq!(args.model, Some("gemini-2.5-flash".to_string()));
+                assert_eq!(args.max_length, 100);
+                assert!(args.no_speak);
+            }
+            _ => panic!("Expected Sum command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_json_command() {
+        let cli = Cli::try_parse_from(["sumvox", "json"]).unwrap();
+
+        match cli.command {
+            Commands::Json(args) => {
+                assert_eq!(args.format, "auto");
+                assert_eq!(args.timeout, 10);
+            }
+            _ => panic!("Expected Json command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_json_with_format() {
+        let cli = Cli::try_parse_from(["sumvox", "json", "--format", "claude-code"]).unwrap();
+
+        match cli.command {
+            Commands::Json(args) => {
+                assert_eq!(args.format, "claude-code");
+            }
+            _ => panic!("Expected Json command"),
+        }
     }
 
     #[test]
     fn test_parse_init_command() {
-        let cli = Cli::try_parse_from(["claude-voice", "init"]).unwrap();
+        let cli = Cli::try_parse_from(["sumvox", "init"]).unwrap();
 
-        assert!(matches!(cli.command, Some(Commands::Init)));
+        match cli.command {
+            Commands::Init(args) => {
+                assert!(!args.force);
+            }
+            _ => panic!("Expected Init command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_init_with_force() {
+        let cli = Cli::try_parse_from(["sumvox", "init", "--force"]).unwrap();
+
+        match cli.command {
+            Commands::Init(args) => {
+                assert!(args.force);
+            }
+            _ => panic!("Expected Init command"),
+        }
     }
 
     #[test]
     fn test_parse_credentials_set() {
-        let cli = Cli::try_parse_from(["claude-voice", "credentials", "set", "google"]).unwrap();
+        let cli = Cli::try_parse_from(["sumvox", "credentials", "set", "google"]).unwrap();
 
         match cli.command {
-            Some(Commands::Credentials { action }) => match action {
+            Commands::Credentials { action } => match action {
                 CredentialAction::Set { provider } => {
                     assert_eq!(provider, "google");
                 }
@@ -173,10 +302,10 @@ mod tests {
 
     #[test]
     fn test_parse_credentials_list() {
-        let cli = Cli::try_parse_from(["claude-voice", "credentials", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["sumvox", "credentials", "list"]).unwrap();
 
         match cli.command {
-            Some(Commands::Credentials { action }) => {
+            Commands::Credentials { action } => {
                 assert!(matches!(action, CredentialAction::List));
             }
             _ => panic!("Expected Credentials command"),
@@ -185,11 +314,10 @@ mod tests {
 
     #[test]
     fn test_parse_credentials_test() {
-        let cli =
-            Cli::try_parse_from(["claude-voice", "credentials", "test", "anthropic"]).unwrap();
+        let cli = Cli::try_parse_from(["sumvox", "credentials", "test", "anthropic"]).unwrap();
 
         match cli.command {
-            Some(Commands::Credentials { action }) => match action {
+            Commands::Credentials { action } => match action {
                 CredentialAction::Test { provider } => {
                     assert_eq!(provider, "anthropic");
                 }
@@ -201,11 +329,10 @@ mod tests {
 
     #[test]
     fn test_parse_credentials_remove() {
-        let cli =
-            Cli::try_parse_from(["claude-voice", "credentials", "remove", "openai"]).unwrap();
+        let cli = Cli::try_parse_from(["sumvox", "credentials", "remove", "openai"]).unwrap();
 
         match cli.command {
-            Some(Commands::Credentials { action }) => match action {
+            Commands::Credentials { action } => match action {
                 CredentialAction::Remove { provider } => {
                     assert_eq!(provider, "openai");
                 }

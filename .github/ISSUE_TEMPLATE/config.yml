@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/musingfox/sumvox/discussions
+    about: Ask questions or discuss ideas
+  - name: Documentation
+    url: https://github.com/musingfox/sumvox/blob/main/README.md
+    about: Read the documentation

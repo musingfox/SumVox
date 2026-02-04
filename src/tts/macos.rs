@@ -25,23 +25,6 @@ impl MacOsTtsProvider {
         }
     }
 
-    /// Default provider with Ting-Ting voice for Traditional Chinese
-    pub fn default_chinese() -> Self {
-        Self::new("Ting-Ting".to_string(), 200, 100, true)
-    }
-
-    /// Check if a specific voice is available on the system
-    pub async fn is_voice_available_by_name(voice_name: &str) -> Result<bool> {
-        let output = Command::new("say")
-            .arg("-v")
-            .arg("?")
-            .output()
-            .await
-            .map_err(|e| VoiceError::Voice(format!("Failed to check voice availability: {}", e)))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.contains(voice_name))
-    }
 }
 
 #[async_trait]
@@ -128,17 +111,8 @@ mod tests {
     }
 
     #[test]
-    fn test_default_chinese() {
-        let provider = MacOsTtsProvider::default_chinese();
-        assert_eq!(provider.voice_name, "Ting-Ting");
-        assert_eq!(provider.rate, 200);
-        assert_eq!(provider.volume, 100);
-        assert!(provider.async_mode);
-    }
-
-    #[test]
     fn test_estimate_cost_is_zero() {
-        let provider = MacOsTtsProvider::default_chinese();
+        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 200, 100, true);
         assert_eq!(provider.estimate_cost(100), 0.0);
         assert_eq!(provider.estimate_cost(10000), 0.0);
     }
@@ -146,28 +120,22 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_is_available_on_macos() {
-        let provider = MacOsTtsProvider::default_chinese();
+        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 200, 100, true);
         assert!(provider.is_available());
     }
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = MacOsTtsProvider::default_chinese();
+        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 200, 100, true);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
 
     #[tokio::test]
     async fn test_speak_whitespace_only() {
-        let provider = MacOsTtsProvider::default_chinese();
+        let provider = MacOsTtsProvider::new("Ting-Ting".to_string(), 200, 100, true);
         let result = provider.speak("   ").await.unwrap();
         assert!(!result);
     }
 
-    #[tokio::test]
-    #[ignore] // Run with: cargo test -- --ignored
-    async fn test_voice_availability() {
-        let available = MacOsTtsProvider::is_voice_available_by_name("Ting-Ting").await;
-        assert!(available.is_ok());
-    }
 }

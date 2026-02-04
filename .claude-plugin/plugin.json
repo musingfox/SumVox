@@ -1,21 +1,21 @@
 {
-  "name": "claude-voice",
+  "name": "sumvox",
   "version": "1.0.0",
-  "description": "Voice notification plugin for Claude Code - Rust rewrite for high performance",
+  "description": "Intelligent voice notifications for AI coding tools - LLM-powered summarization with TTS",
   "author": "Nick Huang",
-  "homepage": "https://github.com/nickhuang/claude-voice",
+  "homepage": "https://github.com/musingfox/sumvox",
   "license": "MIT",
-  "entry_point": "target/release/claude-voice",
+  "entry_point": "target/release/sumvox",
   "hooks": {
     "stop": {
-      "command": "target/release/claude-voice",
-      "description": "Speak task completion summary using macOS voice",
+      "command": "target/release/sumvox",
+      "description": "Speak task completion summary using multi-provider TTS",
       "async": true,
       "timeout": 30000
     }
   },
   "requirements": {
-    "platform": ["darwin"],
+    "platform": ["darwin", "linux"],
     "minimum_os_version": "10.15",
     "environment_variables": {
       "optional": [
@@ -26,7 +26,7 @@
     }
   },
   "configuration": {
-    "config_file": ".claude/hooks/voice_config.json",
-    "schema": ".claude/hooks/voice_config.schema.json"
+    "config_file": "~/.config/sumvox/config.json",
+    "schema": "config/recommended.json"
   }
 }

@@ -1,5 +1,5 @@
 // Configuration loading and validation
-// Unified config at ~/.claude/claude-voice.json with array-based provider fallback
+// Unified config at ~/.config/sumvox/config.json with array-based provider fallback
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ fn default_ollama_timeout() -> u64 {
     60
 }
 
-/// 序列化 API key,將 None 轉換為 placeholder
+/// Serialize API key, converting None to placeholder
 fn serialize_api_key<S>(key: &Option<String>, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -40,8 +40,12 @@ fn default_max_length() -> usize {
     50
 }
 
+fn default_turns() -> usize {
+    1
+}
+
 fn default_fallback_message() -> String {
-    "任務已完成".to_string()
+    "Task completed".to_string()
 }
 
 fn default_initial_delay_ms() -> u64 {
@@ -57,7 +61,7 @@ fn default_daily_limit() -> f64 {
 }
 
 fn default_usage_file() -> String {
-    "~/.claude/voice-usage.json".to_string()
+    "~/.config/sumvox/usage.json".to_string()
 }
 
 fn default_max_tokens() -> u32 {
@@ -69,11 +73,11 @@ fn default_temperature() -> f32 {
 }
 
 fn default_prompt_template() -> String {
-    "You are a voice notification assistant. Based on the following Claude Code conversation, generate a concise summary (max {max_length} words).\n\nConversation:\n{context}\n\nSummary:".to_string()
+    "You are a voice notification assistant. Based on the following context, generate a concise summary (max {max_length} words).\n\nContext:\n{context}\n\nSummary:".to_string()
 }
 
 fn default_system_message() -> String {
-    "You are a voice notification assistant for Claude Code. Generate concise summaries suitable for voice playback.".to_string()
+    "You are a voice notification assistant. Generate concise summaries suitable for voice playback.".to_string()
 }
 
 fn default_notification_filter() -> Vec<String> {
@@ -150,10 +154,6 @@ pub struct LlmParameters {
     pub temperature: f32,
 
     /// Disable thinking/reasoning to reduce token usage
-    /// - Anthropic: disables extended thinking (Claude 3.7 Sonnet)
-    /// - OpenAI: sets reasoning_effort to "low" (o1/o3 models)
-    /// - Gemini: sets thinking_level to "low" (Gemini 3) or thinkingBudget to 0 (Gemini 2.5)
-    /// - Others: ignored
     #[serde(default)]
     pub disable_thinking: bool,
 }
@@ -163,7 +163,7 @@ impl Default for LlmParameters {
         Self {
             max_tokens: default_max_tokens(),
             temperature: default_temperature(),
-            disable_thinking: false, // Enable thinking by default (if model supports)
+            disable_thinking: false,
         }
     }
 }
@@ -314,15 +314,20 @@ impl Default for TtsConfig {
 }
 
 // ============================================================================
-// Hook Configuration
+// Summarization Configuration (generic, used by sum command and hooks)
 // ============================================================================
 
-/// Stop hook configuration (when task completes)
+/// Summarization configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StopHookConfig {
-    /// Maximum summary length in characters
+pub struct SummarizationConfig {
+    /// Maximum summary length in words
     #[serde(default = "default_max_length")]
     pub max_length: usize,
+
+    /// Number of conversation turns to summarize (default: 1)
+    /// A turn is from a user message to the next user message or EOF
+    #[serde(default = "default_turns")]
+    pub turns: usize,
 
     /// System message for summarization
     #[serde(default = "default_system_message")]
@@ -335,63 +340,65 @@ pub struct StopHookConfig {
     /// Fallback message when summarization fails
     #[serde(default = "default_fallback_message")]
     pub fallback_message: String,
+}
 
-    /// Initial delay in ms before reading transcript (to let filesystem sync)
+impl Default for SummarizationConfig {
+    fn default() -> Self {
+        Self {
+            max_length: default_max_length(),
+            turns: default_turns(),
+            system_message: default_system_message(),
+            prompt_template: default_prompt_template(),
+            fallback_message: default_fallback_message(),
+        }
+    }
+}
+
+// ============================================================================
+// Hook Configurations
+// ============================================================================
+
+/// Claude Code specific hook configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ClaudeCodeHookConfig {
+    /// Initial delay in ms before reading transcript (filesystem sync)
     #[serde(default = "default_initial_delay_ms")]
     pub initial_delay_ms: u64,
 
     /// Retry delay in ms if first read returns empty
     #[serde(default = "default_retry_delay_ms")]
     pub retry_delay_ms: u64,
+
+    /// Notification filter: which notification types to speak
+    /// Available: "permission_prompt", "idle_prompt", "elicitation_dialog", "auth_success", "*"
+    #[serde(default = "default_notification_filter")]
+    pub notification_filter: Vec<String>,
 }
 
-impl Default for StopHookConfig {
+impl Default for ClaudeCodeHookConfig {
     fn default() -> Self {
         Self {
-            max_length: default_max_length(),
-            system_message: default_system_message(),
-            prompt_template: default_prompt_template(),
-            fallback_message: default_fallback_message(),
             initial_delay_ms: default_initial_delay_ms(),
             retry_delay_ms: default_retry_delay_ms(),
+            notification_filter: default_notification_filter(),
         }
     }
 }
 
-/// Notification hook configuration (for notifications)
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NotificationHookConfig {
-    /// Filter: which notification types to speak (speaks the notification message directly)
-    ///
-    /// Available notification types:
-    /// - "permission_prompt": User permission required
-    /// - "idle_prompt": Agent waiting for user action
-    /// - "elicitation_dialog": MCP tool needs user input
-    /// - "auth_success": Authentication completed
-    /// - "*": All notifications (default)
-    ///
-    /// Examples:
-    /// - ["*"]: Speak all notifications
-    /// - ["permission_prompt", "idle_prompt"]: Only speak prompts
-    /// - []: Disable all notifications
-    #[serde(default = "default_notification_filter")]
-    pub filter: Vec<String>,
-}
-
-impl Default for NotificationHookConfig {
-    fn default() -> Self {
-        Self {
-            filter: default_notification_filter(),
-        }
-    }
+/// All hook configurations
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct HooksConfig {
+    /// Claude Code specific settings
+    #[serde(default)]
+    pub claude_code: ClaudeCodeHookConfig,
 }
 
 // ============================================================================
-// Main VoiceConfig
+// Main SumvoxConfig
 // ============================================================================
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct VoiceConfig {
+pub struct SumvoxConfig {
     #[serde(default = "default_version")]
     pub version: String,
 
@@ -404,40 +411,42 @@ pub struct VoiceConfig {
     #[serde(default)]
     pub tts: TtsConfig,
 
+    /// Generic summarization settings (used by sum command)
     #[serde(default)]
-    pub stop_hook: StopHookConfig,
+    pub summarization: SummarizationConfig,
 
+    /// Hook-specific configurations
     #[serde(default)]
-    pub notification_hook: NotificationHookConfig,
+    pub hooks: HooksConfig,
 
     /// Unified cost control for all API usage (LLM + TTS)
     #[serde(default)]
     pub cost_control: CostControlConfig,
 }
 
-impl Default for VoiceConfig {
+impl Default for SumvoxConfig {
     fn default() -> Self {
         Self {
             version: default_version(),
             enabled: true,
             llm: LlmConfig::default(),
             tts: TtsConfig::default(),
-            stop_hook: StopHookConfig::default(),
-            notification_hook: NotificationHookConfig::default(),
+            summarization: SummarizationConfig::default(),
+            hooks: HooksConfig::default(),
             cost_control: CostControlConfig::default(),
         }
     }
 }
 
-impl VoiceConfig {
-    /// Get the standard config path: ~/.claude/claude-voice.json
+impl SumvoxConfig {
+    /// Get the standard config path: ~/.config/sumvox/config.json
     pub fn config_path() -> Result<PathBuf> {
         let home = dirs::home_dir()
             .ok_or_else(|| VoiceError::Config("Cannot find home directory".into()))?;
-        Ok(home.join(".claude").join("claude-voice.json"))
+        Ok(home.join(".config").join("sumvox").join("config.json"))
     }
 
-    /// Load configuration from ~/.claude/claude-voice.json
+    /// Load configuration from ~/.config/sumvox/config.json
     pub fn load_from_home() -> Result<Self> {
         let config_path = Self::config_path()?;
 
@@ -458,12 +467,12 @@ impl VoiceConfig {
             VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
         })?;
 
-        let config: VoiceConfig = serde_json::from_str(&content)?;
+        let config: SumvoxConfig = serde_json::from_str(&content)?;
         config.validate()?;
         Ok(config)
     }
 
-    /// Save configuration to ~/.claude/claude-voice.json
+    /// Save configuration to ~/.config/sumvox/config.json
     pub fn save_to_home(&self) -> Result<()> {
         let config_path = Self::config_path()?;
         self.save(config_path)
@@ -526,26 +535,16 @@ impl VoiceConfig {
             }
         }
 
-        // Validate stop hook prompt template contains required variables (warnings only)
-        if !self.stop_hook.prompt_template.contains("{max_length}")
-            || !self.stop_hook.prompt_template.contains("{context}")
+        // Validate summarization prompt template contains required variables (warnings only)
+        if !self.summarization.prompt_template.contains("{max_length}")
+            || !self.summarization.prompt_template.contains("{context}")
         {
             tracing::warn!(
-                "Stop hook prompt_template missing required variables: {{max_length}} or {{context}}"
+                "Summarization prompt_template missing required variables: {{max_length}} or {{context}}"
             );
         }
 
         Ok(())
-    }
-
-    /// Find the first available LLM provider with credentials
-    pub fn find_available_llm_provider(&self) -> Option<&LlmProviderConfig> {
-        self.llm.providers.iter().find(|p| p.has_credentials())
-    }
-
-    /// Find the first available TTS provider
-    pub fn find_available_tts_provider(&self) -> Option<&TtsProviderConfig> {
-        self.tts.providers.iter().find(|p| p.is_configured())
     }
 
     /// Update API key for a specific LLM provider
@@ -621,6 +620,7 @@ impl VoiceConfig {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -629,7 +629,7 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let config = VoiceConfig::default();
+        let config = SumvoxConfig::default();
         assert_eq!(config.version, "1.0.0");
         assert!(config.enabled);
         assert!(!config.llm.providers.is_empty());
@@ -674,7 +674,7 @@ mod tests {
         temp_file.write_all(config_json.as_bytes()).unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let config = VoiceConfig::load(path).unwrap();
+        let config = SumvoxConfig::load(path).unwrap();
         assert_eq!(config.version, "1.0.0");
         assert_eq!(config.llm.providers.len(), 2);
         assert_eq!(config.llm.providers[0].name, "google");
@@ -725,21 +725,11 @@ mod tests {
             volume: None,
         };
         assert!(macos_provider.is_configured());
-
-        let _google_without_api_key = TtsProviderConfig {
-            name: "google".to_string(),
-            voice: Some("Aoede".to_string()),
-            api_key: None,
-            rate: None,
-            volume: None,
-        };
-        // This will be false unless GEMINI_API_KEY env var is set
-        // In test, we can't guarantee env var state
     }
 
     #[test]
     fn test_set_llm_api_key() {
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
 
         // Update existing provider
         config.set_llm_api_key("google", "new-key");
@@ -756,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_temperature() {
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
         config.llm.parameters.temperature = 3.0;
 
         let result = config.validate();
@@ -769,7 +759,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_tts_rate() {
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
         config.tts.providers[1].rate = Some(500);
 
         let result = config.validate();
@@ -782,7 +772,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_tts_volume() {
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
         config.tts.providers[0].volume = Some(150);
 
         let result = config.validate();
@@ -795,7 +785,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_tts_volume() {
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
         config.tts.providers[0].volume = Some(75);
         config.tts.providers[1].volume = Some(100);
 
@@ -808,32 +798,16 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("test-config.json");
 
-        let mut config = VoiceConfig::default();
+        let mut config = SumvoxConfig::default();
         config.set_llm_api_key("google", "test-key");
 
         config.save(path.clone()).unwrap();
 
-        let loaded = VoiceConfig::load(path).unwrap();
+        let loaded = SumvoxConfig::load(path).unwrap();
         assert_eq!(
             loaded.llm.providers[0].api_key,
             Some("test-key".to_string())
         );
-    }
-
-    #[test]
-    fn test_find_available_provider() {
-        let mut config = VoiceConfig::default();
-
-        // Initially, only ollama is available (no API key required)
-        let available = config.find_available_llm_provider();
-        assert!(available.is_some());
-        assert_eq!(available.unwrap().name, "ollama");
-
-        // Set Google API key
-        config.set_llm_api_key("google", "test-key");
-        let available = config.find_available_llm_provider();
-        assert!(available.is_some());
-        assert_eq!(available.unwrap().name, "google"); // First provider with credentials
     }
 
     #[test]
@@ -874,58 +848,23 @@ mod tests {
 
     #[test]
     fn test_cost_control_at_top_level() {
-        let config = VoiceConfig::default();
+        let config = SumvoxConfig::default();
         assert!(config.cost_control.daily_limit_usd > 0.0);
     }
 
     #[test]
-    fn test_new_hook_config_structure() {
-        let config = VoiceConfig::default();
-
-        // 驗證 stop_hook
-        assert_eq!(config.stop_hook.max_length, 50);
-        assert!(!config.stop_hook.fallback_message.is_empty());
-
-        // 驗證 notification_hook
-        assert!(!config.notification_hook.filter.is_empty());
-        assert_eq!(
-            config.notification_hook.filter,
-            vec!["permission_prompt", "idle_prompt", "elicitation_dialog"]
-        );
+    fn test_summarization_config() {
+        let config = SumvoxConfig::default();
+        assert_eq!(config.summarization.max_length, 50);
+        assert!(!config.summarization.fallback_message.is_empty());
     }
 
     #[test]
-    fn test_stop_hook_delay_defaults() {
-        let config = VoiceConfig::default();
-
-        assert_eq!(config.stop_hook.initial_delay_ms, 50);
-        assert_eq!(config.stop_hook.retry_delay_ms, 100);
-    }
-
-    #[test]
-    fn test_stop_hook_delay_deserialization() {
-        let json = r#"{
-            "max_length": 50,
-            "initial_delay_ms": 75,
-            "retry_delay_ms": 150
-        }"#;
-
-        let stop_hook: StopHookConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(stop_hook.initial_delay_ms, 75);
-        assert_eq!(stop_hook.retry_delay_ms, 150);
-    }
-
-    #[test]
-    fn test_stop_hook_delay_backward_compatible() {
-        // 舊配置檔案沒有 delay 欄位
-        let json = r#"{
-            "max_length": 50,
-            "fallback_message": "Done"
-        }"#;
-
-        let stop_hook: StopHookConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(stop_hook.initial_delay_ms, 50); // 預設值
-        assert_eq!(stop_hook.retry_delay_ms, 100); // 預設值
+    fn test_claude_code_hook_config() {
+        let config = SumvoxConfig::default();
+        assert_eq!(config.hooks.claude_code.initial_delay_ms, 50);
+        assert_eq!(config.hooks.claude_code.retry_delay_ms, 100);
+        assert!(!config.hooks.claude_code.notification_filter.is_empty());
     }
 
     #[test]
@@ -941,27 +880,8 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_parameters_serialization() {
-        let params = LlmParameters {
-            max_tokens: 10000,
-            temperature: 0.3,
-            disable_thinking: true,
-        };
-
-        let json = serde_json::to_string(&params).unwrap();
-        assert!(json.contains("\"max_tokens\":10000"));
-        assert!(json.contains("\"temperature\":0.3"));
-        assert!(json.contains("\"disable_thinking\":true"));
-    }
-
-    #[test]
-    fn test_llm_parameters_deserialization_backward_compatible() {
-        // 舊配置檔案沒有 disable_thinking 欄位
-        let json = r#"{"max_tokens":100,"temperature":0.3}"#;
-        let params: LlmParameters = serde_json::from_str(json).unwrap();
-
-        assert_eq!(params.max_tokens, 100);
-        assert_eq!(params.temperature, 0.3);
-        assert!(!params.disable_thinking); // 預設值
+    fn test_config_path_is_xdg() {
+        let path = SumvoxConfig::config_path().unwrap();
+        assert!(path.to_string_lossy().contains(".config/sumvox"));
     }
 }

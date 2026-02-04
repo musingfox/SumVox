@@ -30,15 +30,6 @@ pub enum LlmError {
 
     #[error("API request failed: {0}")]
     Request(String),
-
-    #[error("Budget exceeded: ${0:.2}")]
-    BudgetExceeded(f64),
-
-    #[error("Timeout: {0}s")]
-    Timeout(u64),
-
-    #[error("All providers failed")]
-    AllProvidersFailed,
 }
 
 pub type Result<T> = std::result::Result<T, VoiceError>;
@@ -52,12 +43,6 @@ mod tests {
     fn test_error_display() {
         let err = VoiceError::Config("missing field".to_string());
         assert_eq!(err.to_string(), "Configuration error: missing field");
-    }
-
-    #[test]
-    fn test_llm_error_display() {
-        let err = LlmError::BudgetExceeded(0.15);
-        assert_eq!(err.to_string(), "Budget exceeded: $0.15");
     }
 
     #[test]

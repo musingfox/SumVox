@@ -1,10 +1,15 @@
 [package]
-name = "claude-voice"
+name = "sumvox"
 version = "1.0.0"
 edition = "2021"
 authors = ["Nick Huang"]
-description = "Voice notification hook for Claude Code - Rust rewrite"
+description = "Intelligent voice notifications for AI coding tools - LLM-powered summarization with TTS"
 license = "MIT"
+repository = "https://github.com/musingfox/sumvox"
+homepage = "https://github.com/musingfox/sumvox"
+keywords = ["voice", "notification", "ai", "tts", "llm", "claude"]
+categories = ["command-line-utilities"]
+readme = "README.md"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process"] }
@@ -36,9 +41,9 @@ strip = true
 opt-level = "z"  # Optimize for size
 
 [lib]
-name = "claude_voice"
+name = "sumvox"
 path = "src/lib.rs"
 
 [[bin]]
-name = "claude-voice"
+name = "sumvox"
 path = "src/main.rs"

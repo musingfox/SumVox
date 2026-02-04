@@ -5,6 +5,7 @@ pub mod google;
 pub mod macos;
 
 use async_trait::async_trait;
+use std::str::FromStr;
 
 use crate::config::TtsProviderConfig;
 use crate::error::{Result, VoiceError};
@@ -35,13 +36,15 @@ pub enum TtsEngine {
     Auto,
 }
 
-impl TtsEngine {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for TtsEngine {
+    type Err = VoiceError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "macos" | "say" => Some(TtsEngine::MacOS),
-            "google" | "google_tts" | "gcloud" => Some(TtsEngine::Google),
-            "auto" => Some(TtsEngine::Auto),
-            _ => None,
+            "macos" | "say" => Ok(TtsEngine::MacOS),
+            "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
+            "auto" => Ok(TtsEngine::Auto),
+            _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
         }
     }
 }
@@ -155,13 +158,13 @@ mod tests {
 
     #[test]
     fn test_tts_engine_from_str() {
-        assert_eq!(TtsEngine::from_str("macos"), Some(TtsEngine::MacOS));
-        assert_eq!(TtsEngine::from_str("say"), Some(TtsEngine::MacOS));
-        assert_eq!(TtsEngine::from_str("google"), Some(TtsEngine::Google));
-        assert_eq!(TtsEngine::from_str("google_tts"), Some(TtsEngine::Google));
-        assert_eq!(TtsEngine::from_str("gcloud"), Some(TtsEngine::Google));
-        assert_eq!(TtsEngine::from_str("auto"), Some(TtsEngine::Auto));
-        assert_eq!(TtsEngine::from_str("unknown"), None);
+        assert_eq!("macos".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
+        assert_eq!("say".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
+        assert_eq!("google".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
+        assert_eq!("google_tts".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
+        assert_eq!("gcloud".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
+        assert_eq!("auto".parse::<TtsEngine>().ok(), Some(TtsEngine::Auto));
+        assert!("unknown".parse::<TtsEngine>().is_err());
     }
 
     #[test]
