@@ -34,6 +34,7 @@ impl ProviderFactory {
     ///
     /// Tries each provider in order until one is available.
     /// Returns an error if no provider can be created.
+    #[allow(dead_code)] // Used in tests, may be used in future API
     pub fn create_from_config(providers: &[LlmProviderConfig]) -> Result<Box<dyn LlmProvider>> {
         let mut errors = Vec::new();
 

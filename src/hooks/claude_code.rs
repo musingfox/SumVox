@@ -292,7 +292,12 @@ async fn generate_summary(
             .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
             .and_then(|p| p.get_api_key());
 
-        match ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref()) {
+        match ProviderFactory::create_by_name(
+            provider_name,
+            model_name,
+            timeout,
+            api_key.as_deref(),
+        ) {
             Ok(provider) => {
                 if !provider.is_available() {
                     tracing::warn!("CLI provider {} not available", provider.name());
@@ -302,7 +307,8 @@ async fn generate_summary(
                 match provider.generate(&request).await {
                     Ok(response) => {
                         if let Some(ref tracker) = cost_tracker {
-                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            let cost = provider
+                                .estimate_cost(response.input_tokens, response.output_tokens);
                             tracker
                                 .record_usage(
                                     &response.model,
@@ -347,7 +353,8 @@ async fn generate_summary(
                         tracing::info!("Provider {} succeeded", provider.name());
 
                         if let Some(ref tracker) = cost_tracker {
-                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            let cost = provider
+                                .estimate_cost(response.input_tokens, response.output_tokens);
                             tracker
                                 .record_usage(
                                     &response.model,
