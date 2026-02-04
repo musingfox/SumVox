@@ -1,7 +1,7 @@
 #!/bin/bash
-# Test script for claude-voice hooks
+# Test script for SumVox hooks
 
-BINARY="./target/release/claude-voice"
+BINARY="./target/release/sumvox"
 TEST_DIR="/tmp/claude"
 
 # Colors for output
@@ -9,7 +9,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "=== Testing claude-voice hooks ==="
+echo "=== Testing SumVox hooks ==="
 echo
 
 # Setup
