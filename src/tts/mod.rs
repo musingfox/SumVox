@@ -84,10 +84,7 @@ pub fn create_tts_from_config(
                     );
                     return Ok(provider);
                 } else {
-                    tracing::debug!(
-                        "TTS {} created but not available, trying next",
-                        config.name
-                    );
+                    tracing::debug!("TTS {} created but not available, trying next", config.name);
                     errors.push(format!("{}: not available", config.name));
                 }
             }
@@ -105,22 +102,21 @@ pub fn create_tts_from_config(
 }
 
 /// Create a single TTS provider from config
-fn create_single_tts(
-    config: &TtsProviderConfig,
-    is_async: bool,
-) -> Result<Box<dyn TtsProvider>> {
+fn create_single_tts(config: &TtsProviderConfig, is_async: bool) -> Result<Box<dyn TtsProvider>> {
     let volume = config.volume.unwrap_or(100);
 
     match config.name.to_lowercase().as_str() {
         "macos" | "say" => {
             let voice = config.voice.clone();
             let rate = config.rate.unwrap_or(200);
-            Ok(Box::new(MacOsTtsProvider::new(voice, rate, volume, is_async)))
+            Ok(Box::new(MacOsTtsProvider::new(
+                voice, rate, volume, is_async,
+            )))
         }
         "google" | "google_tts" | "gcloud" | "gemini" => {
             let api_key = config.get_api_key().ok_or_else(|| {
                 VoiceError::Config(
-                    "Gemini API key not found. Set in config or env var GEMINI_API_KEY".into()
+                    "Gemini API key not found. Set in config or env var GEMINI_API_KEY".into(),
                 )
             })?;
 
@@ -132,7 +128,9 @@ fn create_single_tts(
             })?;
 
             let voice = config.voice.clone();
-            Ok(Box::new(GoogleTtsProvider::new(api_key, model, voice, volume)))
+            Ok(Box::new(GoogleTtsProvider::new(
+                api_key, model, voice, volume,
+            )))
         }
         _ => Err(VoiceError::Config(format!(
             "Unknown TTS provider: {}",
@@ -171,7 +169,10 @@ mod tests {
         assert_eq!("macos".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
         assert_eq!("say".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
         assert_eq!("google".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
-        assert_eq!("google_tts".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
+        assert_eq!(
+            "google_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::Google)
+        );
         assert_eq!("gcloud".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
         assert_eq!("auto".parse::<TtsEngine>().ok(), Some(TtsEngine::Auto));
         assert!("unknown".parse::<TtsEngine>().is_err());

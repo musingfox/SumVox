@@ -37,7 +37,8 @@ pub struct CostTracker {
 
 impl CostTracker {
     pub fn new(usage_file: impl AsRef<Path>) -> Self {
-        let usage_file = PathBuf::from(shellexpand::tilde(usage_file.as_ref().to_str().unwrap()).to_string());
+        let usage_file =
+            PathBuf::from(shellexpand::tilde(usage_file.as_ref().to_str().unwrap()).to_string());
         Self { usage_file }
     }
 
@@ -64,9 +65,9 @@ impl CostTracker {
     async fn save_usage(&self, usage: &UsageData) -> LlmResult<()> {
         // Ensure parent directory exists
         if let Some(parent) = self.usage_file.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| LlmError::Request(format!("Failed to create usage directory: {}", e)))?;
+            fs::create_dir_all(parent).await.map_err(|e| {
+                LlmError::Request(format!("Failed to create usage directory: {}", e))
+            })?;
         }
 
         let json = serde_json::to_string_pretty(usage)

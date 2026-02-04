@@ -91,7 +91,11 @@ impl TranscriptReader {
                     // 1. Test format: {"type":"message","message":{"role":"assistant",...}}
                     // 2. Claude Code format: {"type":"assistant","message":{"role":"assistant",...}}
                     let is_assistant = entry.entry_type == "assistant"
-                        || (entry.entry_type == "message" && entry.message.as_ref().is_some_and(|m| m.role == "assistant"));
+                        || (entry.entry_type == "message"
+                            && entry
+                                .message
+                                .as_ref()
+                                .is_some_and(|m| m.role == "assistant"));
 
                     if is_assistant {
                         if let Some(message) = entry.message {
@@ -202,7 +206,10 @@ impl TranscriptReader {
             if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(line) {
                 let is_assistant = entry.entry_type == "assistant"
                     || (entry.entry_type == "message"
-                        && entry.message.as_ref().is_some_and(|m| m.role == "assistant"));
+                        && entry
+                            .message
+                            .as_ref()
+                            .is_some_and(|m| m.role == "assistant"));
 
                 if is_assistant {
                     if let Some(message) = entry.message {
@@ -278,7 +285,9 @@ mod tests {
         temp_file.write_all(jsonl_content.as_bytes()).unwrap();
         let path = temp_file.path();
 
-        let texts = TranscriptReader::read_assistant_texts(path, 2).await.unwrap();
+        let texts = TranscriptReader::read_assistant_texts(path, 2)
+            .await
+            .unwrap();
 
         assert_eq!(texts.len(), 2);
         assert_eq!(texts[0], "Text 1");

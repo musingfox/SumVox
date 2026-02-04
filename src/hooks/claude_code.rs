@@ -151,7 +151,10 @@ async fn handle_notification(
     };
 
     if !should_speak {
-        tracing::debug!("Notification type '{}' not in filter, skipping", notification_type);
+        tracing::debug!(
+            "Notification type '{}' not in filter, skipping",
+            notification_type
+        );
         return Ok(());
     }
 
@@ -177,7 +180,10 @@ async fn handle_stop(
 
     // Initial delay to let filesystem sync
     let initial_delay = Duration::from_millis(config.hooks.claude_code.initial_delay_ms);
-    tracing::debug!("Waiting {}ms for filesystem sync", config.hooks.claude_code.initial_delay_ms);
+    tracing::debug!(
+        "Waiting {}ms for filesystem sync",
+        config.hooks.claude_code.initial_delay_ms
+    );
     tokio::time::sleep(initial_delay).await;
 
     let turns = config.summarization.turns.max(1); // At least 1 turn
@@ -254,15 +260,26 @@ async fn generate_summary(
         let under_budget = tracker.check_budget(daily_limit).await?;
 
         if !under_budget {
-            eprintln!("Warning: Daily budget ${:.2} exceeded, voice disabled", daily_limit);
+            eprintln!(
+                "Warning: Daily budget ${:.2} exceeded, voice disabled",
+                daily_limit
+            );
             tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
             return Ok(String::new());
         }
     }
 
-    // Create provider: CLI override or config fallback chain
-    let provider = if llm_opts.provider.is_some() || llm_opts.model.is_some() {
-        // CLI specified - create specific provider
+    let request = GenerationRequest {
+        system_message,
+        prompt: prompt.to_string(),
+        max_tokens: llm_config.parameters.max_tokens,
+        temperature: llm_config.parameters.temperature,
+        disable_thinking: llm_config.parameters.disable_thinking,
+    };
+
+    // Try providers with fallback
+    if llm_opts.provider.is_some() || llm_opts.model.is_some() {
+        // CLI specified - try only that provider
         let provider_name = llm_opts.provider.as_deref().unwrap_or("google");
         let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
         let timeout = Duration::from_secs(llm_opts.timeout);
@@ -275,55 +292,94 @@ async fn generate_summary(
             .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
             .and_then(|p| p.get_api_key());
 
-        ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref())?
-    } else {
-        // Use config fallback chain
-        ProviderFactory::create_from_config(&llm_config.providers)?
-    };
+        match ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref()) {
+            Ok(provider) => {
+                if !provider.is_available() {
+                    tracing::warn!("CLI provider {} not available", provider.name());
+                    return Ok(String::new());
+                }
 
-    if !provider.is_available() {
-        tracing::warn!("Provider {} not available", provider.name());
-        return Ok(String::new());
-    }
-
-    let request = GenerationRequest {
-        system_message,
-        prompt: prompt.to_string(),
-        max_tokens: llm_config.parameters.max_tokens,
-        temperature: llm_config.parameters.temperature,
-        disable_thinking: llm_config.parameters.disable_thinking,
-    };
-
-    match provider.generate(&request).await {
-        Ok(response) => {
-            // Record usage
-            if let Some(ref tracker) = cost_tracker {
-                let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
-                tracker
-                    .record_usage(
-                        &response.model,
-                        response.input_tokens,
-                        response.output_tokens,
-                        cost,
-                    )
-                    .await?;
+                match provider.generate(&request).await {
+                    Ok(response) => {
+                        if let Some(ref tracker) = cost_tracker {
+                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            tracker
+                                .record_usage(
+                                    &response.model,
+                                    response.input_tokens,
+                                    response.output_tokens,
+                                    cost,
+                                )
+                                .await?;
+                        }
+                        return Ok(response.text.trim().to_string());
+                    }
+                    Err(e) => {
+                        tracing::error!("CLI provider {} failed: {}", provider.name(), e);
+                        return Ok(String::new());
+                    }
+                }
             }
-
-            Ok(response.text.trim().to_string())
-        }
-        Err(e) => {
-            tracing::error!("Provider {} failed: {}", provider.name(), e);
-            Ok(String::new())
+            Err(e) => {
+                tracing::error!("Failed to create CLI provider {}: {}", provider_name, e);
+                return Ok(String::new());
+            }
         }
     }
+
+    // Try each provider in config order until one succeeds
+    for provider_config in &llm_config.providers {
+        match ProviderFactory::create_single(provider_config) {
+            Ok(provider) => {
+                if !provider.is_available() {
+                    tracing::debug!("Provider {} not available, trying next", provider.name());
+                    continue;
+                }
+
+                tracing::info!(
+                    "Trying LLM provider: {} (model: {})",
+                    provider_config.name,
+                    provider_config.model
+                );
+
+                match provider.generate(&request).await {
+                    Ok(response) => {
+                        tracing::info!("Provider {} succeeded", provider.name());
+
+                        if let Some(ref tracker) = cost_tracker {
+                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            tracker
+                                .record_usage(
+                                    &response.model,
+                                    response.input_tokens,
+                                    response.output_tokens,
+                                    cost,
+                                )
+                                .await?;
+                        }
+
+                        return Ok(response.text.trim().to_string());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Provider {} failed: {}, trying next", provider.name(), e);
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Failed to create provider {}: {}", provider_config.name, e);
+                continue;
+            }
+        }
+    }
+
+    // All providers failed
+    tracing::error!("All LLM providers failed");
+    Ok(String::new())
 }
 
 /// Speak text using TTS
-async fn speak_text(
-    config: &SumvoxConfig,
-    tts_opts: &TtsOptions,
-    text: &str,
-) -> Result<()> {
+async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) -> Result<()> {
     let tts_engine = tts_opts.engine.parse().unwrap_or(TtsEngine::Auto);
 
     // Create TTS provider: CLI override or config fallback chain
@@ -381,7 +437,15 @@ async fn speak_text(
                 .or_else(|| google_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, true, api_key)?
+            create_tts_by_name(
+                "google",
+                model,
+                Some(voice),
+                tts_opts.rate,
+                volume,
+                true,
+                api_key,
+            )?
         }
     };
 
@@ -393,11 +457,7 @@ async fn speak_text(
     // Estimate and log cost for cloud providers
     let cost = provider.estimate_cost(text.len());
     if cost > 0.0 {
-        tracing::info!(
-            "TTS cost estimate: ${:.6} for {} chars",
-            cost,
-            text.len()
-        );
+        tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
     }
 
     // Speak with error handling (TTS failures should be silent)
@@ -444,7 +504,10 @@ mod tests {
         let input = ClaudeCodeInput::parse(json).unwrap();
         assert_eq!(input.hook_event_name, "Notification");
         assert_eq!(input.message, Some("Hello notification".to_string()));
-        assert_eq!(input.notification_type, Some("permission_prompt".to_string()));
+        assert_eq!(
+            input.notification_type,
+            Some("permission_prompt".to_string())
+        );
     }
 
     #[test]

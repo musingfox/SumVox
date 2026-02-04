@@ -122,7 +122,9 @@ impl GoogleTtsProvider {
             .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| crate::error::VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
+            .map_err(|e| {
+                crate::error::VoiceError::Voice(format!("Failed to create HTTP client: {}", e))
+            })
     }
 
     /// Play audio data using rodio
@@ -195,9 +197,7 @@ impl TtsProvider for GoogleTtsProvider {
 
         let request = GeminiTtsRequest {
             contents: vec![Content {
-                parts: vec![Part {
-                    text: tts_text,
-                }],
+                parts: vec![Part { text: tts_text }],
             }],
             generation_config: GenerationConfig {
                 response_modalities: vec!["AUDIO".to_string()],
@@ -217,8 +217,7 @@ impl TtsProvider for GoogleTtsProvider {
         // Build API URL with dynamic model
         let api_url = format!(
             "{}/models/{}:generateContent",
-            GEMINI_TTS_API_BASE,
-            self.model
+            GEMINI_TTS_API_BASE, self.model
         );
 
         let response = client
@@ -295,7 +294,7 @@ mod tests {
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
             None,
-            100
+            100,
         );
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.voice_name, "Zephyr");
@@ -309,7 +308,7 @@ mod tests {
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
             Some("Charon".to_string()),
-            75
+            75,
         );
         assert_eq!(provider.voice_name, "Charon");
         assert_eq!(provider.volume, 75);
@@ -321,7 +320,7 @@ mod tests {
             String::new(),
             "gemini-2.5-flash-preview-tts".to_string(),
             None,
-            100
+            100,
         );
         assert!(!provider.is_available());
     }
@@ -332,7 +331,7 @@ mod tests {
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
             None,
-            100
+            100,
         );
 
         // 50 chars (typical summary length)
@@ -350,10 +349,9 @@ mod tests {
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
             None,
-            100
+            100,
         );
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
-
 }

@@ -62,7 +62,10 @@ mod tests {
             disable_thinking: false,
         };
 
-        assert_eq!(request.system_message, Some("System instruction".to_string()));
+        assert_eq!(
+            request.system_message,
+            Some("System instruction".to_string())
+        );
         assert_eq!(request.prompt, "Test prompt");
         assert_eq!(request.max_tokens, 100);
         assert_eq!(request.temperature, 0.3);

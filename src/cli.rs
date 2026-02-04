@@ -167,17 +167,8 @@ mod tests {
     #[test]
     fn test_parse_say_with_options() {
         let cli = Cli::try_parse_from([
-            "sumvox",
-            "say",
-            "Hello",
-            "--tts",
-            "macos",
-            "--voice",
-            "Tingting",
-            "--rate",
-            "180",
-            "--volume",
-            "75",
+            "sumvox", "say", "Hello", "--tts", "macos", "--voice", "Tingting", "--rate", "180",
+            "--volume", "75",
         ])
         .unwrap();
 

@@ -163,14 +163,18 @@ impl LlmProvider for AnthropicProvider {
 
         tracing::debug!("Anthropic API response: {}", response_text);
 
-        let anthropic_response: AnthropicResponse = serde_json::from_str(&response_text)
-            .map_err(|e| LlmError::Request(format!(
-                "Failed to parse Anthropic response: {}. Response body: {}",
-                e, response_text
-            )))?;
+        let anthropic_response: AnthropicResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
+                LlmError::Request(format!(
+                    "Failed to parse Anthropic response: {}. Response body: {}",
+                    e, response_text
+                ))
+            })?;
 
         if anthropic_response.content.is_empty() {
-            return Err(LlmError::Request("No content in Anthropic response".to_string()));
+            return Err(LlmError::Request(
+                "No content in Anthropic response".to_string(),
+            ));
         }
 
         // Extract text from content blocks, skipping thinking blocks

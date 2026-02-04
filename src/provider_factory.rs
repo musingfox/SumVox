@@ -34,9 +34,7 @@ impl ProviderFactory {
     ///
     /// Tries each provider in order until one is available.
     /// Returns an error if no provider can be created.
-    pub fn create_from_config(
-        providers: &[LlmProviderConfig],
-    ) -> Result<Box<dyn LlmProvider>> {
+    pub fn create_from_config(providers: &[LlmProviderConfig]) -> Result<Box<dyn LlmProvider>> {
         let mut errors = Vec::new();
 
         for config in providers {
@@ -71,7 +69,7 @@ impl ProviderFactory {
     }
 
     /// Create a single provider from config
-    fn create_single(config: &LlmProviderConfig) -> Result<Box<dyn LlmProvider>> {
+    pub fn create_single(config: &LlmProviderConfig) -> Result<Box<dyn LlmProvider>> {
         let timeout = Duration::from_secs(config.timeout);
         let provider: Provider = config.name.parse()?;
 
@@ -179,7 +177,10 @@ mod tests {
             "openai".parse::<Provider>().unwrap(),
             Provider::OpenAI
         ));
-        assert!(matches!("gpt".parse::<Provider>().unwrap(), Provider::OpenAI));
+        assert!(matches!(
+            "gpt".parse::<Provider>().unwrap(),
+            Provider::OpenAI
+        ));
 
         // Ollama variants
         assert!(matches!(

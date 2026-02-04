@@ -50,7 +50,8 @@ async fn main() -> Result<()> {
                 handle_json(JsonArgs {
                     format: "auto".to_string(),
                     timeout: 10,
-                }).await
+                })
+                .await
             } else {
                 // No stdin available, show help
                 eprintln!("Error: No subcommand provided and stdin is not available");
@@ -211,7 +212,8 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
                 ..Default::default()
             };
 
-            let summary = generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;
+            let summary =
+                generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;
 
             if !summary.is_empty() {
                 println!("{}", summary);
@@ -303,7 +305,11 @@ async fn handle_credentials(action: CredentialAction) -> Result<()> {
             eprintln!();
             eprintln!("TTS Providers:");
             for (name, available) in config.list_tts_providers() {
-                let status = if available { "configured" } else { "not configured" };
+                let status = if available {
+                    "configured"
+                } else {
+                    "not configured"
+                };
                 eprintln!("  - {} ({})", name, status);
             }
         }
@@ -366,7 +372,10 @@ async fn handle_credentials(action: CredentialAction) -> Result<()> {
             let mut config = SumvoxConfig::load_from_home()?;
 
             // Remove from LLM providers
-            config.llm.providers.retain(|p| p.name.to_lowercase() != provider.to_lowercase());
+            config
+                .llm
+                .providers
+                .retain(|p| p.name.to_lowercase() != provider.to_lowercase());
 
             // Clear TTS API key if it's a TTS provider
             for p in &mut config.tts.providers {
@@ -415,9 +424,17 @@ async fn generate_summary(
         }
     }
 
-    // Create provider: CLI override or config fallback chain
-    let provider = if llm_opts.provider.is_some() || llm_opts.model.is_some() {
-        // CLI specified - create specific provider
+    let request = GenerationRequest {
+        system_message,
+        prompt: prompt.to_string(),
+        max_tokens: llm_config.parameters.max_tokens,
+        temperature: llm_config.parameters.temperature,
+        disable_thinking: llm_config.parameters.disable_thinking,
+    };
+
+    // Try providers with fallback
+    if llm_opts.provider.is_some() || llm_opts.model.is_some() {
+        // CLI specified - try only that provider
         let provider_name = llm_opts.provider.as_deref().unwrap_or("google");
         let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
         let timeout = Duration::from_secs(llm_opts.timeout);
@@ -430,47 +447,90 @@ async fn generate_summary(
             .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
             .and_then(|p| p.get_api_key());
 
-        ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref())?
-    } else {
-        // Use config fallback chain
-        ProviderFactory::create_from_config(&llm_config.providers)?
-    };
+        match ProviderFactory::create_by_name(provider_name, model_name, timeout, api_key.as_deref()) {
+            Ok(provider) => {
+                if !provider.is_available() {
+                    tracing::warn!("CLI provider {} not available", provider.name());
+                    return Ok(String::new());
+                }
 
-    if !provider.is_available() {
-        tracing::warn!("Provider {} not available", provider.name());
-        return Ok(String::new());
-    }
-
-    let request = GenerationRequest {
-        system_message,
-        prompt: prompt.to_string(),
-        max_tokens: llm_config.parameters.max_tokens,
-        temperature: llm_config.parameters.temperature,
-        disable_thinking: llm_config.parameters.disable_thinking,
-    };
-
-    match provider.generate(&request).await {
-        Ok(response) => {
-            // Record usage
-            if let Some(ref tracker) = cost_tracker {
-                let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
-                tracker
-                    .record_usage(
-                        &response.model,
-                        response.input_tokens,
-                        response.output_tokens,
-                        cost,
-                    )
-                    .await?;
+                match provider.generate(&request).await {
+                    Ok(response) => {
+                        if let Some(ref tracker) = cost_tracker {
+                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            tracker
+                                .record_usage(
+                                    &response.model,
+                                    response.input_tokens,
+                                    response.output_tokens,
+                                    cost,
+                                )
+                                .await?;
+                        }
+                        return Ok(response.text.trim().to_string());
+                    }
+                    Err(e) => {
+                        tracing::error!("CLI provider {} failed: {}", provider.name(), e);
+                        return Ok(String::new());
+                    }
+                }
             }
-
-            Ok(response.text.trim().to_string())
-        }
-        Err(e) => {
-            tracing::error!("Provider {} failed: {}", provider.name(), e);
-            Ok(String::new())
+            Err(e) => {
+                tracing::error!("Failed to create CLI provider {}: {}", provider_name, e);
+                return Ok(String::new());
+            }
         }
     }
+
+    // Try each provider in config order until one succeeds
+    for provider_config in &llm_config.providers {
+        match ProviderFactory::create_single(provider_config) {
+            Ok(provider) => {
+                if !provider.is_available() {
+                    tracing::debug!("Provider {} not available, trying next", provider.name());
+                    continue;
+                }
+
+                tracing::info!(
+                    "Trying LLM provider: {} (model: {})",
+                    provider_config.name,
+                    provider_config.model
+                );
+
+                match provider.generate(&request).await {
+                    Ok(response) => {
+                        tracing::info!("Provider {} succeeded", provider.name());
+
+                        if let Some(ref tracker) = cost_tracker {
+                            let cost = provider.estimate_cost(response.input_tokens, response.output_tokens);
+                            tracker
+                                .record_usage(
+                                    &response.model,
+                                    response.input_tokens,
+                                    response.output_tokens,
+                                    cost,
+                                )
+                                .await?;
+                        }
+
+                        return Ok(response.text.trim().to_string());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Provider {} failed: {}, trying next", provider.name(), e);
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Failed to create provider {}: {}", provider_config.name, e);
+                continue;
+            }
+        }
+    }
+
+    // All providers failed
+    tracing::error!("All LLM providers failed");
+    Ok(String::new())
 }
 
 /// Speak text using TTS
@@ -535,7 +595,15 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .unwrap_or(100);
 
             // is_async=false for CLI commands (wait for speech to complete)
-            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, false, api_key)?
+            create_tts_by_name(
+                "google",
+                model,
+                Some(voice),
+                tts_opts.rate,
+                volume,
+                false,
+                api_key,
+            )?
         }
     };
 

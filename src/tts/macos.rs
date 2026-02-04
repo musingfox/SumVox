@@ -11,6 +11,7 @@ use crate::error::{Result, VoiceError};
 pub struct MacOsTtsProvider {
     voice_name: Option<String>,
     rate: u32,
+    #[allow(dead_code)] // macOS say doesn't support volume control
     volume: u32,
     async_mode: bool,
 }
@@ -24,7 +25,6 @@ impl MacOsTtsProvider {
             async_mode,
         }
     }
-
 }
 
 #[async_trait]
@@ -60,9 +60,7 @@ impl TtsProvider for MacOsTtsProvider {
             }
         }
 
-        cmd.arg("-r")
-            .arg(self.rate.to_string())
-            .arg(text);
+        cmd.arg("-r").arg(self.rate.to_string()).arg(text);
 
         if self.async_mode {
             // Non-blocking: spawn and return immediately
@@ -137,5 +135,4 @@ mod tests {
         let result = provider.speak("   ").await.unwrap();
         assert!(!result);
     }
-
 }

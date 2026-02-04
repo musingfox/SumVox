@@ -248,7 +248,7 @@ sumvox init --show-path
 }
 ```
 
-Models: `gemini-2.5-flash` (recommended), `gemini-2.5-pro`, `gemini-2.0-flash-exp`
+Models: `gemini-2.5-flash` (recommended, tested), `gemini-2.5-pro` (requires API upgrade)
 
 #### Others (Code Support Only)
 

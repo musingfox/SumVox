@@ -81,7 +81,11 @@ fn default_system_message() -> String {
 }
 
 fn default_notification_filter() -> Vec<String> {
-    vec!["permission_prompt".to_string(), "idle_prompt".to_string(), "elicitation_dialog".to_string()]
+    vec![
+        "permission_prompt".to_string(),
+        "idle_prompt".to_string(),
+        "elicitation_dialog".to_string(),
+    ]
 }
 
 // ============================================================================
@@ -459,10 +463,7 @@ impl SumvoxConfig {
         let config_path = Self::config_path()?;
 
         if !config_path.exists() {
-            tracing::info!(
-                "Config file not found at {:?}, using defaults",
-                config_path
-            );
+            tracing::info!("Config file not found at {:?}, using defaults", config_path);
             return Ok(Self::default());
         }
 
@@ -629,7 +630,6 @@ impl SumvoxConfig {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -743,10 +743,7 @@ mod tests {
 
         // Update existing provider
         config.set_llm_api_key("google", "new-key");
-        assert_eq!(
-            config.llm.providers[0].api_key,
-            Some("new-key".to_string())
-        );
+        assert_eq!(config.llm.providers[0].api_key, Some("new-key".to_string()));
 
         // Add new provider
         let initial_count = config.llm.providers.len();

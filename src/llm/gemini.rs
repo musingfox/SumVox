@@ -138,11 +138,12 @@ impl LlmProvider for GeminiProvider {
             GEMINI_API_BASE, model_name, self.api_key
         );
 
-        let system_instruction = request.system_message.as_ref().map(|msg| {
-            SystemInstruction {
+        let system_instruction = request
+            .system_message
+            .as_ref()
+            .map(|msg| SystemInstruction {
                 parts: vec![Part { text: msg.clone() }],
-            }
-        });
+            });
 
         // Detect model generation and thinking support
         // Only certain models support thinking parameters:
@@ -213,14 +214,18 @@ impl LlmProvider for GeminiProvider {
             )));
         }
 
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| LlmError::Request(format!("Failed to read Gemini response: {}", e)))?;
 
         let gemini_response: GeminiResponse = serde_json::from_str(&response_text)
             .map_err(|e| LlmError::Request(format!("Failed to parse Gemini response: {}", e)))?;
 
         if gemini_response.candidates.is_empty() {
-            return Err(LlmError::Request("No candidates in Gemini response".to_string()));
+            return Err(LlmError::Request(
+                "No candidates in Gemini response".to_string(),
+            ));
         }
 
         let text = gemini_response.candidates[0]
@@ -235,10 +240,7 @@ impl LlmProvider for GeminiProvider {
             (usage.prompt_token_count, usage.candidates_token_count)
         } else {
             // Estimate if not provided
-            (
-                (request.prompt.len() / 4) as u32,
-                (text.len() / 4) as u32,
-            )
+            ((request.prompt.len() / 4) as u32, (text.len() / 4) as u32)
         };
 
         Ok(GenerationResponse {

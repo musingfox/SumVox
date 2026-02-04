@@ -205,7 +205,9 @@ impl LlmProvider for OpenAIProvider {
             .map_err(|e| LlmError::Request(format!("Failed to parse OpenAI response: {}", e)))?;
 
         if openai_response.choices.is_empty() {
-            return Err(LlmError::Request("No choices in OpenAI response".to_string()));
+            return Err(LlmError::Request(
+                "No choices in OpenAI response".to_string(),
+            ));
         }
 
         let text = openai_response.choices[0].message.content.clone();
@@ -340,11 +342,8 @@ mod tests {
     #[ignore]
     async fn test_generate_with_real_api() {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-        let provider = OpenAIProvider::new(
-            api_key,
-            "gpt-4o-mini".to_string(),
-            Duration::from_secs(30),
-        );
+        let provider =
+            OpenAIProvider::new(api_key, "gpt-4o-mini".to_string(), Duration::from_secs(30));
 
         let request = GenerationRequest {
             system_message: None,

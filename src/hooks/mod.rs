@@ -49,7 +49,8 @@ pub struct GenericHookInput {
 impl GenericHookInput {
     /// Get the text content from any available field
     pub fn get_text(&self) -> Option<&str> {
-        self.text.as_deref()
+        self.text
+            .as_deref()
             .or(self.message.as_deref())
             .or(self.content.as_deref())
     }
@@ -64,7 +65,12 @@ pub fn detect_format(json: &Value) -> HookFormat {
 
     // Gemini CLI: has specific fields (to be defined)
     // For now, check for potential Gemini-specific fields
-    if json.get("gemini_session").is_some() || json.get("tool_name").map(|v| v.as_str() == Some("gemini")).unwrap_or(false) {
+    if json.get("gemini_session").is_some()
+        || json
+            .get("tool_name")
+            .map(|v| v.as_str() == Some("gemini"))
+            .unwrap_or(false)
+    {
         return HookFormat::GeminiCli;
     }
 
@@ -85,7 +91,7 @@ pub fn parse_generic(input: &str) -> Result<GenericHookInput> {
 
     if generic.get_text().is_none() {
         return Err(VoiceError::Config(
-            "Generic hook input requires 'text', 'message', or 'content' field".into()
+            "Generic hook input requires 'text', 'message', or 'content' field".into(),
         ));
     }
 
@@ -118,10 +124,22 @@ mod tests {
 
     #[test]
     fn test_hook_format_from_str() {
-        assert_eq!("claude-code".parse::<HookFormat>().ok(), Some(HookFormat::ClaudeCode));
-        assert_eq!("claude_code".parse::<HookFormat>().ok(), Some(HookFormat::ClaudeCode));
-        assert_eq!("gemini-cli".parse::<HookFormat>().ok(), Some(HookFormat::GeminiCli));
-        assert_eq!("generic".parse::<HookFormat>().ok(), Some(HookFormat::Generic));
+        assert_eq!(
+            "claude-code".parse::<HookFormat>().ok(),
+            Some(HookFormat::ClaudeCode)
+        );
+        assert_eq!(
+            "claude_code".parse::<HookFormat>().ok(),
+            Some(HookFormat::ClaudeCode)
+        );
+        assert_eq!(
+            "gemini-cli".parse::<HookFormat>().ok(),
+            Some(HookFormat::GeminiCli)
+        );
+        assert_eq!(
+            "generic".parse::<HookFormat>().ok(),
+            Some(HookFormat::Generic)
+        );
         assert!("auto".parse::<HookFormat>().is_err());
         assert!("unknown".parse::<HookFormat>().is_err());
     }
