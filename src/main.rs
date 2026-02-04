@@ -10,7 +10,7 @@ mod provider_factory;
 mod transcript;
 mod tts;
 
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::time::Duration;
 
 use clap::Parser;
@@ -38,11 +38,26 @@ async fn main() -> Result<()> {
 
     // Dispatch subcommands
     match cli.command {
-        Commands::Say(args) => handle_say(args).await,
-        Commands::Sum(args) => handle_sum(args).await,
-        Commands::Json(args) => handle_json(args).await,
-        Commands::Init(args) => handle_init(args).await,
-        Commands::Credentials { action } => handle_credentials(action).await,
+        Some(Commands::Say(args)) => handle_say(args).await,
+        Some(Commands::Sum(args)) => handle_sum(args).await,
+        Some(Commands::Json(args)) => handle_json(args).await,
+        Some(Commands::Init(args)) => handle_init(args).await,
+        Some(Commands::Credentials { action }) => handle_credentials(action).await,
+        None => {
+            // No subcommand provided - check if stdin is available (hook mode)
+            if !std::io::stdin().is_terminal() {
+                tracing::info!("No subcommand provided, auto-detecting json mode from stdin");
+                handle_json(JsonArgs {
+                    format: "auto".to_string(),
+                    timeout: 10,
+                }).await
+            } else {
+                // No stdin available, show help
+                eprintln!("Error: No subcommand provided and stdin is not available");
+                eprintln!("Run 'sumvox --help' for usage information");
+                Err(VoiceError::Config("No subcommand provided".into()))
+            }
+        }
     }
 }
 

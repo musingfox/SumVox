@@ -594,7 +594,7 @@ impl SumvoxConfig {
     fn default_model_for_provider(provider: &str) -> String {
         match provider.to_lowercase().as_str() {
             "google" | "gemini" => "gemini-2.5-flash".to_string(),
-            "anthropic" | "claude" => "claude-3-haiku-20240307".to_string(),
+            "anthropic" | "claude" => "claude-haiku-4-5-20251001".to_string(),
             "openai" | "gpt" => "gpt-4o-mini".to_string(),
             "ollama" | "local" => "llama3.2".to_string(),
             _ => "unknown".to_string(),

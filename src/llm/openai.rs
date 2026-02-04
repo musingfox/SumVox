@@ -14,8 +14,20 @@ const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 struct OpenAIRequest {
     model: String,
     messages: Vec<Message>,
-    max_tokens: u32,
-    temperature: f32,
+
+    /// Max completion tokens for newer models (o1, o3, GPT-5)
+    /// Older models still use max_tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
+
+    /// Max tokens for legacy models (GPT-4, GPT-3.5)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+
+    /// Temperature for non-reasoning models
+    /// Reasoning models (o1, o3, GPT-5) only support default temperature=1
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
 
     /// Reasoning effort for o1/o3/GPT-5 models
     /// Values: "low", "medium", "high", "xhigh" (gpt-5.1-codex-max)
@@ -138,11 +150,28 @@ impl LlmProvider for OpenAIProvider {
             None // Non-reasoning models, don't send parameter
         };
 
+        // Newer models (o1, o3, GPT-5) use max_completion_tokens
+        // Older models (GPT-4, GPT-3.5) use max_tokens
+        let (max_completion_tokens, max_tokens) = if is_reasoning_model {
+            (Some(request.max_tokens), None)
+        } else {
+            (None, Some(request.max_tokens))
+        };
+
+        // Reasoning models only support temperature=1 (default)
+        // Don't send temperature parameter for these models
+        let temperature = if is_reasoning_model {
+            None
+        } else {
+            Some(request.temperature)
+        };
+
         let openai_request = OpenAIRequest {
             model: model_name.to_string(),
             messages,
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
+            max_completion_tokens,
+            max_tokens,
+            temperature,
             reasoning_effort,
         };
 

@@ -51,9 +51,15 @@ struct AnthropicResponse {
 #[derive(Debug, Deserialize)]
 struct ContentBlock {
     #[serde(rename = "type")]
-    #[allow(dead_code)]
     content_type: String,
-    text: String,
+
+    // For text blocks
+    #[serde(default)]
+    text: Option<String>,
+
+    // For thinking blocks (extended thinking)
+    #[serde(default)]
+    thinking: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,31 +148,51 @@ impl LlmProvider for AnthropicProvider {
             .await
             .map_err(|e| LlmError::Request(format!("Anthropic API request failed: {}", e)))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| LlmError::Request(format!("Failed to read response body: {}", e)))?;
+
+        if !status.is_success() {
             return Err(LlmError::Request(format!(
                 "Anthropic API returned {}: {}",
-                status, error_text
+                status, response_text
             )));
         }
 
-        let anthropic_response: AnthropicResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmError::Request(format!("Failed to parse Anthropic response: {}", e)))?;
+        tracing::debug!("Anthropic API response: {}", response_text);
+
+        let anthropic_response: AnthropicResponse = serde_json::from_str(&response_text)
+            .map_err(|e| LlmError::Request(format!(
+                "Failed to parse Anthropic response: {}. Response body: {}",
+                e, response_text
+            )))?;
 
         if anthropic_response.content.is_empty() {
             return Err(LlmError::Request("No content in Anthropic response".to_string()));
         }
 
+        // Extract text from content blocks, skipping thinking blocks
         let text = anthropic_response
             .content
             .iter()
-            .map(|c| c.text.as_str())
+            .filter_map(|c| {
+                match c.content_type.as_str() {
+                    "text" => c.text.as_deref(),
+                    "thinking" => {
+                        // Log thinking content in debug mode
+                        if let Some(thinking) = &c.thinking {
+                            tracing::debug!("Extended thinking: {}", thinking);
+                        }
+                        None
+                    }
+                    _ => {
+                        tracing::warn!("Unknown content type: {}", c.content_type);
+                        None
+                    }
+                }
+            })
             .collect::<Vec<_>>()
             .join("");
 
@@ -179,9 +205,12 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        // Claude 3 Haiku pricing (per 1K tokens)
-        const INPUT_COST_PER_1K: f64 = 0.00025;
-        const OUTPUT_COST_PER_1K: f64 = 0.00125;
+        // Claude 4.5 Haiku pricing (per 1K tokens)
+        // https://platform.claude.com/docs/en/about-claude/models/overview
+        // Input: $1/MTok = $0.001/1K tokens
+        // Output: $5/MTok = $0.005/1K tokens
+        const INPUT_COST_PER_1K: f64 = 0.001;
+        const OUTPUT_COST_PER_1K: f64 = 0.005;
 
         let input_cost = (input_tokens as f64 / 1000.0) * INPUT_COST_PER_1K;
         let output_cost = (output_tokens as f64 / 1000.0) * OUTPUT_COST_PER_1K;
@@ -198,7 +227,7 @@ mod tests {
     fn test_anthropic_provider_creation() {
         let provider = AnthropicProvider::new(
             "test-key".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
@@ -210,7 +239,7 @@ mod tests {
     fn test_is_available_with_key() {
         let provider = AnthropicProvider::new(
             "sk-ant-test-key".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
@@ -221,7 +250,7 @@ mod tests {
     fn test_is_available_without_key() {
         let provider = AnthropicProvider::new(
             "".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
@@ -232,7 +261,7 @@ mod tests {
     fn test_is_available_with_placeholder() {
         let provider = AnthropicProvider::new(
             "${ANTHROPIC_API_KEY}".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
@@ -243,20 +272,20 @@ mod tests {
     fn test_estimate_cost() {
         let provider = AnthropicProvider::new(
             "test-key".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
         let cost = provider.estimate_cost(1000, 1000);
-        // 1000 * 0.00025 + 1000 * 0.00125 = 0.0015
-        assert!((cost - 0.0015).abs() < 0.000001);
+        // 1000 * 0.001 + 1000 * 0.005 = 0.006
+        assert!((cost - 0.006).abs() < 0.000001);
     }
 
     #[tokio::test]
     async fn test_generate_with_unavailable_provider() {
         let provider = AnthropicProvider::new(
             "".to_string(),
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(10),
         );
 
@@ -308,7 +337,7 @@ mod tests {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
         let provider = AnthropicProvider::new(
             api_key,
-            "claude-3-haiku-20240307".to_string(),
+            "claude-haiku-4-5".to_string(),
             Duration::from_secs(30),
         );
 

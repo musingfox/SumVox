@@ -8,8 +8,9 @@ use clap::{Parser, Subcommand};
 #[command(about = "Voice notification CLI for AI coding tools")]
 #[command(version)]
 pub struct Cli {
+    /// Subcommand to execute (optional: auto-detect json mode from stdin if not specified)
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -152,7 +153,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "say", "Hello world"]).unwrap();
 
         match cli.command {
-            Commands::Say(args) => {
+            Some(Commands::Say(args)) => {
                 assert_eq!(args.text, "Hello world");
                 assert_eq!(args.tts, "auto");
                 assert_eq!(args.rate, 200);
@@ -181,7 +182,7 @@ mod tests {
         .unwrap();
 
         match cli.command {
-            Commands::Say(args) => {
+            Some(Commands::Say(args)) => {
                 assert_eq!(args.text, "Hello");
                 assert_eq!(args.tts, "macos");
                 assert_eq!(args.voice, Some("Ting-Ting".to_string()));
@@ -197,7 +198,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "sum", "Long text to summarize"]).unwrap();
 
         match cli.command {
-            Commands::Sum(args) => {
+            Some(Commands::Sum(args)) => {
                 assert_eq!(args.text, "Long text to summarize");
                 assert_eq!(args.provider, None);
                 assert_eq!(args.model, None);
@@ -225,7 +226,7 @@ mod tests {
         .unwrap();
 
         match cli.command {
-            Commands::Sum(args) => {
+            Some(Commands::Sum(args)) => {
                 assert_eq!(args.text, "-");
                 assert_eq!(args.provider, Some("google".to_string()));
                 assert_eq!(args.model, Some("gemini-2.5-flash".to_string()));
@@ -241,7 +242,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "json"]).unwrap();
 
         match cli.command {
-            Commands::Json(args) => {
+            Some(Commands::Json(args)) => {
                 assert_eq!(args.format, "auto");
                 assert_eq!(args.timeout, 10);
             }
@@ -254,7 +255,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "json", "--format", "claude-code"]).unwrap();
 
         match cli.command {
-            Commands::Json(args) => {
+            Some(Commands::Json(args)) => {
                 assert_eq!(args.format, "claude-code");
             }
             _ => panic!("Expected Json command"),
@@ -266,7 +267,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "init"]).unwrap();
 
         match cli.command {
-            Commands::Init(args) => {
+            Some(Commands::Init(args)) => {
                 assert!(!args.force);
             }
             _ => panic!("Expected Init command"),
@@ -278,7 +279,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "init", "--force"]).unwrap();
 
         match cli.command {
-            Commands::Init(args) => {
+            Some(Commands::Init(args)) => {
                 assert!(args.force);
             }
             _ => panic!("Expected Init command"),
@@ -290,7 +291,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "credentials", "set", "google"]).unwrap();
 
         match cli.command {
-            Commands::Credentials { action } => match action {
+            Some(Commands::Credentials { action }) => match action {
                 CredentialAction::Set { provider } => {
                     assert_eq!(provider, "google");
                 }
@@ -305,7 +306,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "credentials", "list"]).unwrap();
 
         match cli.command {
-            Commands::Credentials { action } => {
+            Some(Commands::Credentials { action }) => {
                 assert!(matches!(action, CredentialAction::List));
             }
             _ => panic!("Expected Credentials command"),
@@ -317,7 +318,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "credentials", "test", "anthropic"]).unwrap();
 
         match cli.command {
-            Commands::Credentials { action } => match action {
+            Some(Commands::Credentials { action }) => match action {
                 CredentialAction::Test { provider } => {
                     assert_eq!(provider, "anthropic");
                 }
@@ -332,7 +333,7 @@ mod tests {
         let cli = Cli::try_parse_from(["sumvox", "credentials", "remove", "openai"]).unwrap();
 
         match cli.command {
-            Commands::Credentials { action } => match action {
+            Some(Commands::Credentials { action }) => match action {
                 CredentialAction::Remove { provider } => {
                     assert_eq!(provider, "openai");
                 }

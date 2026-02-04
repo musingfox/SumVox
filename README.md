@@ -251,7 +251,7 @@ Models: `gemini-2.5-flash` (recommended), `gemini-2.5-pro`, `gemini-2.0-flash-ex
 
 #### Others (Code Support Only)
 
-- **Anthropic**: `claude-3-haiku-20240307`
+- **Anthropic**: `claude-haiku-4-5-20251001` (alias: `claude-haiku-4-5`)
 - **OpenAI**: `gpt-4o-mini`
 - **Ollama**: `llama3.2` (local)
 
