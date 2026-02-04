@@ -33,32 +33,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Agent Workspace - Local state and dependencies
-.agents/tasks/
-.agents/retro/
-.agents/node_modules/
-.agents/package-lock.json
-.agents/pnpm-lock.yaml
-.agents/bun.lockb
-
-# Python
-__pycache__/
-**/__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-ENV/
-
-# Python Testing
-.pytest_cache/
-.coverage
-coverage.json
-htmlcov/
-.tox/
-
 # Rust
 target/
 Cargo.lock
