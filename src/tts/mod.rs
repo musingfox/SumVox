@@ -113,7 +113,7 @@ fn create_single_tts(
 
     match config.name.to_lowercase().as_str() {
         "macos" | "say" => {
-            let voice = config.voice.clone().unwrap_or_else(|| "Ting-Ting".to_string());
+            let voice = config.voice.clone();
             let rate = config.rate.unwrap_or(200);
             Ok(Box::new(MacOsTtsProvider::new(voice, rate, volume, is_async)))
         }
@@ -123,8 +123,16 @@ fn create_single_tts(
                     "Gemini API key not found. Set in config or env var GEMINI_API_KEY".into()
                 )
             })?;
+
+            // Model is required for Google TTS
+            let model = config.model.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "Google TTS model is required. Specify in config, e.g., 'gemini-2.5-flash-preview-tts'".into()
+                )
+            })?;
+
             let voice = config.voice.clone();
-            Ok(Box::new(GoogleTtsProvider::new(api_key, voice, volume)))
+            Ok(Box::new(GoogleTtsProvider::new(api_key, model, voice, volume)))
         }
         _ => Err(VoiceError::Config(format!(
             "Unknown TTS provider: {}",
@@ -136,6 +144,7 @@ fn create_single_tts(
 /// Create TTS provider by name (for CLI override)
 pub fn create_tts_by_name(
     name: &str,
+    model: Option<String>,
     voice: Option<String>,
     rate: u32,
     volume: u32,
@@ -144,6 +153,7 @@ pub fn create_tts_by_name(
 ) -> Result<Box<dyn TtsProvider>> {
     let config = TtsProviderConfig {
         name: name.to_string(),
+        model,
         voice,
         api_key,
         rate: Some(rate),
@@ -178,6 +188,7 @@ mod tests {
     fn test_create_macos_tts() {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
+            model: None,
             voice: Some("Ting-Ting".to_string()),
             api_key: None,
             rate: Some(200),
@@ -195,13 +206,15 @@ mod tests {
         let providers = vec![
             TtsProviderConfig {
                 name: "google".to_string(),
-                voice: Some("Aoede".to_string()),
+                model: Some("gemini-2.5-flash-preview-tts".to_string()),
+                voice: Some("Zephyr".to_string()),
                 api_key: None, // No API key
                 rate: None,
                 volume: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
+                model: None,
                 voice: Some("Ting-Ting".to_string()),
                 api_key: None,
                 rate: Some(200),
@@ -222,6 +235,7 @@ mod tests {
     fn test_create_tts_by_name_macos() {
         let result = create_tts_by_name(
             "macos",
+            None,
             Some("Ting-Ting".to_string()),
             200,
             100,

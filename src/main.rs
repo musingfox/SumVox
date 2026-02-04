@@ -495,15 +495,14 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
             let voice = tts_opts
                 .voice
                 .clone()
-                .or_else(|| macos_config.and_then(|p| p.voice.clone()))
-                .unwrap_or_else(|| "Ting-Ting".to_string());
+                .or_else(|| macos_config.and_then(|p| p.voice.clone()));
 
             let volume = tts_opts
                 .volume
                 .or_else(|| macos_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("macos", Some(voice), tts_opts.rate, volume, true, None)?
+            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, true, None)?
         }
         TtsEngine::Google => {
             // Get Google config for fallback values
@@ -516,19 +515,24 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
             // Get API key from config or env
             let api_key = google_config.and_then(|p| p.get_api_key());
 
+            // Model is required for Google TTS
+            let model = google_config
+                .and_then(|p| p.model.clone())
+                .or_else(|| Some("gemini-2.5-flash-preview-tts".to_string()));
+
             // Priority: CLI > Config > Default
             let voice = tts_opts
                 .voice
                 .clone()
                 .or_else(|| google_config.and_then(|p| p.voice.clone()))
-                .unwrap_or_else(|| "Aoede".to_string());
+                .unwrap_or_else(|| "Zephyr".to_string());
 
             let volume = tts_opts
                 .volume
                 .or_else(|| google_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("google", Some(voice), tts_opts.rate, volume, true, api_key)?
+            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, true, api_key)?
         }
     };
 

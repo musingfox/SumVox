@@ -236,6 +236,12 @@ pub struct TtsProviderConfig {
     /// Provider name: google, macos
     pub name: String,
 
+    /// TTS model name (optional, provider-specific)
+    /// - For Google TTS: REQUIRED, e.g., "gemini-2.5-flash-preview-tts"
+    /// - For macOS say: not used, should be None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+
     /// Voice name (provider-specific)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
@@ -296,14 +302,16 @@ impl Default for TtsConfig {
             providers: vec![
                 TtsProviderConfig {
                     name: "google".to_string(),
-                    voice: Some("Aoede".to_string()),
+                    model: Some("gemini-2.5-flash-preview-tts".to_string()),
+                    voice: Some("Zephyr".to_string()),
                     api_key: None,
                     rate: None,
                     volume: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
-                    voice: Some("Ting-Ting".to_string()),
+                    model: None,
+                    voice: None,
                     api_key: None,
                     rate: Some(200),
                     volume: None,
@@ -581,7 +589,8 @@ impl SumvoxConfig {
             0,
             TtsProviderConfig {
                 name: "google".to_string(),
-                voice: Some("Aoede".to_string()),
+                model: Some("gemini-2.5-flash-preview-tts".to_string()),
+                voice: Some("Zephyr".to_string()),
                 api_key: Some(api_key.to_string()),
                 rate: None,
                 volume: None,
@@ -719,6 +728,7 @@ mod tests {
     fn test_tts_is_configured() {
         let macos_provider = TtsProviderConfig {
             name: "macos".to_string(),
+            model: None,
             voice: Some("Ting-Ting".to_string()),
             api_key: None,
             rate: Some(200),

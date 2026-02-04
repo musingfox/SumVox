@@ -9,9 +9,8 @@ use std::time::Duration;
 use super::TtsProvider;
 use crate::error::{Result, VoiceError};
 
-/// Gemini TTS API endpoint
-const GEMINI_TTS_API: &str =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent";
+/// Gemini TTS API base URL
+const GEMINI_TTS_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 /// Cost per character for Gemini TTS (estimated)
 const COST_PER_CHAR: f64 = 0.000016;
@@ -19,6 +18,7 @@ const COST_PER_CHAR: f64 = 0.000016;
 /// Gemini TTS provider using Google AI Studio API
 pub struct GoogleTtsProvider {
     api_key: String,
+    model: String,
     voice_name: String,
     volume: u32,
 }
@@ -105,11 +105,12 @@ struct TtsErrorDetail {
 }
 
 impl GoogleTtsProvider {
-    pub fn new(api_key: String, voice_name: Option<String>, volume: u32) -> Self {
-        let voice = voice_name.unwrap_or_else(|| "Aoede".to_string());
+    pub fn new(api_key: String, model: String, voice_name: Option<String>, volume: u32) -> Self {
+        let voice = voice_name.unwrap_or_else(|| "Zephyr".to_string());
 
         Self {
             api_key,
+            model,
             voice_name: voice,
             volume,
         }
@@ -213,8 +214,15 @@ impl TtsProvider for GoogleTtsProvider {
         // Create client and make API call
         let client = Self::create_client()?;
 
+        // Build API URL with dynamic model
+        let api_url = format!(
+            "{}/models/{}:generateContent",
+            GEMINI_TTS_API_BASE,
+            self.model
+        );
+
         let response = client
-            .post(GEMINI_TTS_API)
+            .post(&api_url)
             .header("x-goog-api-key", &self.api_key)
             .header("Content-Type", "application/json")
             .json(&request)
@@ -283,30 +291,49 @@ mod tests {
 
     #[test]
     fn test_google_provider_creation() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
+        let provider = GoogleTtsProvider::new(
+            "test-api-key".to_string(),
+            "gemini-2.5-flash-preview-tts".to_string(),
+            None,
+            100
+        );
         assert_eq!(provider.name(), "google");
-        assert_eq!(provider.voice_name, "Aoede");
+        assert_eq!(provider.voice_name, "Zephyr");
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
     }
 
     #[test]
     fn test_custom_voice() {
-        let provider =
-            GoogleTtsProvider::new("test-api-key".to_string(), Some("Charon".to_string()), 75);
+        let provider = GoogleTtsProvider::new(
+            "test-api-key".to_string(),
+            "gemini-2.5-flash-preview-tts".to_string(),
+            Some("Charon".to_string()),
+            75
+        );
         assert_eq!(provider.voice_name, "Charon");
         assert_eq!(provider.volume, 75);
     }
 
     #[test]
     fn test_empty_api_key() {
-        let provider = GoogleTtsProvider::new(String::new(), None, 100);
+        let provider = GoogleTtsProvider::new(
+            String::new(),
+            "gemini-2.5-flash-preview-tts".to_string(),
+            None,
+            100
+        );
         assert!(!provider.is_available());
     }
 
     #[test]
     fn test_cost_estimation() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
+        let provider = GoogleTtsProvider::new(
+            "test-api-key".to_string(),
+            "gemini-2.5-flash-preview-tts".to_string(),
+            None,
+            100
+        );
 
         // 50 chars (typical summary length)
         let cost_50 = provider.estimate_cost(50);
@@ -319,7 +346,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = GoogleTtsProvider::new("test-api-key".to_string(), None, 100);
+        let provider = GoogleTtsProvider::new(
+            "test-api-key".to_string(),
+            "gemini-2.5-flash-preview-tts".to_string(),
+            None,
+            100
+        );
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
