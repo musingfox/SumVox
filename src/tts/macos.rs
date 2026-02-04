@@ -44,14 +44,10 @@ impl TtsProvider for MacOsTtsProvider {
             return Ok(false);
         }
 
-        // Convert 0-100 volume to macOS say's 0.0-1.0 range
-        let volume_float = self.volume as f32 / 100.0;
-
         tracing::info!(
-            "Speaking with macOS say: voice={:?}, rate={}, volume={}, async={}",
+            "Speaking with macOS say: voice={:?}, rate={}, async={}",
             self.voice_name,
             self.rate,
-            self.volume,
             self.async_mode
         );
 
@@ -66,8 +62,6 @@ impl TtsProvider for MacOsTtsProvider {
 
         cmd.arg("-r")
             .arg(self.rate.to_string())
-            .arg("--volume")
-            .arg(format!("{:.2}", volume_float))
             .arg(text);
 
         if self.async_mode {
@@ -108,9 +102,9 @@ mod tests {
 
     #[test]
     fn test_macos_provider_creation() {
-        let provider = MacOsTtsProvider::new(Some("Ting-Ting".to_string()), 180, 75, false);
+        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 180, 75, false);
         assert_eq!(provider.name(), "macos");
-        assert_eq!(provider.voice_name, Some("Ting-Ting".to_string()));
+        assert_eq!(provider.voice_name, Some("Tingting".to_string()));
         assert_eq!(provider.rate, 180);
         assert_eq!(provider.volume, 75);
         assert!(!provider.async_mode);
@@ -118,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_is_zero() {
-        let provider = MacOsTtsProvider::new(Some("Ting-Ting".to_string()), 200, 100, true);
+        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100, true);
         assert_eq!(provider.estimate_cost(100), 0.0);
         assert_eq!(provider.estimate_cost(10000), 0.0);
     }
@@ -126,20 +120,20 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_is_available_on_macos() {
-        let provider = MacOsTtsProvider::new(Some("Ting-Ting".to_string()), 200, 100, true);
+        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100, true);
         assert!(provider.is_available());
     }
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = MacOsTtsProvider::new(Some("Ting-Ting".to_string()), 200, 100, true);
+        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100, true);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }
 
     #[tokio::test]
     async fn test_speak_whitespace_only() {
-        let provider = MacOsTtsProvider::new(Some("Ting-Ting".to_string()), 200, 100, true);
+        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100, true);
         let result = provider.speak("   ").await.unwrap();
         assert!(!result);
     }

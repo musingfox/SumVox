@@ -45,7 +45,7 @@ pub struct SayArgs {
     pub tts: String,
 
     /// Voice name (engine-specific)
-    /// For macos: Ting-Ting, Meijia, etc.
+    /// For macos: Tingting, Meijia, etc.
     /// For google: Aoede, Charon, Fenrir, Kore, Puck, Orus
     #[arg(long)]
     pub voice: Option<String>,
@@ -173,7 +173,7 @@ mod tests {
             "--tts",
             "macos",
             "--voice",
-            "Ting-Ting",
+            "Tingting",
             "--rate",
             "180",
             "--volume",
@@ -185,7 +185,7 @@ mod tests {
             Some(Commands::Say(args)) => {
                 assert_eq!(args.text, "Hello");
                 assert_eq!(args.tts, "macos");
-                assert_eq!(args.voice, Some("Ting-Ting".to_string()));
+                assert_eq!(args.voice, Some("Tingting".to_string()));
                 assert_eq!(args.rate, 180);
                 assert_eq!(args.volume, Some(75));
             }

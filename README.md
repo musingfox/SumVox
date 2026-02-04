@@ -124,11 +124,12 @@ For the best balance of performance, quality, and cost, we recommend **Google Ge
       {
         "name": "google",
         "voice": "Aoede",
-        "api_key": "${GEMINI_API_KEY}"
+        "api_key": "${GEMINI_API_KEY}",
+        "volume": 75
       },
       {
         "name": "macos",
-        "voice": "Ting-Ting",
+        "voice": "Tingting",
         "rate": 200
       }
     ]
@@ -275,13 +276,20 @@ Popular voices: `Aoede`, `en-US-Journey-D`, `en-US-Journey-F`
 ```json
 {
   "name": "macos",
-  "voice": "Ting-Ting",
-  "rate": 200,
-  "volume": 75
+  "voice": "Tingting",
+  "rate": 200
 }
 ```
 
-List voices: `say -v ?`
+**Available voices:**
+- Chinese (Simplified): `Tingting`
+- Chinese (Traditional): `Meijia`
+- English (US): `Samantha`, `Alex`
+- System default: `""` (empty string, uses macOS language setting)
+
+List all voices: `say -v '?'`
+
+**Note:** macOS `say` command does not support volume control. Use system volume settings instead.
 
 ### Environment Variables
 

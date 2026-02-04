@@ -21,7 +21,8 @@
         "name": "google",
         "model": "gemini-2.5-flash-preview-tts",
         "voice": "Zephyr",
-        "api_key": "${GEMINI_API_KEY}"
+        "api_key": "${GEMINI_API_KEY}",
+        "volume": 75
       },
       {
         "name": "macos",

@@ -672,7 +672,7 @@ mod tests {
                 "providers": [
                     {
                         "name": "macos",
-                        "voice": "Ting-Ting",
+                        "voice": "Tingting",
                         "rate": 200
                     }
                 ]
@@ -729,7 +729,7 @@ mod tests {
         let macos_provider = TtsProviderConfig {
             name: "macos".to_string(),
             model: None,
-            voice: Some("Ting-Ting".to_string()),
+            voice: Some("Tingting".to_string()),
             api_key: None,
             rate: Some(200),
             volume: None,

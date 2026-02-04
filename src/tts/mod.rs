@@ -189,7 +189,7 @@ mod tests {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
             model: None,
-            voice: Some("Ting-Ting".to_string()),
+            voice: Some("Tingting".to_string()),
             api_key: None,
             rate: Some(200),
             volume: Some(80),
@@ -215,7 +215,7 @@ mod tests {
             TtsProviderConfig {
                 name: "macos".to_string(),
                 model: None,
-                voice: Some("Ting-Ting".to_string()),
+                voice: Some("Tingting".to_string()),
                 api_key: None,
                 rate: Some(200),
                 volume: None,
@@ -236,7 +236,7 @@ mod tests {
         let result = create_tts_by_name(
             "macos",
             None,
-            Some("Ting-Ting".to_string()),
+            Some("Tingting".to_string()),
             200,
             100,
             true,

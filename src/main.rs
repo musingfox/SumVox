@@ -481,7 +481,8 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
     let provider: Box<dyn TtsProvider> = match tts_engine {
         TtsEngine::Auto => {
             // Use config fallback chain
-            create_tts_from_config(&config.tts.providers, true)?
+            // is_async=false for CLI commands (wait for speech to complete)
+            create_tts_from_config(&config.tts.providers, false)?
         }
         TtsEngine::MacOS => {
             // Get macOS config for fallback values
@@ -502,7 +503,8 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| macos_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, true, None)?
+            // is_async=false for CLI commands (wait for speech to complete)
+            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, false, None)?
         }
         TtsEngine::Google => {
             // Get Google config for fallback values
@@ -532,7 +534,8 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| google_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, true, api_key)?
+            // is_async=false for CLI commands (wait for speech to complete)
+            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, false, api_key)?
         }
     };
 
@@ -567,7 +570,7 @@ mod tests {
         let args = SayArgs {
             text: "Hello".to_string(),
             tts: "macos".to_string(),
-            voice: Some("Ting-Ting".to_string()),
+            voice: Some("Tingting".to_string()),
             rate: 200,
             volume: Some(80),
         };
@@ -580,7 +583,7 @@ mod tests {
         };
 
         assert_eq!(opts.engine, "macos");
-        assert_eq!(opts.voice, Some("Ting-Ting".to_string()));
+        assert_eq!(opts.voice, Some("Tingting".to_string()));
         assert_eq!(opts.rate, 200);
         assert_eq!(opts.volume, Some(80));
     }
