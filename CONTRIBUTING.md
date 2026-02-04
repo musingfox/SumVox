@@ -288,13 +288,174 @@ cargo doc --open
 
 ## Release Process
 
-(For maintainers only)
+*For maintainers only*
 
-1. Update version in `Cargo.toml`
-2. Update `CHANGELOG.md`
-3. Create git tag: `git tag -a v1.x.x -m "Release v1.x.x"`
-4. Push tag: `git push origin v1.x.x`
-5. GitHub Actions will build and create release
+### Versioning
+
+We follow [Semantic Versioning](https://semver.org/):
+
+- `MAJOR.MINOR.PATCH` (e.g., 1.0.0)
+- **MAJOR**: Breaking changes (not backward compatible)
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
+
+### Release Checklist
+
+- [ ] All tests pass (`cargo test`)
+- [ ] Update version in `Cargo.toml`
+- [ ] Update version-related info in README.md
+- [ ] Update `CHANGELOG.md` with new version
+- [ ] Commit all changes
+- [ ] Create git tag (`git tag -a vX.Y.Z -m "Release vX.Y.Z"`)
+- [ ] Push tag (`git push origin vX.Y.Z`)
+- [ ] Wait for GitHub Actions to complete build
+- [ ] Verify GitHub Release page
+- [ ] Update Homebrew formula (if using tap)
+- [ ] Test installation process
+
+### Step-by-Step Release Guide
+
+#### 1. Prepare Release
+
+```bash
+# Ensure all tests pass
+cargo test
+
+# Ensure code is committed
+git status
+
+# Update version in Cargo.toml
+# Update CHANGELOG.md
+```
+
+#### 2. Create Version Tag
+
+```bash
+# Create and push tag (triggers GitHub Actions)
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+#### 3. Automated Build
+
+GitHub Actions will automatically:
+- Build binaries for macOS (x86_64, ARM64) and Linux (x86_64, ARM64)
+- Create GitHub Release
+- Upload archives and SHA256 checksums
+
+#### 4. Update Homebrew Formula
+
+##### Option A: Personal Tap (Recommended for early stages)
+
+```bash
+# 1. Create Homebrew tap repository
+# Repository name must be: homebrew-<tap-name>
+# Example: homebrew-sumvox
+
+# 2. Copy formula
+cp homebrew/sumvox.rb /path/to/homebrew-sumvox/Formula/
+
+# 3. Update SHA256
+# Get SHA256 from GitHub Release page
+SHA256=$(curl -sL https://github.com/musingfox/sumvox/archive/refs/tags/v1.0.0.tar.gz | shasum -a 256 | awk '{print $1}')
+
+# 4. Update url and sha256 in formula
+sed -i '' "s/PLACEHOLDER_SHA256/$SHA256/" Formula/sumvox.rb
+
+# 5. Commit and push
+git add Formula/sumvox.rb
+git commit -m "Release sumvox v1.0.0"
+git push
+```
+
+Installation for users:
+```bash
+brew tap musingfox/sumvox
+brew install sumvox
+```
+
+##### Option B: Submit to Homebrew Core (After project matures)
+
+Homebrew Core requirements:
+- Project has some notability and user base
+- 50+ stars or 75+ forks in 30 days
+- Continuous maintenance and updates
+- Follows all Homebrew guidelines
+
+Submission process:
+```bash
+# 1. Fork homebrew-core
+# 2. Add formula to Formula/ directory
+# 3. Test formula
+brew install --build-from-source ./Formula/sumvox.rb
+brew test sumvox
+brew audit --strict sumvox
+
+# 4. Submit PR to Homebrew/homebrew-core
+```
+
+#### 5. Publish to crates.io (Optional)
+
+```bash
+# 1. Login to crates.io
+cargo login
+
+# 2. Publish
+cargo publish --dry-run  # Test first
+cargo publish           # Official publish
+```
+
+Installation for users:
+```bash
+cargo install sumvox
+```
+
+### Rolling Back a Release
+
+If you need to retract a release:
+
+```bash
+# Delete tag
+git tag -d v1.0.0
+git push origin :refs/tags/v1.0.0
+
+# Delete GitHub Release (manual operation on GitHub)
+
+# If published to crates.io (cannot delete, only yank)
+cargo yank --vers 1.0.0
+```
+
+### Troubleshooting
+
+#### Q: GitHub Actions build failed?
+
+Check:
+- Is the dependency version in Cargo.toml correct?
+- Are cross-platform compilation tools installed?
+- Check Actions logs for specific errors
+
+#### Q: Homebrew formula test failed?
+
+```bash
+# Local testing
+brew install --build-from-source ./homebrew/sumvox.rb
+brew test sumvox
+brew audit --strict sumvox
+```
+
+#### Q: How to update SHA256?
+
+```bash
+# Calculate SHA256 of tar.gz
+curl -sL https://github.com/USER/REPO/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
+```
+
+### Resources
+
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Homebrew Formula Cookbook](https://docs.brew.sh/Formula-Cookbook)
+- [Cargo Publishing Guide](https://doc.rust-lang.org/cargo/reference/publishing.html)
+- [Semantic Versioning](https://semver.org/)
 
 ## Getting Help
 

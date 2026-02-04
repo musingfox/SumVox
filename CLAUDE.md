@@ -133,7 +133,7 @@ sumvox/
 
 ## Release Process
 
-See [RELEASING.md](RELEASING.md) for detailed release steps.
+See the "Release Process" section in [CONTRIBUTING.md](CONTRIBUTING.md) for detailed release steps.
 
 Quick version:
 ```bash
