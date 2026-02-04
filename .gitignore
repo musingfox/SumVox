@@ -33,6 +33,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
+# Claude Code local configurations (user-specific, not part of the project)
+.claude-plugin/
+.claude/
+
 # Rust
 target/
 Cargo.lock
