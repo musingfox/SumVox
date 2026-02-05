@@ -53,7 +53,7 @@ fn default_prompt_template() -> String {
 }
 
 fn default_system_message() -> String {
-    "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action.".to_string()
+    "You are a voice notification assistant. Generate concise summaries suitable for voice playback.".to_string()
 }
 
 fn default_notification_filter() -> Vec<String> {

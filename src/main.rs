@@ -254,10 +254,10 @@ async fn handle_init(args: InitArgs) -> Result<()> {
     // Create default config with recommended settings
     let mut config = SumvoxConfig::default();
 
-    // Apply recommended settings from config/recommended.yaml
+    // Apply recommended settings
     config.summarization.system_message =
-        "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action.".to_string();
-    config.summarization.fallback_message = "任務已完成".to_string();
+        "You are a voice notification assistant. Generate concise summaries suitable for voice playback.".to_string();
+    config.summarization.fallback_message = "Task completed".to_string();
 
     // Set notification TTS to macos by default (fast and free)
     config.hooks.claude_code.notification_tts_provider = Some("macos".to_string());
@@ -267,9 +267,9 @@ async fn handle_init(args: InitArgs) -> Result<()> {
         TtsProviderConfig {
             name: "macos".to_string(),
             model: None,
-            voice: Some("Meijia".to_string()),
+            voice: None,  // Use system default voice
             api_key: None,
-            rate: Some(220),
+            rate: Some(200),
             volume: None,
         },
         TtsProviderConfig {

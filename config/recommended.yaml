@@ -43,8 +43,8 @@ tts:
   providers:
     # macOS Built-in TTS (Free, fast, offline)
     - name: macos
-      voice: Meijia      # Chinese female voice (alternatives: Tingting)
-      rate: 220          # Speech rate (90-300, default: 200)
+      # voice: Meijia    # Optional: specify voice (e.g., Meijia, Tingting for Chinese)
+      rate: 200          # Speech rate (90-300, default: 200)
       # volume: 100      # Optional volume (0-100)
 
     # Google TTS (High quality, requires API key)
@@ -59,14 +59,16 @@ summarization:
   # Number of conversation turns to read (1 = last turn only)
   turns: 1
 
-  # System message for LLM
-  system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action."
+  # System message for LLM (customize for your language and style)
+  system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback."
+  # Example for Traditional Chinese: "You are an Engineer in Taiwan. Generate concise summaries suitable for voice playback in Traditional Chinese, keep your tone breezy, focus on result and next action."
 
   # Prompt template ({context} is required)
   prompt_template: "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
 
-  # Fallback message when LLM fails
-  fallback_message: "任務已完成"
+  # Fallback message when LLM fails (customize for your language)
+  fallback_message: "Task completed"
+  # Example for Chinese: "任務已完成"
 
 # Hook-specific Configuration
 hooks:
