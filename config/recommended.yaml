@@ -29,6 +29,7 @@ llm:
     # Ollama (Local, free, slower - good fallback)
     - name: ollama
       model: llama3.2
+      # api_key: not required  # Ollama runs locally without API key
       # base_url: http://localhost:11434  # Optional: custom endpoint
       timeout: 60  # Local inference needs more time
 
@@ -43,9 +44,10 @@ tts:
   providers:
     # macOS Built-in TTS (Free, fast, offline)
     - name: macos
-      # voice: Meijia    # Optional: specify voice (e.g., Meijia, Tingting for Chinese)
-      rate: 200          # Speech rate (90-300, default: 200)
-      # volume: 100      # Optional volume (0-100)
+      # api_key: not required  # macOS TTS is built-in, no API key needed
+      # voice: Daniel  # Optional: specify voice (run 'say -v ?' to list available voices)
+      rate: 200      # Speech rate (90-300, default: 200)
+      # volume: 100  # Optional volume (0-100)
 
     # Google TTS (High quality, requires API key)
     # - name: google
@@ -61,14 +63,12 @@ summarization:
 
   # System message for LLM (customize for your language and style)
   system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback."
-  # Example for Traditional Chinese: "You are an Engineer in Taiwan. Generate concise summaries suitable for voice playback in Traditional Chinese, keep your tone breezy, focus on result and next action."
 
   # Prompt template ({context} is required)
   prompt_template: "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
 
   # Fallback message when LLM fails (customize for your language)
   fallback_message: "Task completed"
-  # Example for Chinese: "任務已完成"
 
 # Hook-specific Configuration
 hooks:
