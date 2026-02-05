@@ -77,18 +77,19 @@ This creates `~/.config/sumvox/config.yaml` with sensible defaults:
 - **TTS**: macOS say (system default voice)
 - **Language**: English (customize in config)
 
-#### Step 2: Configure API Key
+#### Step 2: Set API Key
 
-**Option A: Environment Variable (Recommended)**
+Add to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
+
 ```bash
-# Add to ~/.zshrc or ~/.bashrc
 export GEMINI_API_KEY="your-key-here"
 ```
 
-**Option B: Interactive Credential Manager**
+Get your API key from: https://ai.google.dev
+
+Then reload your shell:
 ```bash
-sumvox credentials set google
-# Enter your API key when prompted (get it from https://ai.google.dev)
+source ~/.zshrc  # or source ~/.bashrc
 ```
 
 #### Step 3: Test Voice Notification
@@ -477,20 +478,6 @@ sumvox sum "Text" --provider anthropic
 
 # Just print summary (no speech)
 sumvox sum "Text" --no-speak
-```
-
-### Credential Management
-
-```bash
-# Set API key interactively
-sumvox credentials set google
-sumvox credentials set anthropic
-
-# List configured providers
-sumvox credentials list
-
-# Remove credentials
-sumvox credentials remove google
 ```
 
 ### Hook Mode (Automatic)

@@ -24,14 +24,8 @@ pub enum Commands {
     /// Read JSON from stdin (hook mode) - auto-detect format
     Json(JsonArgs),
 
-    /// Initialize config file at ~/.config/sumvox/config.json
+    /// Initialize config file at ~/.config/sumvox/config.yaml
     Init(InitArgs),
-
-    /// Manage API credentials
-    Credentials {
-        #[command(subcommand)]
-        action: CredentialAction,
-    },
 }
 
 /// Arguments for 'say' subcommand
@@ -120,27 +114,6 @@ pub struct InitArgs {
     /// Force overwrite existing config
     #[arg(long)]
     pub force: bool,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-pub enum CredentialAction {
-    /// Set API key for a provider
-    Set {
-        /// Provider name: google, anthropic, openai, google_tts
-        provider: String,
-    },
-    /// List configured providers
-    List,
-    /// Test API key for a provider
-    Test {
-        /// Provider name
-        provider: String,
-    },
-    /// Remove credentials for a provider
-    Remove {
-        /// Provider name
-        provider: String,
-    },
 }
 
 #[cfg(test)]
@@ -274,63 +247,6 @@ mod tests {
                 assert!(args.force);
             }
             _ => panic!("Expected Init command"),
-        }
-    }
-
-    #[test]
-    fn test_parse_credentials_set() {
-        let cli = Cli::try_parse_from(["sumvox", "credentials", "set", "google"]).unwrap();
-
-        match cli.command {
-            Some(Commands::Credentials { action }) => match action {
-                CredentialAction::Set { provider } => {
-                    assert_eq!(provider, "google");
-                }
-                _ => panic!("Expected Set action"),
-            },
-            _ => panic!("Expected Credentials command"),
-        }
-    }
-
-    #[test]
-    fn test_parse_credentials_list() {
-        let cli = Cli::try_parse_from(["sumvox", "credentials", "list"]).unwrap();
-
-        match cli.command {
-            Some(Commands::Credentials { action }) => {
-                assert!(matches!(action, CredentialAction::List));
-            }
-            _ => panic!("Expected Credentials command"),
-        }
-    }
-
-    #[test]
-    fn test_parse_credentials_test() {
-        let cli = Cli::try_parse_from(["sumvox", "credentials", "test", "anthropic"]).unwrap();
-
-        match cli.command {
-            Some(Commands::Credentials { action }) => match action {
-                CredentialAction::Test { provider } => {
-                    assert_eq!(provider, "anthropic");
-                }
-                _ => panic!("Expected Test action"),
-            },
-            _ => panic!("Expected Credentials command"),
-        }
-    }
-
-    #[test]
-    fn test_parse_credentials_remove() {
-        let cli = Cli::try_parse_from(["sumvox", "credentials", "remove", "openai"]).unwrap();
-
-        match cli.command {
-            Some(Commands::Credentials { action }) => match action {
-                CredentialAction::Remove { provider } => {
-                    assert_eq!(provider, "openai");
-                }
-                _ => panic!("Expected Remove action"),
-            },
-            _ => panic!("Expected Credentials command"),
         }
     }
 

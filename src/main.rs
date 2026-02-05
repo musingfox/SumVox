@@ -14,7 +14,7 @@ use std::io::{IsTerminal, Read};
 use std::time::Duration;
 
 use clap::Parser;
-use cli::{Cli, Commands, CredentialAction, InitArgs, JsonArgs, SayArgs, SumArgs};
+use cli::{Cli, Commands, InitArgs, JsonArgs, SayArgs, SumArgs};
 use config::{SumvoxConfig, TtsProviderConfig};
 use error::{Result, VoiceError};
 use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
@@ -42,7 +42,6 @@ async fn main() -> Result<()> {
         Some(Commands::Sum(args)) => handle_sum(args).await,
         Some(Commands::Json(args)) => handle_json(args).await,
         Some(Commands::Init(args)) => handle_init(args).await,
-        Some(Commands::Credentials { action }) => handle_credentials(action).await,
         None => {
             // No subcommand provided - check if stdin is available (hook mode)
             if !std::io::stdin().is_terminal() {
@@ -288,144 +287,16 @@ async fn handle_init(args: InitArgs) -> Result<()> {
     eprintln!("✓ Created config at: {:?}", yaml_path);
     eprintln!();
     eprintln!("Next steps:");
-    eprintln!("1. Set your preferred LLM API key:");
+    eprintln!("1. Set your LLM API key:");
     eprintln!("   export GEMINI_API_KEY=\"your-key-here\"");
-    eprintln!("   # or: sumvox credentials set google");
+    eprintln!("   # Get your key from: https://ai.google.dev");
     eprintln!();
     eprintln!("2. Test voice notification:");
-    eprintln!("   sumvox say \"測試語音通知\"");
+    eprintln!("   sumvox say \"Hello, SumVox!\"");
     eprintln!();
-    eprintln!("3. Edit config for customization:");
-    eprintln!("   # macOS: open ~/.config/sumvox/config.yaml");
-    eprintln!("   # See config/recommended.yaml for all options");
-
-    Ok(())
-}
-
-// ============================================================================
-// Credentials Command
-// ============================================================================
-
-async fn handle_credentials(action: CredentialAction) -> Result<()> {
-    match action {
-        CredentialAction::Set { provider } => {
-            // Interactive API key input (hidden)
-            eprint!("Enter API key for {}: ", provider);
-            let api_key = rpassword::read_password()
-                .map_err(|e| VoiceError::Config(format!("Failed to read password: {}", e)))?;
-
-            if api_key.trim().is_empty() {
-                return Err(VoiceError::Config("API key cannot be empty".into()));
-            }
-
-            // Load config, update, and save
-            let mut config = SumvoxConfig::load_from_home()?;
-
-            if provider.to_lowercase() == "google_tts" || provider.to_lowercase() == "gemini_tts" {
-                // For TTS, set Gemini API key
-                config.set_tts_api_key(api_key.trim());
-            } else {
-                config.set_llm_api_key(&provider, api_key.trim());
-            }
-
-            config.save_to_home()?;
-            eprintln!("API key saved for {}", provider);
-        }
-        CredentialAction::List => {
-            let config = SumvoxConfig::load_from_home()?;
-
-            eprintln!("LLM Providers:");
-            for (name, available) in config.list_llm_providers() {
-                let status = if available { "configured" } else { "no key" };
-                eprintln!("  - {} ({})", name, status);
-            }
-
-            eprintln!();
-            eprintln!("TTS Providers:");
-            for (name, available) in config.list_tts_providers() {
-                let status = if available {
-                    "configured"
-                } else {
-                    "not configured"
-                };
-                eprintln!("  - {} ({})", name, status);
-            }
-        }
-        CredentialAction::Test { provider } => {
-            let config = SumvoxConfig::load_from_home()?;
-
-            // Check LLM providers
-            let llm_found = config
-                .llm
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == provider.to_lowercase());
-
-            if let Some(p) = llm_found {
-                if let Some(key) = p.get_api_key() {
-                    eprintln!("LLM provider {} found", provider);
-                    eprintln!(
-                        "  Key: {}...{}",
-                        &key[..4.min(key.len())],
-                        if key.len() > 8 {
-                            &key[key.len() - 4..]
-                        } else {
-                            ""
-                        }
-                    );
-                } else {
-                    eprintln!("LLM provider {} found but no API key set", provider);
-                }
-            } else {
-                eprintln!("LLM provider {} not found in config", provider);
-            }
-
-            // Check TTS providers
-            let tts_found = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == provider.to_lowercase());
-
-            if let Some(p) = tts_found {
-                if p.is_configured() {
-                    eprintln!("TTS provider {} configured", provider);
-                    if let Some(ref api_key) = p.api_key {
-                        eprintln!(
-                            "  API Key: {}...{}",
-                            &api_key[..4.min(api_key.len())],
-                            if api_key.len() > 8 {
-                                &api_key[api_key.len() - 4..]
-                            } else {
-                                ""
-                            }
-                        );
-                    }
-                } else {
-                    eprintln!("TTS provider {} found but not configured", provider);
-                }
-            }
-        }
-        CredentialAction::Remove { provider } => {
-            let mut config = SumvoxConfig::load_from_home()?;
-
-            // Remove from LLM providers
-            config
-                .llm
-                .providers
-                .retain(|p| p.name.to_lowercase() != provider.to_lowercase());
-
-            // Clear TTS API key if it's a TTS provider
-            for p in &mut config.tts.providers {
-                if p.name.to_lowercase() == provider.to_lowercase() {
-                    p.api_key = None;
-                }
-            }
-
-            config.save_to_home()?;
-            eprintln!("Credentials removed for {}", provider);
-        }
-    }
+    eprintln!("3. Customize config (optional):");
+    eprintln!("   open ~/.config/sumvox/config.yaml");
+    eprintln!("   # See config/recommended.yaml for examples");
 
     Ok(())
 }

@@ -24,8 +24,15 @@ sumvox init
 ```
 
 ### 2. Set API Key
+
+Add to `~/.zshrc` or `~/.bashrc`:
 ```bash
 export GEMINI_API_KEY="your-key"  # Get from https://ai.google.dev
+```
+
+Then reload:
+```bash
+source ~/.zshrc
 ```
 
 ### 3. Test Voice

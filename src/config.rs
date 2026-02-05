@@ -559,78 +559,6 @@ impl SumvoxConfig {
         Ok(())
     }
 
-    /// Update API key for a specific LLM provider
-    pub fn set_llm_api_key(&mut self, provider_name: &str, api_key: &str) -> bool {
-        for provider in &mut self.llm.providers {
-            if provider.name.to_lowercase() == provider_name.to_lowercase() {
-                provider.api_key = Some(api_key.to_string());
-                return true;
-            }
-        }
-
-        // Provider not found, add new one
-        self.llm.providers.push(LlmProviderConfig {
-            name: provider_name.to_string(),
-            model: Self::default_model_for_provider(provider_name),
-            api_key: Some(api_key.to_string()),
-            base_url: None,
-            timeout: default_timeout(),
-        });
-        true
-    }
-
-    /// Update API key for Google TTS (Gemini API key)
-    pub fn set_tts_api_key(&mut self, api_key: &str) -> bool {
-        for provider in &mut self.tts.providers {
-            if provider.name.to_lowercase() == "google" {
-                provider.api_key = Some(api_key.to_string());
-                return true;
-            }
-        }
-
-        // Add Google TTS provider if not exists
-        self.tts.providers.insert(
-            0,
-            TtsProviderConfig {
-                name: "google".to_string(),
-                model: Some("gemini-2.5-flash-preview-tts".to_string()),
-                voice: Some("Zephyr".to_string()),
-                api_key: Some(api_key.to_string()),
-                rate: None,
-                volume: None,
-            },
-        );
-        true
-    }
-
-    /// Get default model for a provider
-    fn default_model_for_provider(provider: &str) -> String {
-        match provider.to_lowercase().as_str() {
-            "google" | "gemini" => "gemini-2.5-flash".to_string(),
-            "anthropic" | "claude" => "claude-haiku-4-5-20251001".to_string(),
-            "openai" | "gpt" => "gpt-4o-mini".to_string(),
-            "ollama" | "local" => "llama3.2".to_string(),
-            _ => "unknown".to_string(),
-        }
-    }
-
-    /// List configured LLM providers
-    pub fn list_llm_providers(&self) -> Vec<(&str, bool)> {
-        self.llm
-            .providers
-            .iter()
-            .map(|p| (p.name.as_str(), p.has_credentials()))
-            .collect()
-    }
-
-    /// List configured TTS providers
-    pub fn list_tts_providers(&self) -> Vec<(&str, bool)> {
-        self.tts
-            .providers
-            .iter()
-            .map(|p| (p.name.as_str(), p.is_configured()))
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -745,20 +673,6 @@ mod tests {
     }
 
     #[test]
-    fn test_set_llm_api_key() {
-        let mut config = SumvoxConfig::default();
-
-        // Update existing provider
-        config.set_llm_api_key("google", "new-key");
-        assert_eq!(config.llm.providers[0].api_key, Some("new-key".to_string()));
-
-        // Add new provider
-        let initial_count = config.llm.providers.len();
-        config.set_llm_api_key("anthropic", "anthropic-key");
-        assert_eq!(config.llm.providers.len(), initial_count + 1);
-    }
-
-    #[test]
     fn test_validate_invalid_temperature() {
         let mut config = SumvoxConfig::default();
         config.llm.parameters.temperature = 3.0;
@@ -813,7 +727,7 @@ mod tests {
         let path = temp_dir.path().join("test-config.json");
 
         let mut config = SumvoxConfig::default();
-        config.set_llm_api_key("google", "test-key");
+        config.llm.providers[0].api_key = Some("test-key".to_string());
 
         config.save(path.clone()).unwrap();
 
@@ -949,7 +863,7 @@ tts:
         let path = temp_dir.path().join("test-config.yaml");
 
         let mut config = SumvoxConfig::default();
-        config.set_llm_api_key("google", "test-yaml-key");
+        config.llm.providers[0].api_key = Some("test-yaml-key".to_string());
 
         config.save_yaml(path.clone()).unwrap();
 
