@@ -35,10 +35,10 @@ echo '{"session_id":"test",...}' | cargo run
 
 ### Configuration
 
-- **Main config**: `~/.config/sumvox/config.yaml` (preferred) or `config.json` (legacy)
+- **Main config**: `~/.config/sumvox/config.yaml`
 - **Hook script**: `.claude/hooks/run_sumvox_hook.sh`
 - **Binary location**: `target/release/sumvox`
-- **Recommended config**: `config/recommended.yaml`
+- **Example config**: `config/recommended.yaml`
 
 ### Environment Variables
 
@@ -75,13 +75,14 @@ cargo test tts::
 # Initialize config
 sumvox init
 
-# Set credentials
-sumvox credentials set google
-sumvox credentials list
+# Direct TTS
+sumvox say "Hello world"
 
-# Run with CLI overrides
-sumvox --provider google --model gemini-2.5-flash
-sumvox --tts google --tts-voice Aoede
+# Summarize text
+sumvox sum "Long text to summarize..."
+
+# Test with specific providers
+sumvox say "Test" --tts macos --voice Daniel
 ```
 
 ## Architecture
@@ -110,16 +111,15 @@ sumvox/
 ├── src/
 │   ├── main.rs           # Entry point
 │   ├── cli.rs            # CLI parsing
-│   ├── config.rs         # Configuration
+│   ├── config.rs         # Configuration loading/saving
 │   ├── transcript.rs     # Transcript parsing
-│   ├── credentials.rs    # Credential management
 │   ├── error.rs          # Error types
+│   ├── hooks/            # Hook handlers
 │   ├── llm/              # LLM providers
 │   ├── tts/              # TTS engines
 │   └── provider_factory.rs
 ├── config/
-│   ├── recommended.yaml  # Recommended YAML config
-│   └── recommended.json  # Legacy JSON config
+│   └── recommended.yaml  # Example configuration with comments
 ├── .github/
 │   ├── workflows/        # CI/CD
 │   └── ISSUE_TEMPLATE/   # Issue templates
@@ -127,6 +127,7 @@ sumvox/
 │   └── sumvox.rb         # Homebrew formula
 ├── Cargo.toml
 ├── README.md
+├── QUICKSTART.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 └── LICENSE

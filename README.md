@@ -582,8 +582,9 @@ export RUST_LOG="info"                # Optional: debug, info, warn
 # Check if environment variable is set
 echo $GEMINI_API_KEY
 
-# Or set via credentials manager
-sumvox credentials set google
+# If empty, add to ~/.zshrc or ~/.bashrc:
+export GEMINI_API_KEY="your-api-key-here"
+source ~/.zshrc
 ```
 
 **Problem: "Provider not available"**
