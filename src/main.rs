@@ -15,13 +15,13 @@ use std::time::Duration;
 
 use clap::Parser;
 use cli::{Cli, Commands, CredentialAction, InitArgs, JsonArgs, SayArgs, SumArgs};
-use config::SumvoxConfig;
+use config::{SumvoxConfig, TtsProviderConfig};
 use error::{Result, VoiceError};
 use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
 use hooks::HookFormat;
 use llm::{CostTracker, GenerationRequest};
 use provider_factory::ProviderFactory;
-use tts::{create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
+use tts::{create_single_tts, create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -625,12 +625,94 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
         tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
     }
 
-    // Speak with error handling (TTS failures should be silent)
-    match provider.speak(text).await {
-        Ok(_) => tracing::debug!("TTS playback completed"),
-        Err(e) => {
-            tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
+    // Speak with error handling and fallback for Auto mode
+    match tts_engine {
+        TtsEngine::Auto => {
+            // For Auto mode, try all providers in config order
+            speak_with_provider_fallback(&config.tts.providers, text, false).await
         }
+        _ => {
+            // Single provider mode - just try once
+            match provider.speak(text).await {
+                Ok(_) => {
+                    tracing::debug!("TTS playback completed");
+                    Ok(())
+                }
+                Err(e) => {
+                    tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+/// Try TTS providers in order with automatic runtime fallback
+async fn speak_with_provider_fallback(
+    providers: &[TtsProviderConfig],
+    text: &str,
+    is_async: bool,
+) -> Result<()> {
+    let mut last_error = None;
+
+    for provider_config in providers {
+        // Try to create provider
+        let provider = match create_single_tts(provider_config, is_async) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::debug!(
+                    "Failed to create TTS provider {}: {}",
+                    provider_config.name,
+                    e
+                );
+                last_error = Some(format!("{}: {}", provider_config.name, e));
+                continue;
+            }
+        };
+
+        // Check availability
+        if !provider.is_available() {
+            tracing::debug!("TTS provider {} not available, trying next", provider.name());
+            last_error = Some(format!("{}: not available", provider.name()));
+            continue;
+        }
+
+        // Log selected provider
+        tracing::info!(
+            "Using TTS provider: {} (voice: {})",
+            provider_config.name,
+            provider_config.voice.as_deref().unwrap_or("default")
+        );
+
+        // Estimate and log cost for cloud providers
+        let cost = provider.estimate_cost(text.len());
+        if cost > 0.0 {
+            tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
+        }
+
+        // Try to speak
+        match provider.speak(text).await {
+            Ok(_) => {
+                tracing::debug!("TTS playback completed with {}", provider.name());
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "TTS provider {} failed: {}, trying next provider",
+                    provider.name(),
+                    e
+                );
+                last_error = Some(format!("{}: {}", provider.name(), e));
+                continue;
+            }
+        }
+    }
+
+    // All providers failed
+    if let Some(err) = last_error {
+        tracing::warn!("All TTS providers failed. Last error: {}. Notification will be silent.", err);
+    } else {
+        tracing::warn!("No TTS providers available. Notification will be silent.");
     }
 
     Ok(())
