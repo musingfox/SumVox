@@ -28,16 +28,8 @@ where
     }
 }
 
-fn default_true() -> bool {
-    true
-}
-
 fn default_version() -> String {
     "1.0.0".to_string()
-}
-
-fn default_max_length() -> usize {
-    50
 }
 
 fn default_turns() -> usize {
@@ -46,22 +38,6 @@ fn default_turns() -> usize {
 
 fn default_fallback_message() -> String {
     "Task completed".to_string()
-}
-
-fn default_initial_delay_ms() -> u64 {
-    50
-}
-
-fn default_retry_delay_ms() -> u64 {
-    100
-}
-
-fn default_daily_limit() -> f64 {
-    0.10
-}
-
-fn default_usage_file() -> String {
-    "~/.config/sumvox/usage.json".to_string()
 }
 
 fn default_max_tokens() -> u32 {
@@ -73,11 +49,11 @@ fn default_temperature() -> f32 {
 }
 
 fn default_prompt_template() -> String {
-    "You are a voice notification assistant. Based on the following context, generate a concise summary (max {max_length} words).\n\nContext:\n{context}\n\nSummary:".to_string()
+    "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:".to_string()
 }
 
 fn default_system_message() -> String {
-    "You are a voice notification assistant. Generate concise summaries suitable for voice playback.".to_string()
+    "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action.".to_string()
 }
 
 fn default_notification_filter() -> Vec<String> {
@@ -168,29 +144,6 @@ impl Default for LlmParameters {
             max_tokens: default_max_tokens(),
             temperature: default_temperature(),
             disable_thinking: false,
-        }
-    }
-}
-
-/// Cost control settings for LLM usage
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CostControlConfig {
-    #[serde(default = "default_daily_limit")]
-    pub daily_limit_usd: f64,
-
-    #[serde(default = "default_true")]
-    pub usage_tracking: bool,
-
-    #[serde(default = "default_usage_file")]
-    pub usage_file: String,
-}
-
-impl Default for CostControlConfig {
-    fn default() -> Self {
-        Self {
-            daily_limit_usd: default_daily_limit(),
-            usage_tracking: true,
-            usage_file: default_usage_file(),
         }
     }
 }
@@ -332,10 +285,6 @@ impl Default for TtsConfig {
 /// Summarization configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SummarizationConfig {
-    /// Maximum summary length in words
-    #[serde(default = "default_max_length")]
-    pub max_length: usize,
-
     /// Number of conversation turns to summarize (default: 1)
     /// A turn is from a user message to the next user message or EOF
     #[serde(default = "default_turns")]
@@ -357,7 +306,6 @@ pub struct SummarizationConfig {
 impl Default for SummarizationConfig {
     fn default() -> Self {
         Self {
-            max_length: default_max_length(),
             turns: default_turns(),
             system_message: default_system_message(),
             prompt_template: default_prompt_template(),
@@ -370,41 +318,35 @@ impl Default for SummarizationConfig {
 // Hook Configurations
 // ============================================================================
 
+fn default_auto_tts() -> Option<String> {
+    Some("auto".to_string())
+}
+
 /// Claude Code specific hook configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ClaudeCodeHookConfig {
-    /// Initial delay in ms before reading transcript (filesystem sync)
-    #[serde(default = "default_initial_delay_ms")]
-    pub initial_delay_ms: u64,
-
-    /// Retry delay in ms if first read returns empty
-    #[serde(default = "default_retry_delay_ms")]
-    pub retry_delay_ms: u64,
-
     /// Notification filter: which notification types to speak
     /// Available: "permission_prompt", "idle_prompt", "elicitation_dialog", "auth_success", "*"
     #[serde(default = "default_notification_filter")]
     pub notification_filter: Vec<String>,
 
-    /// TTS provider for Notification hook (e.g., "macos", "google")
-    /// If not specified, uses the default TTS provider fallback chain
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// TTS provider for Notification hook (e.g., "macos", "google", "auto")
+    /// Default: "auto" (uses the default TTS provider fallback chain)
+    #[serde(default = "default_auto_tts")]
     pub notification_tts_provider: Option<String>,
 
-    /// TTS provider for Stop hook (e.g., "google", "macos")
-    /// If not specified, uses the default TTS provider fallback chain
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// TTS provider for Stop hook (e.g., "google", "macos", "auto")
+    /// Default: "auto" (uses the default TTS provider fallback chain)
+    #[serde(default = "default_auto_tts")]
     pub stop_tts_provider: Option<String>,
 }
 
 impl Default for ClaudeCodeHookConfig {
     fn default() -> Self {
         Self {
-            initial_delay_ms: default_initial_delay_ms(),
-            retry_delay_ms: default_retry_delay_ms(),
             notification_filter: default_notification_filter(),
-            notification_tts_provider: None,
-            stop_tts_provider: None,
+            notification_tts_provider: default_auto_tts(),
+            stop_tts_provider: default_auto_tts(),
         }
     }
 }
@@ -426,9 +368,6 @@ pub struct SumvoxConfig {
     #[serde(default = "default_version")]
     pub version: String,
 
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-
     #[serde(default)]
     pub llm: LlmConfig,
 
@@ -442,48 +381,71 @@ pub struct SumvoxConfig {
     /// Hook-specific configurations
     #[serde(default)]
     pub hooks: HooksConfig,
-
-    /// Unified cost control for all API usage (LLM + TTS)
-    #[serde(default)]
-    pub cost_control: CostControlConfig,
 }
 
 impl Default for SumvoxConfig {
     fn default() -> Self {
         Self {
             version: default_version(),
-            enabled: true,
             llm: LlmConfig::default(),
             tts: TtsConfig::default(),
             summarization: SummarizationConfig::default(),
             hooks: HooksConfig::default(),
-            cost_control: CostControlConfig::default(),
         }
     }
 }
 
 impl SumvoxConfig {
-    /// Get the standard config path: ~/.config/sumvox/config.json
-    pub fn config_path() -> Result<PathBuf> {
+    /// Get the standard config directory: ~/.config/sumvox/
+    pub fn config_dir() -> Result<PathBuf> {
         let home = dirs::home_dir()
             .ok_or_else(|| VoiceError::Config("Cannot find home directory".into()))?;
-        Ok(home.join(".config").join("sumvox").join("config.json"))
+        Ok(home.join(".config").join("sumvox"))
     }
 
-    /// Load configuration from ~/.config/sumvox/config.json
-    pub fn load_from_home() -> Result<Self> {
-        let config_path = Self::config_path()?;
+    /// Get the standard config path: ~/.config/sumvox/config.json (deprecated)
+    pub fn config_path() -> Result<PathBuf> {
+        Ok(Self::config_dir()?.join("config.json"))
+    }
 
-        if !config_path.exists() {
-            tracing::info!("Config file not found at {:?}, using defaults", config_path);
-            return Ok(Self::default());
+    /// Get the YAML config path: ~/.config/sumvox/config.yaml
+    pub fn yaml_config_path() -> Result<PathBuf> {
+        Ok(Self::config_dir()?.join("config.yaml"))
+    }
+
+    /// Load configuration from ~/.config/sumvox/config.yaml (preferred) or config.json (fallback)
+    pub fn load_from_home() -> Result<Self> {
+        // Try YAML first (preferred format)
+        let yaml_path = Self::yaml_config_path()?;
+        if yaml_path.exists() {
+            tracing::info!("Loading config from {:?}", yaml_path);
+            return Self::load_yaml(yaml_path);
         }
 
-        Self::load(config_path)
+        // Fallback to JSON for backward compatibility
+        let json_path = Self::config_path()?;
+        if json_path.exists() {
+            tracing::info!("Loading config from {:?}", json_path);
+            return Self::load_json(json_path);
+        }
+
+        tracing::info!("No config file found, using defaults");
+        Ok(Self::default())
     }
 
-    /// Load configuration from a specific path
+    /// Load configuration from a specific path (auto-detect format)
     pub fn load(path: PathBuf) -> Result<Self> {
+        if path.extension().and_then(|s| s.to_str()) == Some("yaml")
+            || path.extension().and_then(|s| s.to_str()) == Some("yml")
+        {
+            Self::load_yaml(path)
+        } else {
+            Self::load_json(path)
+        }
+    }
+
+    /// Load configuration from a JSON file
+    pub fn load_json(path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&path).map_err(|e| {
             VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
         })?;
@@ -493,14 +455,37 @@ impl SumvoxConfig {
         Ok(config)
     }
 
-    /// Save configuration to ~/.config/sumvox/config.json
-    pub fn save_to_home(&self) -> Result<()> {
-        let config_path = Self::config_path()?;
-        self.save(config_path)
+    /// Load configuration from a YAML file
+    pub fn load_yaml(path: PathBuf) -> Result<Self> {
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
+        })?;
+
+        let config: SumvoxConfig = serde_yaml::from_str(&content)
+            .map_err(|e| VoiceError::Config(format!("Failed to parse YAML config: {}", e)))?;
+        config.validate()?;
+        Ok(config)
     }
 
-    /// Save configuration to a specific path
+    /// Save configuration to ~/.config/sumvox/config.yaml (preferred format)
+    pub fn save_to_home(&self) -> Result<()> {
+        let config_path = Self::yaml_config_path()?;
+        self.save_yaml(config_path)
+    }
+
+    /// Save configuration to a specific path (auto-detect format)
     pub fn save(&self, path: PathBuf) -> Result<()> {
+        if path.extension().and_then(|s| s.to_str()) == Some("yaml")
+            || path.extension().and_then(|s| s.to_str()) == Some("yml")
+        {
+            self.save_yaml(path)
+        } else {
+            self.save_json(path)
+        }
+    }
+
+    /// Save configuration to a JSON file
+    pub fn save_json(&self, path: PathBuf) -> Result<()> {
         // Ensure directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -508,6 +493,21 @@ impl SumvoxConfig {
 
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(&path, json)?;
+
+        tracing::info!("Config saved to {:?}", path);
+        Ok(())
+    }
+
+    /// Save configuration to a YAML file
+    pub fn save_yaml(&self, path: PathBuf) -> Result<()> {
+        // Ensure directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let yaml = serde_yaml::to_string(self)
+            .map_err(|e| VoiceError::Config(format!("Failed to serialize YAML: {}", e)))?;
+        std::fs::write(&path, yaml)?;
 
         tracing::info!("Config saved to {:?}", path);
         Ok(())
@@ -526,13 +526,6 @@ impl SumvoxConfig {
         if self.llm.parameters.max_tokens == 0 {
             return Err(VoiceError::Config(
                 "max_tokens must be greater than 0".to_string(),
-            ));
-        }
-
-        // Validate cost control
-        if self.cost_control.daily_limit_usd < 0.0 {
-            return Err(VoiceError::Config(
-                "daily_limit_usd cannot be negative".to_string(),
             ));
         }
 
@@ -556,12 +549,10 @@ impl SumvoxConfig {
             }
         }
 
-        // Validate summarization prompt template contains required variables (warnings only)
-        if !self.summarization.prompt_template.contains("{max_length}")
-            || !self.summarization.prompt_template.contains("{context}")
-        {
+        // Validate summarization prompt template contains required variable (warning only)
+        if !self.summarization.prompt_template.contains("{context}") {
             tracing::warn!(
-                "Summarization prompt_template missing required variables: {{max_length}} or {{context}}"
+                "Summarization prompt_template missing required variable: {{context}}"
             );
         }
 
@@ -652,9 +643,13 @@ mod tests {
     fn test_default_config() {
         let config = SumvoxConfig::default();
         assert_eq!(config.version, "1.0.0");
-        assert!(config.enabled);
         assert!(!config.llm.providers.is_empty());
         assert!(!config.tts.providers.is_empty());
+        assert_eq!(config.summarization.turns, 1);
+        assert_eq!(
+            config.hooks.claude_code.notification_tts_provider,
+            Some("auto".to_string())
+        );
     }
 
     #[test]
@@ -866,24 +861,26 @@ mod tests {
     }
 
     #[test]
-    fn test_cost_control_at_top_level() {
-        let config = SumvoxConfig::default();
-        assert!(config.cost_control.daily_limit_usd > 0.0);
-    }
-
-    #[test]
     fn test_summarization_config() {
         let config = SumvoxConfig::default();
-        assert_eq!(config.summarization.max_length, 50);
+        assert_eq!(config.summarization.turns, 1);
         assert!(!config.summarization.fallback_message.is_empty());
+        assert!(!config.summarization.prompt_template.contains("{max_length}"));
+        assert!(config.summarization.prompt_template.contains("{context}"));
     }
 
     #[test]
     fn test_claude_code_hook_config() {
         let config = SumvoxConfig::default();
-        assert_eq!(config.hooks.claude_code.initial_delay_ms, 50);
-        assert_eq!(config.hooks.claude_code.retry_delay_ms, 100);
         assert!(!config.hooks.claude_code.notification_filter.is_empty());
+        assert_eq!(
+            config.hooks.claude_code.notification_tts_provider,
+            Some("auto".to_string())
+        );
+        assert_eq!(
+            config.hooks.claude_code.stop_tts_provider,
+            Some("auto".to_string())
+        );
     }
 
     #[test]
@@ -902,5 +899,64 @@ mod tests {
     fn test_config_path_is_xdg() {
         let path = SumvoxConfig::config_path().unwrap();
         assert!(path.to_string_lossy().contains(".config/sumvox"));
+    }
+
+    #[test]
+    fn test_load_yaml_format() {
+        let config_yaml = r#"
+version: "1.0.0"
+llm:
+  providers:
+    - name: google
+      model: gemini-2.5-flash
+      api_key: test-key
+      timeout: 10
+    - name: ollama
+      model: llama3.2
+  parameters:
+    max_tokens: 100
+    temperature: 0.3
+tts:
+  providers:
+    - name: macos
+      voice: Tingting
+      rate: 200
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(config_yaml.as_bytes()).unwrap();
+        let mut path = temp_file.path().to_path_buf();
+
+        // Rename to .yaml extension
+        let yaml_path = path.with_extension("yaml");
+        std::fs::rename(&path, &yaml_path).unwrap();
+        path = yaml_path;
+
+        let config = SumvoxConfig::load_yaml(path).unwrap();
+        assert_eq!(config.version, "1.0.0");
+        assert_eq!(config.llm.providers.len(), 2);
+        assert_eq!(config.llm.providers[0].name, "google");
+        assert_eq!(
+            config.llm.providers[0].api_key,
+            Some("test-key".to_string())
+        );
+        assert_eq!(config.tts.providers[0].name, "macos");
+    }
+
+    #[test]
+    fn test_save_and_load_yaml() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("test-config.yaml");
+
+        let mut config = SumvoxConfig::default();
+        config.set_llm_api_key("google", "test-yaml-key");
+
+        config.save_yaml(path.clone()).unwrap();
+
+        let loaded = SumvoxConfig::load_yaml(path).unwrap();
+        assert_eq!(
+            loaded.llm.providers[0].api_key,
+            Some("test-yaml-key".to_string())
+        );
     }
 }

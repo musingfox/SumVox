@@ -19,7 +19,7 @@ use config::{SumvoxConfig, TtsProviderConfig};
 use error::{Result, VoiceError};
 use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
 use hooks::HookFormat;
-use llm::{CostTracker, GenerationRequest};
+use llm::GenerationRequest;
 use provider_factory::ProviderFactory;
 use tts::{create_single_tts, create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
 
@@ -112,7 +112,6 @@ async fn handle_sum(args: SumArgs) -> Result<()> {
     let user_prompt = config
         .summarization
         .prompt_template
-        .replace("{max_length}", &args.max_length.to_string())
         .replace("{context}", &text);
 
     let system_message = Some(config.summarization.system_message.clone());
@@ -122,7 +121,6 @@ async fn handle_sum(args: SumArgs) -> Result<()> {
         provider: args.provider,
         model: args.model,
         timeout: args.timeout,
-        max_length: args.max_length,
     };
 
     let summary = generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;
@@ -202,7 +200,6 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
             let user_prompt = config
                 .summarization
                 .prompt_template
-                .replace("{max_length}", &config.summarization.max_length.to_string())
                 .replace("{context}", text);
 
             let system_message = Some(config.summarization.system_message.clone());
@@ -232,34 +229,75 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
 // ============================================================================
 
 async fn handle_init(args: InitArgs) -> Result<()> {
-    let config_path = SumvoxConfig::config_path()?;
+    // Check for existing config (YAML or JSON)
+    let yaml_path = SumvoxConfig::yaml_config_path()?;
+    let json_path = SumvoxConfig::config_path()?;
 
-    if config_path.exists() && !args.force {
-        eprintln!("Config file already exists at: {:?}", config_path);
+    if (yaml_path.exists() || json_path.exists()) && !args.force {
+        let existing_path = if yaml_path.exists() {
+            &yaml_path
+        } else {
+            &json_path
+        };
+        eprintln!("Config file already exists at: {:?}", existing_path);
         eprintln!();
         eprintln!("To reset to defaults, use --force:");
         eprintln!("  sumvox init --force");
         return Ok(());
     }
 
-    // Create default config
-    let config = SumvoxConfig::default();
+    // Remove old JSON config if migrating to YAML
+    if args.force && json_path.exists() {
+        std::fs::remove_file(&json_path).ok();
+    }
+
+    // Create default config with recommended settings
+    let mut config = SumvoxConfig::default();
+
+    // Apply recommended settings from config/recommended.yaml
+    config.summarization.system_message =
+        "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action.".to_string();
+    config.summarization.fallback_message = "任務已完成".to_string();
+
+    // Set notification TTS to macos by default (fast and free)
+    config.hooks.claude_code.notification_tts_provider = Some("macos".to_string());
+
+    // Update default TTS to prefer macOS
+    config.tts.providers = vec![
+        TtsProviderConfig {
+            name: "macos".to_string(),
+            model: None,
+            voice: Some("Meijia".to_string()),
+            api_key: None,
+            rate: Some(220),
+            volume: None,
+        },
+        TtsProviderConfig {
+            name: "google".to_string(),
+            model: Some("gemini-2.5-flash-preview-tts".to_string()),
+            voice: Some("Aoede".to_string()),
+            api_key: None,
+            rate: None,
+            volume: None,
+        },
+    ];
+
+    // Save as YAML (preferred format)
     config.save_to_home()?;
 
-    eprintln!("Created config at: {:?}", config_path);
+    eprintln!("✓ Created config at: {:?}", yaml_path);
     eprintln!();
     eprintln!("Next steps:");
     eprintln!("1. Set your preferred LLM API key:");
-    eprintln!("   sumvox credentials set google");
-    eprintln!("   # or: sumvox credentials set anthropic");
-    eprintln!("   # or: sumvox credentials set openai");
+    eprintln!("   export GEMINI_API_KEY=\"your-key-here\"");
+    eprintln!("   # or: sumvox credentials set google");
     eprintln!();
-    eprintln!("2. (Optional) Set Gemini API key for TTS:");
-    eprintln!("   sumvox credentials set google_tts");
+    eprintln!("2. Test voice notification:");
+    eprintln!("   sumvox say \"測試語音通知\"");
     eprintln!();
-    eprintln!("3. Test with:");
-    eprintln!("   sumvox say \"Hello world\"");
-    eprintln!("   sumvox sum \"Long text to summarize...\"");
+    eprintln!("3. Edit config for customization:");
+    eprintln!("   # macOS: open ~/.config/sumvox/config.yaml");
+    eprintln!("   # See config/recommended.yaml for all options");
 
     Ok(())
 }
@@ -405,25 +443,6 @@ async fn generate_summary(
 ) -> Result<String> {
     let llm_config = &config.llm;
 
-    // Initialize cost tracker
-    let cost_tracker = if config.cost_control.usage_tracking {
-        Some(CostTracker::new(&config.cost_control.usage_file))
-    } else {
-        None
-    };
-
-    // Check budget
-    if let Some(ref tracker) = cost_tracker {
-        let daily_limit = config.cost_control.daily_limit_usd;
-        let under_budget = tracker.check_budget(daily_limit).await?;
-
-        if !under_budget {
-            eprintln!("Warning: Daily budget ${:.2} exceeded", daily_limit);
-            tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
-            return Ok(String::new());
-        }
-    }
-
     let request = GenerationRequest {
         system_message,
         prompt: prompt.to_string(),
@@ -461,18 +480,11 @@ async fn generate_summary(
 
                 match provider.generate(&request).await {
                     Ok(response) => {
-                        if let Some(ref tracker) = cost_tracker {
-                            let cost = provider
-                                .estimate_cost(response.input_tokens, response.output_tokens);
-                            tracker
-                                .record_usage(
-                                    &response.model,
-                                    response.input_tokens,
-                                    response.output_tokens,
-                                    cost,
-                                )
-                                .await?;
-                        }
+                        tracing::debug!(
+                            "LLM usage: {} input tokens, {} output tokens",
+                            response.input_tokens,
+                            response.output_tokens
+                        );
                         return Ok(response.text.trim().to_string());
                     }
                     Err(e) => {
@@ -506,19 +518,11 @@ async fn generate_summary(
                 match provider.generate(&request).await {
                     Ok(response) => {
                         tracing::info!("Provider {} succeeded", provider.name());
-
-                        if let Some(ref tracker) = cost_tracker {
-                            let cost = provider
-                                .estimate_cost(response.input_tokens, response.output_tokens);
-                            tracker
-                                .record_usage(
-                                    &response.model,
-                                    response.input_tokens,
-                                    response.output_tokens,
-                                    cost,
-                                )
-                                .await?;
-                        }
+                        tracing::debug!(
+                            "LLM usage: {} input tokens, {} output tokens",
+                            response.input_tokens,
+                            response.output_tokens
+                        );
 
                         return Ok(response.text.trim().to_string());
                     }

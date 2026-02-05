@@ -17,7 +17,7 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
 - 🔊 **Multi-TTS Engines**:
   - Google TTS (high quality, cloud-based)
   - macOS say (local, always available)
-- 💰 **Cost Control**: Daily budget limits and usage tracking
+- 🎨 **Simple Configuration**: YAML format with comments and easy setup
 - 🔄 **Smart Fallback**: Automatic provider switching on failure
 - ✅ **Production Ready**: 90+ automated tests
 - 📝 **Localization**: Native Chinese/English support
@@ -103,55 +103,61 @@ sudo mv sumvox /usr/local/bin/
 
 For the best balance of performance, quality, and cost, we recommend **Google Gemini**:
 
-```json
-{
-  "version": "1.0.0",
-  "enabled": true,
-  "llm": {
-    "providers": [{
-      "name": "google",
-      "model": "gemini-2.5-flash",
-      "api_key": "${GEMINI_API_KEY}",
-      "timeout": 10
-    }],
-    "parameters": {
-      "max_tokens": 10000,
-      "temperature": 0.3
-    }
-  },
-  "tts": {
-    "providers": [
-      {
-        "name": "google",
-        "voice": "Aoede",
-        "api_key": "${GEMINI_API_KEY}",
-        "volume": 75
-      },
-      {
-        "name": "macos",
-        "voice": "Tingting",
-        "rate": 200
-      }
-    ]
-  },
-  "cost_control": {
-    "daily_limit_usd": 0.10,
-    "usage_tracking": true
-  }
-}
+```yaml
+# ~/.config/sumvox/config.yaml
+version: "1.0.0"
+
+llm:
+  providers:
+    - name: google
+      model: gemini-2.5-flash
+      api_key: ${GEMINI_API_KEY}
+      timeout: 10
+    - name: ollama  # Local fallback
+      model: llama3.2
+      timeout: 60
+  parameters:
+    max_tokens: 10000
+    temperature: 0.3
+
+tts:
+  providers:
+    - name: macos      # Fast, offline, free
+      voice: Meijia
+      rate: 220
+    - name: google     # High quality fallback
+      model: gemini-2.5-flash-preview-tts
+      voice: Aoede
+      api_key: ${GEMINI_API_KEY}
+
+summarization:
+  turns: 1  # Only read last conversation turn
+  system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action."
+  fallback_message: "任務已完成"
+
+hooks:
+  claude_code:
+    notification_filter:
+      - permission_prompt
+      - idle_prompt
+      - elicitation_dialog
+    notification_tts_provider: macos  # Use fast local TTS
+    stop_tts_provider: auto           # Try all providers
 ```
 
-**Why Gemini?**
+**Why This Setup?**
 
-- ⚡ **Fast**: 1-2s response time
-- 💰 **Cost-effective**: Low pricing for high-frequency use
-- 🎯 **High quality**: Accurate and fluent summaries
-- 🔊 **Integrated TTS**: One API key for both LLM and TTS
-- ✅ **Fully tested**: Complete test coverage and optimization
+- ⚡ **Fast**: macOS TTS for instant notifications
+- 💰 **Cost-effective**: Free local TTS, Gemini for LLM
+- 🎯 **High quality**: Gemini summaries, multi-provider fallback
+- 🔊 **Flexible**: Easy YAML editing with comments
+- ✅ **Tested**: Fully validated configuration
 
 **⚠️ Note**: Other LLM providers (Anthropic Claude, OpenAI GPT, Ollama) are supported in code but not fully tested yet. Use Gemini for the best experience.
 
-See [config/recommended.json](config/recommended.json) for the complete recommended configuration.
+**Config Format**: YAML is now the preferred format (supports comments). JSON format (`config.json`) is still supported for backward compatibility.
+
+See [config/recommended.yaml](config/recommended.yaml) for the complete configuration with detailed comments.
 
 ## 📚 Documentation
 
@@ -202,38 +208,53 @@ sumvox init --show-path
 
 ### Location
 
-**Standard**: `~/.config/sumvox/config.json` (XDG compliant)
+**Preferred**: `~/.config/sumvox/config.yaml` (YAML format)
+**Legacy**: `~/.config/sumvox/config.json` (JSON format, still supported)
+
+SumVox will automatically load YAML if it exists, otherwise fall back to JSON.
 
 ### Structure
 
-```json
-{
-  "version": "1.0.0",
-  "enabled": true,
-  "llm": {
-    "providers": [/* LLM provider array with fallback */],
-    "parameters": { "max_tokens": 10000, "temperature": 0.3 }
-  },
-  "tts": {
-    "providers": [/* TTS provider array with fallback */]
-  },
-  "summarization": {
-    "max_length": 50,
-    "turns": 1,
-    "prompt_template": "..."
-  },
-  "hooks": {
-    "claude_code": {
-      "initial_delay_ms": 50,
-      "notification_filter": ["permission_prompt", "idle_prompt"]
-    }
-  },
-  "cost_control": {
-    "daily_limit_usd": 0.10,
-    "usage_tracking": true
-  }
-}
+```yaml
+version: "1.0.0"
+
+llm:
+  providers:  # LLM provider array with fallback
+    - name: google
+      model: gemini-2.5-flash
+      api_key: ${GEMINI_API_KEY}
+      timeout: 10
+  parameters:
+    max_tokens: 10000
+    temperature: 0.3
+
+tts:
+  providers:  # TTS provider array with fallback
+    - name: macos
+      voice: Meijia
+      rate: 220
+
+summarization:
+  turns: 1  # Read last N conversation turns
+  system_message: "..."
+  prompt_template: "..."
+  fallback_message: "任務已完成"
+
+hooks:
+  claude_code:
+    notification_filter:
+      - permission_prompt
+      - idle_prompt
+    notification_tts_provider: macos  # Or "auto" for fallback chain
+    stop_tts_provider: auto
 ```
+
+### Key Changes from Previous Versions
+
+- **Simplified**: Removed `enabled`, `max_length`, `initial_delay_ms`, `retry_delay_ms`, `cost_control`
+- **YAML Format**: Now the preferred format with inline comments support
+- **Sane Defaults**: Less configuration needed, works out of the box
+- **Backward Compatible**: Old JSON configs still work (deprecated fields are ignored)
 
 ### LLM Providers
 

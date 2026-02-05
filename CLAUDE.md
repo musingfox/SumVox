@@ -35,10 +35,10 @@ echo '{"session_id":"test",...}' | cargo run
 
 ### Configuration
 
-- **Main config**: `~/.config/sumvox/config.json`
+- **Main config**: `~/.config/sumvox/config.yaml` (preferred) or `config.json` (legacy)
 - **Hook script**: `.claude/hooks/run_sumvox_hook.sh`
 - **Binary location**: `target/release/sumvox`
-- **Recommended config**: `config/recommended.json`
+- **Recommended config**: `config/recommended.yaml`
 
 ### Environment Variables
 
@@ -97,11 +97,11 @@ sumvox --tts google --tts-voice Aoede
 
 ### Configuration Format
 
-See `~/.config/sumvox/config.json`:
+See `~/.config/sumvox/config.yaml`:
 - LLM providers array with fallback chain
 - TTS providers array with fallback chain
-- Summarization settings (max_length, prompt_template)
-- Cost control (daily_limit_usd, usage_tracking)
+- Summarization settings (turns, prompt_template)
+- Hook-specific configurations (notification_filter, tts_provider overrides)
 
 ## Project Structure
 
@@ -118,7 +118,8 @@ sumvox/
 │   ├── tts/              # TTS engines
 │   └── provider_factory.rs
 ├── config/
-│   └── recommended.json  # Recommended Gemini config
+│   ├── recommended.yaml  # Recommended YAML config
+│   └── recommended.json  # Legacy JSON config
 ├── .github/
 │   ├── workflows/        # CI/CD
 │   └── ISSUE_TEMPLATE/   # Issue templates
@@ -147,8 +148,8 @@ git push origin v1.0.0
 
 ## Recommended Configuration
 
-See `config/recommended.json` for the Gemini-based setup:
+See `config/recommended.yaml` for the Gemini-based setup:
 - Google Gemini for LLM (tested and optimized)
-- Google TTS + macOS say for voice output
-- Daily budget limit: $0.10
-- Usage tracking enabled
+- macOS TTS for notifications (fast and free)
+- Google TTS for summaries (high quality)
+- YAML format with inline comments for easy customization

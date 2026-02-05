@@ -1,0 +1,89 @@
+# SumVox Configuration
+# Location: ~/.config/sumvox/config.yaml
+# Documentation: https://github.com/musingfox/sumvox
+
+version: "1.0.0"
+
+# LLM Provider Configuration (fallback chain - try in order)
+llm:
+  # Provider list: tried in order until one succeeds
+  providers:
+    # Google Gemini (Recommended: fast, cheap, reliable)
+    - name: google
+      model: gemini-2.5-flash
+      api_key: ${GEMINI_API_KEY}  # Or set GEMINI_API_KEY environment variable
+      timeout: 10  # seconds
+
+    # Anthropic Claude (High quality, more expensive)
+    # - name: anthropic
+    #   model: claude-haiku-4-5-20251001
+    #   api_key: ${ANTHROPIC_API_KEY}
+    #   timeout: 10
+
+    # OpenAI GPT (Alternative, mid-tier pricing)
+    # - name: openai
+    #   model: gpt-4o-mini
+    #   api_key: ${OPENAI_API_KEY}
+    #   timeout: 10
+
+    # Ollama (Local, free, slower - good fallback)
+    - name: ollama
+      model: llama3.2
+      # base_url: http://localhost:11434  # Optional: custom endpoint
+      timeout: 60  # Local inference needs more time
+
+  # LLM Parameters (shared across all providers)
+  parameters:
+    max_tokens: 10000
+    temperature: 0.3
+    disable_thinking: false  # Set true to reduce token usage
+
+# TTS Provider Configuration (fallback chain - try in order)
+tts:
+  providers:
+    # macOS Built-in TTS (Free, fast, offline)
+    - name: macos
+      voice: Meijia      # Chinese female voice (alternatives: Tingting)
+      rate: 220          # Speech rate (90-300, default: 200)
+      # volume: 100      # Optional volume (0-100)
+
+    # Google TTS (High quality, requires API key)
+    # - name: google
+    #   model: gemini-2.5-flash-preview-tts  # Required for Google TTS
+    #   voice: Aoede     # Options: Aoede, Charon, Fenrir, Kore, Puck, Orus
+    #   api_key: ${GEMINI_API_KEY}
+    #   # volume: 100
+
+# Summarization Settings (used by Stop hook and sum command)
+summarization:
+  # Number of conversation turns to read (1 = last turn only)
+  turns: 1
+
+  # System message for LLM
+  system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback in Traditional Chinese like an Engineer in Taiwan, keep your tone breezy, focus on result and next action."
+
+  # Prompt template ({context} is required)
+  prompt_template: "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
+
+  # Fallback message when LLM fails
+  fallback_message: "任務已完成"
+
+# Hook-specific Configuration
+hooks:
+  claude_code:
+    # Notification types to speak (empty = disabled, ["*"] = all)
+    # Available: permission_prompt, idle_prompt, elicitation_dialog, auth_success
+    notification_filter:
+      - permission_prompt
+      - idle_prompt
+      - elicitation_dialog
+
+    # TTS provider for Notification hook
+    # "auto" = use TTS fallback chain
+    # "macos" = force macOS TTS (fast, offline)
+    # "google" = force Google TTS (high quality)
+    notification_tts_provider: macos
+
+    # TTS provider for Stop hook
+    # "auto" = use TTS fallback chain (recommended)
+    stop_tts_provider: auto

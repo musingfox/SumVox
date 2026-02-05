@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::config::SumvoxConfig;
 use crate::error::Result;
-use crate::llm::{CostTracker, GenerationRequest};
+use crate::llm::GenerationRequest;
 use crate::provider_factory::ProviderFactory;
 use crate::transcript::TranscriptReader;
 use crate::tts::{create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
@@ -60,7 +60,6 @@ pub struct LlmOptions {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub timeout: u64,
-    pub max_length: usize,
 }
 
 impl Default for LlmOptions {
@@ -69,7 +68,6 @@ impl Default for LlmOptions {
             provider: None,
             model: None,
             timeout: 10,
-            max_length: 50,
         }
     }
 }
@@ -90,11 +88,6 @@ pub async fn process(
     // Prevent infinite loop - if stop_hook is active, exit immediately
     if input.stop_hook_active.unwrap_or(false) {
         tracing::warn!("Stop hook already active, preventing infinite loop");
-        return Ok(());
-    }
-
-    if !config.enabled {
-        tracing::info!("Voice notifications disabled in config");
         return Ok(());
     }
 
@@ -187,24 +180,20 @@ async fn handle_stop(
     let transcript_path = PathBuf::from(&input.transcript_path);
     tracing::debug!("Reading transcript from: {:?}", transcript_path);
 
-    // Initial delay to let filesystem sync
-    let initial_delay = Duration::from_millis(config.hooks.claude_code.initial_delay_ms);
-    tracing::debug!(
-        "Waiting {}ms for filesystem sync",
-        config.hooks.claude_code.initial_delay_ms
-    );
+    // Initial delay to let filesystem sync (hardcoded 50ms)
+    const INITIAL_DELAY_MS: u64 = 50;
+    let initial_delay = Duration::from_millis(INITIAL_DELAY_MS);
+    tracing::debug!("Waiting {}ms for filesystem sync", INITIAL_DELAY_MS);
     tokio::time::sleep(initial_delay).await;
 
     let turns = config.summarization.turns.max(1); // At least 1 turn
     let mut texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
 
-    // Retry once if empty (race condition workaround)
+    // Retry once if empty (race condition workaround, hardcoded 100ms)
     if texts.is_empty() {
-        tracing::debug!(
-            "No texts found, retrying after {}ms",
-            config.hooks.claude_code.retry_delay_ms
-        );
-        let retry_delay = Duration::from_millis(config.hooks.claude_code.retry_delay_ms);
+        const RETRY_DELAY_MS: u64 = 100;
+        tracing::debug!("No texts found, retrying after {}ms", RETRY_DELAY_MS);
+        let retry_delay = Duration::from_millis(RETRY_DELAY_MS);
         tokio::time::sleep(retry_delay).await;
         texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
     }
@@ -223,11 +212,9 @@ async fn handle_stop(
     );
 
     // Build summarization prompt
-    let max_length = llm_opts.max_length;
     let user_prompt = config
         .summarization
         .prompt_template
-        .replace("{max_length}", &max_length.to_string())
         .replace("{context}", &context);
 
     let system_message = Some(config.summarization.system_message.clone());
@@ -262,28 +249,6 @@ async fn generate_summary(
     prompt: &str,
 ) -> Result<String> {
     let llm_config = &config.llm;
-
-    // Initialize cost tracker
-    let cost_tracker = if config.cost_control.usage_tracking {
-        Some(CostTracker::new(&config.cost_control.usage_file))
-    } else {
-        None
-    };
-
-    // Check budget
-    if let Some(ref tracker) = cost_tracker {
-        let daily_limit = config.cost_control.daily_limit_usd;
-        let under_budget = tracker.check_budget(daily_limit).await?;
-
-        if !under_budget {
-            eprintln!(
-                "Warning: Daily budget ${:.2} exceeded, voice disabled",
-                daily_limit
-            );
-            tracing::warn!("Daily budget limit ${} exceeded", daily_limit);
-            return Ok(String::new());
-        }
-    }
 
     let request = GenerationRequest {
         system_message,
@@ -322,18 +287,11 @@ async fn generate_summary(
 
                 match provider.generate(&request).await {
                     Ok(response) => {
-                        if let Some(ref tracker) = cost_tracker {
-                            let cost = provider
-                                .estimate_cost(response.input_tokens, response.output_tokens);
-                            tracker
-                                .record_usage(
-                                    &response.model,
-                                    response.input_tokens,
-                                    response.output_tokens,
-                                    cost,
-                                )
-                                .await?;
-                        }
+                        tracing::debug!(
+                            "LLM usage: {} input tokens, {} output tokens",
+                            response.input_tokens,
+                            response.output_tokens
+                        );
                         return Ok(response.text.trim().to_string());
                     }
                     Err(e) => {
@@ -367,19 +325,11 @@ async fn generate_summary(
                 match provider.generate(&request).await {
                     Ok(response) => {
                         tracing::info!("Provider {} succeeded", provider.name());
-
-                        if let Some(ref tracker) = cost_tracker {
-                            let cost = provider
-                                .estimate_cost(response.input_tokens, response.output_tokens);
-                            tracker
-                                .record_usage(
-                                    &response.model,
-                                    response.input_tokens,
-                                    response.output_tokens,
-                                    cost,
-                                )
-                                .await?;
-                        }
+                        tracing::debug!(
+                            "LLM usage: {} input tokens, {} output tokens",
+                            response.input_tokens,
+                            response.output_tokens
+                        );
 
                         return Ok(response.text.trim().to_string());
                     }
@@ -629,6 +579,5 @@ mod tests {
         assert!(opts.provider.is_none());
         assert!(opts.model.is_none());
         assert_eq!(opts.timeout, 10);
-        assert_eq!(opts.max_length, 50);
     }
 }

@@ -3,7 +3,6 @@
 use async_trait::async_trait;
 
 pub use anthropic::AnthropicProvider;
-pub use cost_tracker::CostTracker;
 pub use gemini::GeminiProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
