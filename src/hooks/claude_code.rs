@@ -36,6 +36,7 @@ impl ClaudeCodeInput {
 }
 
 /// TTS options for hook handlers
+#[derive(Clone)]
 pub struct TtsOptions {
     pub engine: String,
     pub voice: Option<String>,
@@ -160,7 +161,15 @@ async fn handle_notification(
 
     // Speak the notification message directly (no LLM processing)
     tracing::info!("Speaking notification: {}", message);
-    speak_text(config, tts_opts, message).await?;
+
+    // Use configured notification TTS provider if specified
+    let mut notification_tts_opts = tts_opts.clone();
+    if let Some(ref provider) = config.hooks.claude_code.notification_tts_provider {
+        tracing::info!("Using configured notification TTS provider: {}", provider);
+        notification_tts_opts.engine = provider.clone();
+    }
+
+    speak_text(config, &notification_tts_opts, message).await?;
 
     Ok(())
 }
@@ -226,13 +235,20 @@ async fn handle_stop(
     // Generate summary with LLM
     let summary = generate_summary(config, llm_opts, system_message, &user_prompt).await?;
 
+    // Use configured stop TTS provider if specified
+    let mut stop_tts_opts = tts_opts.clone();
+    if let Some(ref provider) = config.hooks.claude_code.stop_tts_provider {
+        tracing::info!("Using configured stop TTS provider: {}", provider);
+        stop_tts_opts.engine = provider.clone();
+    }
+
     if summary.is_empty() {
         tracing::warn!("LLM returned empty summary, using fallback");
         let fallback = &config.summarization.fallback_message;
-        speak_text(config, tts_opts, fallback).await?;
+        speak_text(config, &stop_tts_opts, fallback).await?;
     } else {
         tracing::info!("Generated summary: {}", summary);
-        speak_text(config, tts_opts, &summary).await?;
+        speak_text(config, &stop_tts_opts, &summary).await?;
     }
 
     Ok(())

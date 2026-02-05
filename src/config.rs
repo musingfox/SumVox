@@ -385,6 +385,16 @@ pub struct ClaudeCodeHookConfig {
     /// Available: "permission_prompt", "idle_prompt", "elicitation_dialog", "auth_success", "*"
     #[serde(default = "default_notification_filter")]
     pub notification_filter: Vec<String>,
+
+    /// TTS provider for Notification hook (e.g., "macos", "google")
+    /// If not specified, uses the default TTS provider fallback chain
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification_tts_provider: Option<String>,
+
+    /// TTS provider for Stop hook (e.g., "google", "macos")
+    /// If not specified, uses the default TTS provider fallback chain
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_tts_provider: Option<String>,
 }
 
 impl Default for ClaudeCodeHookConfig {
@@ -393,6 +403,8 @@ impl Default for ClaudeCodeHookConfig {
             initial_delay_ms: default_initial_delay_ms(),
             retry_delay_ms: default_retry_delay_ms(),
             notification_filter: default_notification_filter(),
+            notification_tts_provider: None,
+            stop_tts_provider: None,
         }
     }
 }
