@@ -2,7 +2,7 @@ class Sumvox < Formula
   desc "Intelligent voice notifications for AI coding tools"
   homepage "https://github.com/musingfox/sumvox"
   url "https://github.com/musingfox/sumvox/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "PLACEHOLDER_SHA256"  # Will be updated during release
+  sha256 "6e8de85f673ca5072f37cadf20518edc7d4835e866cda6f68476b63d132d7807"
   license "MIT"
   version "1.0.0"
 
@@ -18,7 +18,8 @@ class Sumvox < Formula
 
     # Install documentation
     doc.install "README.md"
-    doc.install "config/recommended.json"
+    doc.install "QUICKSTART.md"
+    doc.install "config/recommended.yaml"
   end
 
   def post_install
@@ -31,26 +32,30 @@ class Sumvox < Formula
       SumVox has been installed! 🎉
 
       Next steps:
-      1. Set API credentials:
-         sumvox credentials set google
+      1. Edit config file and set your API keys:
+         open ~/.config/sumvox/config.yaml
+         # Replace ${PROVIDER_API_KEY} with your actual API keys
 
-      2. Register Claude Code hook in ~/.claude/settings.json:
+      2. Test voice notification:
+         sumvox say "Hello, SumVox!"
+
+      3. Configure Claude Code hook in ~/.claude/settings.json:
          {
            "hooks": {
              "Notification": [{
                "matcher": "",
-               "hooks": [{
-                 "type": "command",
-                 "command": "#{bin}/sumvox"
-               }]
+               "hooks": [{"type": "command", "command": "#{bin}/sumvox"}]
+             }],
+             "Stop": [{
+               "matcher": "",
+               "hooks": [{"type": "command", "command": "#{bin}/sumvox"}]
              }]
            }
          }
 
-      Config location: ~/.config/sumvox/config.json
-      Recommended config: #{doc}/recommended.json
-
-      For more details: #{doc}/README.md
+      Config: ~/.config/sumvox/config.yaml
+      Quick Start: #{doc}/QUICKSTART.md
+      Full Guide: #{doc}/README.md
     EOS
   end
 
