@@ -7,24 +7,29 @@ version: "1.0.0"
 # LLM Provider Configuration (fallback chain - try in order)
 llm:
   # Provider list: tried in order until one succeeds
+  # Uncomment and configure the providers you want to use
+  # Edit api_key: ${PROVIDER_API_KEY} with your actual API key
   providers:
     # Google Gemini (Recommended: fast, cheap, reliable)
     - name: google
       model: gemini-2.5-flash
-      api_key: ${GEMINI_API_KEY}  # Or set GEMINI_API_KEY environment variable
+      api_key: ${PROVIDER_API_KEY}  # Get from: https://ai.google.dev
+      # base_url: https://generativelanguage.googleapis.com/v1beta  # Optional: custom API endpoint
       timeout: 10  # seconds
 
-    # Anthropic Claude (High quality, more expensive)
-    # - name: anthropic
-    #   model: claude-haiku-4-5-20251001
-    #   api_key: ${ANTHROPIC_API_KEY}
-    #   timeout: 10
+    # Anthropic Claude (High quality, best reasoning)
+    - name: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key: ${PROVIDER_API_KEY}  # Get from: https://console.anthropic.com
+      # base_url: https://api.anthropic.com/v1  # Optional: custom API endpoint (e.g., proxy)
+      timeout: 10
 
-    # OpenAI GPT (Alternative, mid-tier pricing)
-    # - name: openai
-    #   model: gpt-4o-mini
-    #   api_key: ${OPENAI_API_KEY}
-    #   timeout: 10
+    # OpenAI GPT (Fast and capable)
+    - name: openai
+      model: gpt-5-nano
+      api_key: ${PROVIDER_API_KEY}  # Get from: https://platform.openai.com
+      # base_url: https://api.openai.com/v1  # Optional: for Azure OpenAI or compatible APIs
+      timeout: 10
 
     # Ollama (Local, free, slower - good fallback)
     - name: ollama

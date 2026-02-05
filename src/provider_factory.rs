@@ -82,9 +82,14 @@ impl ProviderFactory {
                         LlmProviderConfig::env_var_name("google")
                     ))
                 })?;
-                Ok(Box::new(GeminiProvider::new(
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string());
+                Ok(Box::new(GeminiProvider::with_base_url(
                     api_key,
                     config.model.clone(),
+                    base_url,
                     timeout,
                 )))
             }
@@ -95,9 +100,14 @@ impl ProviderFactory {
                         LlmProviderConfig::env_var_name("anthropic")
                     ))
                 })?;
-                Ok(Box::new(AnthropicProvider::new(
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string());
+                Ok(Box::new(AnthropicProvider::with_base_url(
                     api_key,
                     config.model.clone(),
+                    base_url,
                     timeout,
                 )))
             }
@@ -108,9 +118,14 @@ impl ProviderFactory {
                         LlmProviderConfig::env_var_name("openai")
                     ))
                 })?;
-                Ok(Box::new(OpenAIProvider::new(
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+                Ok(Box::new(OpenAIProvider::with_base_url(
                     api_key,
                     config.model.clone(),
+                    base_url,
                     timeout,
                 )))
             }

@@ -71,14 +71,30 @@ struct Usage {
 pub struct AnthropicProvider {
     api_key: String,
     model: String,
+    base_url: String,
     timeout: Duration,
 }
 
 impl AnthropicProvider {
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
+        Self::with_base_url(
+            api_key,
+            model,
+            ANTHROPIC_API_BASE.to_string(),
+            timeout,
+        )
+    }
+
+    pub fn with_base_url(
+        api_key: String,
+        model: String,
+        base_url: String,
+        timeout: Duration,
+    ) -> Self {
         Self {
             api_key,
             model,
+            base_url,
             timeout,
         }
     }
@@ -109,7 +125,7 @@ impl LlmProvider for AnthropicProvider {
             ));
         }
 
-        let url = format!("{}/messages", ANTHROPIC_API_BASE);
+        let url = format!("{}/messages", self.base_url);
 
         // Note: API defaults to NOT enabling thinking unless thinking object is sent
         // disable_thinking = true: don't send thinking object (API default)

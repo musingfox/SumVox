@@ -25,14 +25,17 @@ sumvox init
 
 ### 2. Set API Key
 
-Add to `~/.zshrc` or `~/.bashrc`:
+Edit your config file:
 ```bash
-export GEMINI_API_KEY="your-key"  # Get from https://ai.google.dev
+open ~/.config/sumvox/config.yaml
 ```
 
-Then reload:
-```bash
-source ~/.zshrc
+Replace `${PROVIDER_API_KEY}` with your actual API key:
+```yaml
+providers:
+  - name: google
+    model: gemini-2.5-flash
+    api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
 ```
 
 ### 3. Test Voice
@@ -159,9 +162,12 @@ hooks:
 
 ### "No API key found"
 ```bash
-echo $GEMINI_API_KEY  # Should print your key
-# If empty:
-export GEMINI_API_KEY="your-key"
+# Check your config file
+cat ~/.config/sumvox/config.yaml
+
+# Make sure api_key is set (not ${PROVIDER_API_KEY})
+# Edit config:
+open ~/.config/sumvox/config.yaml
 ```
 
 ### "No audio"

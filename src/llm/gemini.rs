@@ -85,14 +85,30 @@ struct UsageMetadata {
 pub struct GeminiProvider {
     api_key: String,
     model: String,
+    base_url: String,
     timeout: Duration,
 }
 
 impl GeminiProvider {
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
+        Self::with_base_url(
+            api_key,
+            model,
+            GEMINI_API_BASE.to_string(),
+            timeout,
+        )
+    }
+
+    pub fn with_base_url(
+        api_key: String,
+        model: String,
+        base_url: String,
+        timeout: Duration,
+    ) -> Self {
         Self {
             api_key,
             model,
+            base_url,
             timeout,
         }
     }
@@ -135,7 +151,7 @@ impl LlmProvider for GeminiProvider {
         let model_name = self.extract_model_name();
         let url = format!(
             "{}/models/{}:generateContent?key={}",
-            GEMINI_API_BASE, model_name, self.api_key
+            self.base_url, model_name, self.api_key
         );
 
         let system_instruction = request

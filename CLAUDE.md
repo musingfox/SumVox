@@ -43,14 +43,11 @@ echo '{"session_id":"test",...}' | cargo run
 ### Environment Variables
 
 ```bash
-# LLM API Keys
-export GEMINI_API_KEY="AIza..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-
-# Logging
+# Logging (optional)
 export RUST_LOG=info  # or debug, trace
 ```
+
+**Note:** API keys are configured in `~/.config/sumvox/config.yaml`, not as environment variables.
 
 ## Testing
 

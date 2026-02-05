@@ -67,14 +67,25 @@ struct Usage {
 pub struct OpenAIProvider {
     api_key: String,
     model: String,
+    base_url: String,
     timeout: Duration,
 }
 
 impl OpenAIProvider {
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
+        Self::with_base_url(api_key, model, OPENAI_API_BASE.to_string(), timeout)
+    }
+
+    pub fn with_base_url(
+        api_key: String,
+        model: String,
+        base_url: String,
+        timeout: Duration,
+    ) -> Self {
         Self {
             api_key,
             model,
+            base_url,
             timeout,
         }
     }
@@ -115,7 +126,7 @@ impl LlmProvider for OpenAIProvider {
         }
 
         let model_name = self.extract_model_name();
-        let url = format!("{}/chat/completions", OPENAI_API_BASE);
+        let url = format!("{}/chat/completions", self.base_url);
 
         let mut messages = Vec::new();
 

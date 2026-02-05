@@ -287,16 +287,17 @@ async fn handle_init(args: InitArgs) -> Result<()> {
     eprintln!("✓ Created config at: {:?}", yaml_path);
     eprintln!();
     eprintln!("Next steps:");
-    eprintln!("1. Set your LLM API key:");
-    eprintln!("   export GEMINI_API_KEY=\"your-key-here\"");
-    eprintln!("   # Get your key from: https://ai.google.dev");
+    eprintln!("1. Edit config file and set your API keys:");
+    eprintln!("   open ~/.config/sumvox/config.yaml");
+    eprintln!(r#"   # Replace ${{PROVIDER_API_KEY}} with your actual API keys"#);
+    eprintln!("   # Google: https://ai.google.dev");
+    eprintln!("   # Anthropic: https://console.anthropic.com");
+    eprintln!("   # OpenAI: https://platform.openai.com");
     eprintln!();
     eprintln!("2. Test voice notification:");
     eprintln!("   sumvox say \"Hello, SumVox!\"");
     eprintln!();
-    eprintln!("3. Customize config (optional):");
-    eprintln!("   open ~/.config/sumvox/config.yaml");
-    eprintln!("   # See config/recommended.yaml for examples");
+    eprintln!("3. See config/recommended.yaml for more examples");
 
     Ok(())
 }

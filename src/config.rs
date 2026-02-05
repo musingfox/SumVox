@@ -171,6 +171,20 @@ impl Default for LlmConfig {
                     timeout: default_timeout(),
                 },
                 LlmProviderConfig {
+                    name: "anthropic".to_string(),
+                    model: "claude-haiku-4-5-20251001".to_string(),
+                    api_key: None,
+                    base_url: None,
+                    timeout: default_timeout(),
+                },
+                LlmProviderConfig {
+                    name: "openai".to_string(),
+                    model: "gpt-5-nano".to_string(),
+                    api_key: None,
+                    base_url: None,
+                    timeout: default_timeout(),
+                },
+                LlmProviderConfig {
                     name: "ollama".to_string(),
                     model: "llama3.2".to_string(),
                     api_key: None,

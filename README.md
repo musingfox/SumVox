@@ -79,18 +79,23 @@ This creates `~/.config/sumvox/config.yaml` with sensible defaults:
 
 #### Step 2: Set API Key
 
-Add to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
+Edit your config file:
 
 ```bash
-export GEMINI_API_KEY="your-key-here"
+open ~/.config/sumvox/config.yaml
 ```
 
-Get your API key from: https://ai.google.dev
+Replace `${PROVIDER_API_KEY}` with your actual API key. For example, to use Google Gemini:
 
-Then reload your shell:
-```bash
-source ~/.zshrc  # or source ~/.bashrc
+```yaml
+llm:
+  providers:
+    - name: google
+      model: gemini-2.5-flash
+      api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
 ```
+
+You can configure multiple providers. The system will try them in order until one succeeds.
 
 #### Step 3: Test Voice Notification
 
@@ -566,25 +571,26 @@ hooks:
 
 ### Environment Variables
 
-Set these in `~/.zshrc` or `~/.bashrc`:
+Optional debug logging can be enabled:
 
 ```bash
-export GEMINI_API_KEY="your-key"
-export ANTHROPIC_API_KEY="your-key"  # Optional
-export OPENAI_API_KEY="your-key"     # Optional
-export RUST_LOG="info"                # Optional: debug, info, warn
+export RUST_LOG="info"  # Options: debug, info, warn, error
 ```
+
+**Note:** API keys should be configured in `~/.config/sumvox/config.yaml`, not as environment variables.
 
 ### Troubleshooting
 
 **Problem: "No API key found"**
 ```bash
-# Check if environment variable is set
-echo $GEMINI_API_KEY
+# Check your config file
+cat ~/.config/sumvox/config.yaml
 
-# If empty, add to ~/.zshrc or ~/.bashrc:
-export GEMINI_API_KEY="your-api-key-here"
-source ~/.zshrc
+# Make sure api_key is set correctly (not ${PROVIDER_API_KEY})
+# Edit the config file:
+open ~/.config/sumvox/config.yaml
+
+# Replace ${PROVIDER_API_KEY} with your actual API key
 ```
 
 **Problem: "Provider not available"**
