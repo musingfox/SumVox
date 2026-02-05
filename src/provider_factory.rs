@@ -82,10 +82,9 @@ impl ProviderFactory {
                         LlmProviderConfig::env_var_name("google")
                     ))
                 })?;
-                let base_url = config
-                    .base_url
-                    .clone()
-                    .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string());
+                let base_url = config.base_url.clone().unwrap_or_else(|| {
+                    "https://generativelanguage.googleapis.com/v1beta".to_string()
+                });
                 Ok(Box::new(GeminiProvider::with_base_url(
                     api_key,
                     config.model.clone(),

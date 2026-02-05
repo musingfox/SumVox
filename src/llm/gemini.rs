@@ -93,12 +93,7 @@ pub struct GeminiProvider {
 impl GeminiProvider {
     #[allow(dead_code)]
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
-        Self::with_base_url(
-            api_key,
-            model,
-            GEMINI_API_BASE.to_string(),
-            timeout,
-        )
+        Self::with_base_url(api_key, model, GEMINI_API_BASE.to_string(), timeout)
     }
 
     pub fn with_base_url(

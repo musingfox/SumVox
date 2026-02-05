@@ -102,7 +102,10 @@ pub fn create_tts_from_config(
 }
 
 /// Create a single TTS provider from config
-pub fn create_single_tts(config: &TtsProviderConfig, is_async: bool) -> Result<Box<dyn TtsProvider>> {
+pub fn create_single_tts(
+    config: &TtsProviderConfig,
+    is_async: bool,
+) -> Result<Box<dyn TtsProvider>> {
     let volume = config.volume.unwrap_or(100);
 
     match config.name.to_lowercase().as_str() {

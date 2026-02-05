@@ -479,7 +479,10 @@ async fn speak_with_provider_fallback(
 
         // Check availability
         if !provider.is_available() {
-            tracing::debug!("TTS provider {} not available, trying next", provider.name());
+            tracing::debug!(
+                "TTS provider {} not available, trying next",
+                provider.name()
+            );
             last_error = Some(format!("{}: not available", provider.name()));
             continue;
         }
@@ -517,7 +520,10 @@ async fn speak_with_provider_fallback(
 
     // All providers failed
     if let Some(err) = last_error {
-        tracing::warn!("All TTS providers failed. Last error: {}. Notification will be silent.", err);
+        tracing::warn!(
+            "All TTS providers failed. Last error: {}. Notification will be silent.",
+            err
+        );
     } else {
         tracing::warn!("No TTS providers available. Notification will be silent.");
     }

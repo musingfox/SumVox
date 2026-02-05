@@ -49,7 +49,8 @@ fn default_temperature() -> f32 {
 }
 
 fn default_prompt_template() -> String {
-    "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:".to_string()
+    "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
+        .to_string()
 }
 
 fn default_system_message() -> String {
@@ -570,14 +571,11 @@ impl SumvoxConfig {
 
         // Validate summarization prompt template contains required variable (warning only)
         if !self.summarization.prompt_template.contains("{context}") {
-            tracing::warn!(
-                "Summarization prompt_template missing required variable: {{context}}"
-            );
+            tracing::warn!("Summarization prompt_template missing required variable: {{context}}");
         }
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -798,7 +796,10 @@ mod tests {
         let config = SumvoxConfig::default();
         assert_eq!(config.summarization.turns, 1);
         assert!(!config.summarization.fallback_message.is_empty());
-        assert!(!config.summarization.prompt_template.contains("{max_length}"));
+        assert!(!config
+            .summarization
+            .prompt_template
+            .contains("{max_length}"));
         assert!(config.summarization.prompt_template.contains("{context}"));
     }
 
