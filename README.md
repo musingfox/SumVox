@@ -26,6 +26,8 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
 
 ## 🚀 Quick Start
 
+> **⚡ Super Quick Setup?** See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
+
 ### Installation
 
 #### Homebrew (macOS)
