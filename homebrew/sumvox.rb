@@ -12,10 +12,6 @@ class Sumvox < Formula
     system "cargo", "build", "--release"
     bin.install "target/release/sumvox"
 
-    # Install hook script
-    (prefix/"hooks").mkpath
-    (prefix/"hooks").install ".claude/hooks/run_sumvox_hook.sh"
-
     # Install documentation
     doc.install "README.md"
     doc.install "QUICKSTART.md"
