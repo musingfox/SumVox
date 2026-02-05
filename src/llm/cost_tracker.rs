@@ -35,6 +35,7 @@ pub struct CostTracker {
     usage_file: PathBuf,
 }
 
+#[allow(dead_code)]
 impl CostTracker {
     pub fn new(usage_file: impl AsRef<Path>) -> Self {
         let usage_file =

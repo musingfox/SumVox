@@ -8,6 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
+#[allow(dead_code)]
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 #[derive(Debug, Serialize)]
@@ -90,6 +91,7 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
+    #[allow(dead_code)]
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
         Self::with_base_url(
             api_key,

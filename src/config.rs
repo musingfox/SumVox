@@ -92,6 +92,7 @@ pub struct LlmProviderConfig {
 
 impl LlmProviderConfig {
     /// Check if this provider has the required credentials
+    #[allow(dead_code)]
     pub fn has_credentials(&self) -> bool {
         match self.name.to_lowercase().as_str() {
             "ollama" | "local" => true, // No API key needed
@@ -232,6 +233,7 @@ pub struct TtsProviderConfig {
 
 impl TtsProviderConfig {
     /// Check if this TTS provider has the required configuration
+    #[allow(dead_code)]
     pub fn is_configured(&self) -> bool {
         match self.name.to_lowercase().as_str() {
             "macos" | "say" => true, // Always available on macOS
@@ -448,6 +450,7 @@ impl SumvoxConfig {
     }
 
     /// Load configuration from a specific path (auto-detect format)
+    #[allow(dead_code)]
     pub fn load(path: PathBuf) -> Result<Self> {
         if path.extension().and_then(|s| s.to_str()) == Some("yaml")
             || path.extension().and_then(|s| s.to_str()) == Some("yml")
@@ -488,6 +491,7 @@ impl SumvoxConfig {
     }
 
     /// Save configuration to a specific path (auto-detect format)
+    #[allow(dead_code)]
     pub fn save(&self, path: PathBuf) -> Result<()> {
         if path.extension().and_then(|s| s.to_str()) == Some("yaml")
             || path.extension().and_then(|s| s.to_str()) == Some("yml")
@@ -499,6 +503,7 @@ impl SumvoxConfig {
     }
 
     /// Save configuration to a JSON file
+    #[allow(dead_code)]
     pub fn save_json(&self, path: PathBuf) -> Result<()> {
         // Ensure directory exists
         if let Some(parent) = path.parent() {

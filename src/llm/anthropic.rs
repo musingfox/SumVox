@@ -8,6 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
+#[allow(dead_code)]
 const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -76,6 +77,7 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
+    #[allow(dead_code)]
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
         Self::with_base_url(
             api_key,

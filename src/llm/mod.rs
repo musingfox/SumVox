@@ -29,6 +29,7 @@ pub struct GenerationResponse {
     pub text: String,
     pub input_tokens: u32,
     pub output_tokens: u32,
+    #[allow(dead_code)]
     pub model: String,
 }
 
@@ -44,6 +45,7 @@ pub trait LlmProvider: Send + Sync {
     async fn generate(&self, request: &GenerationRequest) -> LlmResult<GenerationResponse>;
 
     /// Estimate cost for a request
+    #[allow(dead_code)]
     fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64;
 }
 

@@ -8,6 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
+#[allow(dead_code)]
 const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 
 #[derive(Debug, Serialize)]
@@ -72,6 +73,7 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
+    #[allow(dead_code)]
     pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
         Self::with_base_url(api_key, model, OPENAI_API_BASE.to_string(), timeout)
     }
