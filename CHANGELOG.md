@@ -15,47 +15,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Core Features
 - ⚡ **Blazing Fast**: 7ms startup time (Rust implementation)
-- 🧠 **LLM Support**:
-  - Google Gemini (recommended, tested and optimized)
-  - Other providers (Anthropic Claude, OpenAI GPT, Ollama) - code support, not yet fully tested
+- 🧠 **Multi-LLM Support**:
+  - Google Gemini (gemini-2.5-flash)
+  - Anthropic Claude (claude-haiku-4-5-20251001)
+  - OpenAI GPT (gpt-5-nano)
+  - Ollama (llama3.2, local)
+  - All providers support custom API endpoints (base_url)
 - 🔊 **Multi-TTS Engines**:
   - Google TTS (high quality, cloud-based)
   - macOS say (local, always available)
-- 💰 **Cost Control**: Daily budget limits and usage tracking
-- ✅ **Production Ready**: 90+ automated tests
+- ✅ **Production Ready**: 113 automated tests
 - 🔄 **Array-Based Fallback**: Automatic provider switching on failure
-- 📝 **Localization**: Native Chinese/English support
-- 🎛️ **CLI Management**: Credential management and configuration tools
-- 🪝 **Claude Code Integration**: Seamless hook support
+- 🪝 **Claude Code Integration**: Seamless hook support with separate TTS configuration
 
 #### Configuration
-- XDG standard config location: `~/.config/sumvox/config.json`
-- Environment variable support for API keys
-- Recommended Gemini-based configuration template
-- Array-based provider fallback chains for both LLM and TTS
-- Configurable notification filters
-- Volume control for both macOS and Google TTS
-- Thinking control for Gemini models
+- **Format**: YAML (preferred) or JSON (backward compatible)
+- **Location**: `~/.config/sumvox/config.yaml`
+- **Default Config**: Includes all 4 LLM providers ready to use
+- **Simple Setup**: Edit config file directly, no environment variables needed
+- **Custom API Endpoints**: All providers support base_url for proxies/compatible APIs
+- **Hook-Specific TTS**: Separate TTS provider for Notification and Stop hooks
+- **Notification Filters**: Choose which notification types to speak
+- **Thinking Control**: Support for Gemini 3, Claude extended thinking, OpenAI reasoning
 
 #### Pipeline
 1. Reads Claude Code session transcripts (JSONL format)
-2. Generates concise summaries using LLM (configurable max length)
+2. Generates concise summaries using LLM
 3. Converts summaries to speech with TTS
 4. Automatic provider fallback on errors
 
 #### CLI Commands
-- `sumvox init` - Initialize configuration
-- `sumvox credentials set <provider>` - Set API credentials
-- `sumvox credentials list` - List configured providers
-- `sumvox credentials remove <provider>` - Remove credentials
+- `sumvox init` - Initialize configuration with 4-provider template
+- `sumvox say <text>` - Direct text-to-speech
+- `sumvox sum <text>` - Summarize and speak
 - CLI overrides: `--provider`, `--model`, `--tts`, `--tts-voice`
 
 ### Documentation
-- Complete README with quick start guide
+- Complete README with setup guide and fallback explanation
+- Quick Start Guide (QUICKSTART.md) - 5-minute setup
 - MIT License
 - Contributing guidelines (CONTRIBUTING.md)
 - GitHub Issue/PR templates
-- Recommended configuration (config/recommended.json)
+- Recommended configuration (config/recommended.yaml) with detailed comments
 - Homebrew formula
 - crates.io support
 
@@ -75,8 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration from claude-voice
 - New name: SumVox (Summarization + Voice)
-- New config location: `~/.config/sumvox/config.json` (XDG standard)
+- New config location: `~/.config/sumvox/config.yaml` (YAML format)
 - Binary renamed: `claude-voice` → `sumvox`
 - Homebrew tap: `musingfox/sumvox`
+- Configuration: Edit YAML file directly instead of using environment variables
 
 [1.0.0]: https://github.com/musingfox/sumvox/releases/tag/v1.0.0
