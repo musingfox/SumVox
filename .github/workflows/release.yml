@@ -39,13 +39,13 @@ jobs:
     strategy:
       matrix:
         include:
-          # macOS builds: native compilation only
+          # macOS builds: both use macos-latest (cross-compile x86_64 on ARM64)
           - target: aarch64-apple-darwin
             os: macos-latest
             name: sumvox-macos-aarch64
             use_cross: false
           - target: x86_64-apple-darwin
-            os: macos-13  # Intel runner
+            os: macos-latest  # Cross-compile on ARM64 runner
             name: sumvox-macos-x86_64
             use_cross: false
           # Linux builds: use cross for both architectures

@@ -1,0 +1,16 @@
+# Cross-compilation configuration for Linux targets
+# Install ALSA development libraries needed by rodio
+
+[target.x86_64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture amd64",
+    "apt-get update",
+    "apt-get install -y libasound2-dev:amd64"
+]
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture arm64",
+    "apt-get update",
+    "apt-get install -y libasound2-dev:arm64"
+]
