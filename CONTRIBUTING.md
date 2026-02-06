@@ -310,7 +310,7 @@ We follow [Semantic Versioning](https://semver.org/):
 - [ ] Push tag (`git push origin vX.Y.Z`)
 - [ ] Wait for GitHub Actions to complete build
 - [ ] Verify GitHub Release page
-- [ ] Update Homebrew formula (if using tap)
+- [ ] Verify CI auto-updated Homebrew formula (check latest commit on main)
 - [ ] Test installation process
 
 ### Step-by-Step Release Guide
@@ -343,30 +343,28 @@ GitHub Actions will automatically:
 - Create GitHub Release
 - Upload archives and SHA256 checksums
 
-#### 4. Update Homebrew Formula
+#### 4. Homebrew Formula (Automated)
 
-##### Option A: Personal Tap (Recommended for early stages)
+The Homebrew formula is **automatically updated by CI** after a release tag is pushed:
+
+1. CI builds precompiled binaries for 4 platforms (macOS/Linux x ARM64/x86_64)
+2. CI collects SHA-256 hashes from build artifacts
+3. CI updates `homebrew/sumvox.rb` with correct version, URLs, and SHA-256 values
+4. CI publishes the draft release and commits the updated formula to main
+5. If `TAP_REPO_TOKEN` secret is configured, CI also syncs the formula to the `musingfox/homebrew-sumvox` tap
+
+**Manual fallback** (if CI fails or you need to update manually):
 
 ```bash
-# 1. Create Homebrew tap repository
-# Repository name must be: homebrew-<tap-name>
-# Example: homebrew-sumvox
-
-# 2. Copy formula
-cp homebrew/sumvox.rb /path/to/homebrew-sumvox/Formula/
-
-# 3. Update SHA256
-# Get SHA256 from GitHub Release page
-SHA256=$(curl -sL https://github.com/musingfox/sumvox/archive/refs/tags/v1.0.0.tar.gz | shasum -a 256 | awk '{print $1}')
-
-# 4. Update url and sha256 in formula
-sed -i '' "s/PLACEHOLDER_SHA256/$SHA256/" Formula/sumvox.rb
-
-# 5. Commit and push
-git add Formula/sumvox.rb
-git commit -m "Release sumvox v1.0.0"
-git push
+# Download binaries and update SHA-256 hashes
+just update-formula X.Y.Z
 ```
+
+##### Personal Tap Setup
+
+To enable automatic tap updates, add a `TAP_REPO_TOKEN` secret to the repo:
+- Create a Fine-grained PAT with `Contents: Read and write` permission for `musingfox/homebrew-sumvox`
+- Add it as a repository secret named `TAP_REPO_TOKEN`
 
 Installation for users:
 ```bash
@@ -374,25 +372,13 @@ brew tap musingfox/sumvox
 brew install sumvox
 ```
 
-##### Option B: Submit to Homebrew Core (After project matures)
+##### Homebrew Core (Future)
 
 Homebrew Core requirements:
 - Project has some notability and user base
 - 50+ stars or 75+ forks in 30 days
 - Continuous maintenance and updates
 - Follows all Homebrew guidelines
-
-Submission process:
-```bash
-# 1. Fork homebrew-core
-# 2. Add formula to Formula/ directory
-# 3. Test formula
-brew install --build-from-source ./Formula/sumvox.rb
-brew test sumvox
-brew audit --strict sumvox
-
-# 4. Submit PR to Homebrew/homebrew-core
-```
 
 #### 5. Publish to crates.io (Optional)
 
@@ -438,16 +424,18 @@ Check:
 
 ```bash
 # Local testing
-brew install --build-from-source ./homebrew/sumvox.rb
+brew install ./homebrew/sumvox.rb
 brew test sumvox
 brew audit --strict sumvox
 ```
 
 #### Q: How to update SHA256?
 
+SHA-256 hashes are normally updated automatically by CI. For manual updates:
+
 ```bash
-# Calculate SHA256 of tar.gz
-curl -sL https://github.com/USER/REPO/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
+# Update all 4 platform SHA-256 hashes from published release
+just update-formula X.Y.Z
 ```
 
 ### Resources

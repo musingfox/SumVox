@@ -69,9 +69,9 @@ release VERSION:
     # Update version in Cargo.toml
     sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
 
-    # Update version in Homebrew formula
+    # Update version and URLs in Homebrew formula
     sed -i '' 's/version ".*"/version "{{VERSION}}"/' homebrew/sumvox.rb
-    sed -i '' 's|url "https://github.com/.*/archive/refs/tags/v.*\.tar\.gz"|url "https://github.com/musingfox/sumvox/archive/refs/tags/v{{VERSION}}.tar.gz"|' homebrew/sumvox.rb
+    sed -i '' 's|releases/download/v[^/]*/sumvox-|releases/download/v{{VERSION}}/sumvox-|g' homebrew/sumvox.rb
 
     # Run tests
     cargo test
@@ -86,6 +86,8 @@ release VERSION:
     echo "Ready to push! Run:"
     echo "  git push origin main"
     echo "  git push origin v{{VERSION}}"
+    echo ""
+    echo "CI will automatically update SHA-256 hashes in the formula."
 
 # Build release tarball for current platform
 package VERSION:
@@ -115,28 +117,61 @@ package VERSION:
 
     echo "Created ${NAME}.tar.gz"
 
-# Update Homebrew formula SHA256
+# Update Homebrew formula SHA256 from GitHub Release binaries (manual fallback; CI does this automatically)
 update-formula VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    URL="https://github.com/musingfox/sumvox/archive/refs/tags/v{{VERSION}}.tar.gz"
+    REPO="musingfox/sumvox"
+    BASE_URL="https://github.com/${REPO}/releases/download/v{{VERSION}}"
 
-    echo "Calculating SHA256 for $URL..."
-    SHA256=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
+    PLATFORMS=("sumvox-macos-aarch64" "sumvox-macos-x86_64" "sumvox-linux-aarch64" "sumvox-linux-x86_64")
 
-    echo "SHA256: $SHA256"
+    declare -A SHAS
 
-    # Update formula
-    sed -i '' "s/sha256 \".*\"/sha256 \"$SHA256\"/" homebrew/sumvox.rb
-    sed -i '' "s/url \".*\"/url \"$URL\"/" homebrew/sumvox.rb
-    sed -i '' "s/version \".*\"/version \"{{VERSION}}\"/" homebrew/sumvox.rb
+    for PLATFORM in "${PLATFORMS[@]}"; do
+        URL="${BASE_URL}/${PLATFORM}.tar.gz"
+        echo "Downloading ${PLATFORM}.tar.gz..."
+        SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
+        SHAS[$PLATFORM]=$SHA
+        echo "  SHA256: $SHA"
+    done
 
-    echo "Updated homebrew/sumvox.rb"
+    python3 << PYEOF
+    import re
+
+    version = "{{VERSION}}"
+    shas = {
+        "sumvox-macos-aarch64": "${SHAS[sumvox-macos-aarch64]}",
+        "sumvox-macos-x86_64": "${SHAS[sumvox-macos-x86_64]}",
+        "sumvox-linux-aarch64": "${SHAS[sumvox-linux-aarch64]}",
+        "sumvox-linux-x86_64": "${SHAS[sumvox-linux-x86_64]}",
+    }
+
+    with open("homebrew/sumvox.rb", "r") as f:
+        content = f.read()
+
+    content = re.sub(r'version ".*?"', f'version "{version}"', content)
+    content = re.sub(
+        r'(releases/download/v)[^/]+(/.+?\.tar\.gz)',
+        rf'\g<1>{version}\2',
+        content,
+    )
+
+    for name, sha in shas.items():
+        pattern = rf'(url ".*?{name}\.tar\.gz"\s*\n\s*sha256 )".*?"'
+        replacement = rf'\1"{sha}"'
+        content = re.sub(pattern, replacement, content)
+
+    with open("homebrew/sumvox.rb", "w") as f:
+        f.write(content)
+
+    print(f"Updated homebrew/sumvox.rb to v{version}")
+    PYEOF
 
 # Test Homebrew formula locally
 test-formula:
-    brew install --build-from-source ./homebrew/sumvox.rb
+    brew install ./homebrew/sumvox.rb
     brew test sumvox
     brew audit --strict sumvox
 
