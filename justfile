@@ -125,28 +125,30 @@ update-formula VERSION:
     REPO="musingfox/sumvox"
     BASE_URL="https://github.com/${REPO}/releases/download/v{{VERSION}}"
 
-    PLATFORMS=("sumvox-macos-aarch64" "sumvox-macos-x86_64" "sumvox-linux-aarch64" "sumvox-linux-x86_64")
+    python3 - "$BASE_URL" "{{VERSION}}" << 'PYEOF'
+    import subprocess, re, sys
 
-    declare -A SHAS
+    base_url = sys.argv[1]
+    version = sys.argv[2]
 
-    for PLATFORM in "${PLATFORMS[@]}"; do
-        URL="${BASE_URL}/${PLATFORM}.tar.gz"
-        echo "Downloading ${PLATFORM}.tar.gz..."
-        SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
-        SHAS[$PLATFORM]=$SHA
-        echo "  SHA256: $SHA"
-    done
+    platforms = [
+        "sumvox-macos-aarch64",
+        "sumvox-macos-x86_64",
+        "sumvox-linux-aarch64",
+        "sumvox-linux-x86_64",
+    ]
 
-    python3 << PYEOF
-    import re
-
-    version = "{{VERSION}}"
-    shas = {
-        "sumvox-macos-aarch64": "${SHAS[sumvox-macos-aarch64]}",
-        "sumvox-macos-x86_64": "${SHAS[sumvox-macos-x86_64]}",
-        "sumvox-linux-aarch64": "${SHAS[sumvox-linux-aarch64]}",
-        "sumvox-linux-x86_64": "${SHAS[sumvox-linux-x86_64]}",
-    }
+    shas = {}
+    for name in platforms:
+        url = f"{base_url}/{name}.tar.gz"
+        print(f"Downloading {name}.tar.gz...")
+        result = subprocess.run(
+            f'curl -sL "{url}" | shasum -a 256',
+            shell=True, capture_output=True, text=True,
+        )
+        sha = result.stdout.strip().split()[0]
+        shas[name] = sha
+        print(f"  SHA256: {sha}")
 
     with open("homebrew/sumvox.rb", "r") as f:
         content = f.read()

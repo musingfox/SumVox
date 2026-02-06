@@ -7,20 +7,20 @@ class Sumvox < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/musingfox/sumvox/releases/download/v1.0.0/sumvox-macos-aarch64.tar.gz"
-      sha256 "PLACEHOLDER_MACOS_AARCH64"
+      sha256 "a9cf75f05188e26bfcd7335aaa89d1cd948756de033834768777292da516541a"
     else
       url "https://github.com/musingfox/sumvox/releases/download/v1.0.0/sumvox-macos-x86_64.tar.gz"
-      sha256 "PLACEHOLDER_MACOS_X86_64"
+      sha256 "5e3e1457d56d72576f7dac3a3591084ca82c05ff45d71cdbd79c070537c3b87b"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/musingfox/sumvox/releases/download/v1.0.0/sumvox-linux-aarch64.tar.gz"
-      sha256 "PLACEHOLDER_LINUX_AARCH64"
+      sha256 "fc7da5a85b3a4e0cc3597751919e8d0cd6ccfb48ee8b8df9dea2afc8ea8915fa"
     else
       url "https://github.com/musingfox/sumvox/releases/download/v1.0.0/sumvox-linux-x86_64.tar.gz"
-      sha256 "PLACEHOLDER_LINUX_X86_64"
+      sha256 "0c25292e720e1e8d17b0b7706db91a2aa697a5ad5ea74d347492dcbaf06fe0a1"
     end
   end
 
