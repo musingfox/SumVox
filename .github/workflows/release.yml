@@ -39,16 +39,14 @@ jobs:
     strategy:
       matrix:
         include:
-          # macOS builds: both use macos-latest (cross-compile x86_64 on ARM64)
           - target: aarch64-apple-darwin
             os: macos-latest
             name: sumvox-macos-aarch64
             use_cross: false
           - target: x86_64-apple-darwin
-            os: macos-latest  # Cross-compile on ARM64 runner
+            os: macos-latest
             name: sumvox-macos-x86_64
             use_cross: false
-          # Linux builds: use cross for both architectures
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: sumvox-linux-x86_64
@@ -100,7 +98,13 @@ jobs:
         run: |
           SHA256=$(shasum -a 256 "$NAME.tar.gz" | awk '{print $1}')
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-          echo "$SHA256  $NAME.tar.gz" >> SHA256SUMS.txt
+          echo "$SHA256" > "sha256-$NAME.txt"
+
+      - name: Upload SHA256 as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-${{ matrix.name }}
+          path: sha256-${{ matrix.name }}.txt
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
@@ -112,25 +116,112 @@ jobs:
           asset_name: ${{ matrix.name }}.tar.gz
           asset_content_type: application/gzip
 
-      - name: Upload SHA256 checksums
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./SHA256SUMS.txt
-          asset_name: SHA256SUMS-${{ matrix.target }}.txt
-          asset_content_type: text/plain
-
   update-homebrew:
     needs: [create-release, build-release]
     runs-on: ubuntu-latest
     steps:
-      - name: Notify Homebrew update
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download all SHA256 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: sha256-artifacts
+          pattern: sha256-*
+          merge-multiple: true
+
+      - name: Read SHA256 values
+        id: shas
+        run: |
+          echo "macos_aarch64=$(cat sha256-artifacts/sha256-sumvox-macos-aarch64.txt)" >> $GITHUB_OUTPUT
+          echo "macos_x86_64=$(cat sha256-artifacts/sha256-sumvox-macos-x86_64.txt)" >> $GITHUB_OUTPUT
+          echo "linux_aarch64=$(cat sha256-artifacts/sha256-sumvox-linux-aarch64.txt)" >> $GITHUB_OUTPUT
+          echo "linux_x86_64=$(cat sha256-artifacts/sha256-sumvox-linux-x86_64.txt)" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew formula
         env:
           VERSION: ${{ needs.create-release.outputs.version }}
-          REPO: ${{ github.repository }}
+          SHA_MACOS_AARCH64: ${{ steps.shas.outputs.macos_aarch64 }}
+          SHA_MACOS_X86_64: ${{ steps.shas.outputs.macos_x86_64 }}
+          SHA_LINUX_AARCH64: ${{ steps.shas.outputs.linux_aarch64 }}
+          SHA_LINUX_X86_64: ${{ steps.shas.outputs.linux_x86_64 }}
         run: |
-          echo "Release created! Update Homebrew formula with:"
-          echo "  Version: $VERSION"
-          echo "  URL: https://github.com/$REPO/archive/refs/tags/v$VERSION.tar.gz"
+          python3 << 'PYEOF'
+          import os, re
+
+          version = os.environ["VERSION"]
+          shas = {
+              "MACOS_AARCH64": os.environ["SHA_MACOS_AARCH64"],
+              "MACOS_X86_64": os.environ["SHA_MACOS_X86_64"],
+              "LINUX_AARCH64": os.environ["SHA_LINUX_AARCH64"],
+              "LINUX_X86_64": os.environ["SHA_LINUX_X86_64"],
+          }
+
+          formula_path = "homebrew/sumvox.rb"
+          with open(formula_path, "r") as f:
+              content = f.read()
+
+          # Update version
+          content = re.sub(r'version ".*?"', f'version "{version}"', content)
+
+          # Update all download URLs to new version
+          content = re.sub(
+              r'(releases/download/v)[^/]+(/.+?\.tar\.gz)',
+              rf'\g<1>{version}\2',
+              content,
+          )
+
+          # Update SHA256 for each platform
+          replacements = [
+              ("sumvox-macos-aarch64", shas["MACOS_AARCH64"]),
+              ("sumvox-macos-x86_64", shas["MACOS_X86_64"]),
+              ("sumvox-linux-aarch64", shas["LINUX_AARCH64"]),
+              ("sumvox-linux-x86_64", shas["LINUX_X86_64"]),
+          ]
+
+          for name, sha in replacements:
+              # Match: url line with this name, followed by sha256 line
+              pattern = rf'(url ".*?{name}\.tar\.gz"\s*\n\s*sha256 )".*?"'
+              replacement = rf'\1"{sha}"'
+              content = re.sub(pattern, replacement, content)
+
+          with open(formula_path, "w") as f:
+              f.write(content)
+
+          print(f"Updated formula to v{version}")
+          for name, sha in replacements:
+              print(f"  {name}: {sha}")
+          PYEOF
+
+      - name: Publish release (remove draft)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: gh release edit "v$VERSION" --draft=false --repo "$GITHUB_REPOSITORY"
+
+      - name: Commit and push formula update
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add homebrew/sumvox.rb
+          git commit -m "chore(homebrew): update formula for v${VERSION}"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Update tap repository
+        if: ${{ secrets.TAP_REPO_TOKEN != '' }}
+        env:
+          TAP_REPO_TOKEN: ${{ secrets.TAP_REPO_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          git clone "https://x-access-token:${TAP_REPO_TOKEN}@github.com/musingfox/homebrew-sumvox.git" tap-repo
+          cp homebrew/sumvox.rb tap-repo/Formula/sumvox.rb
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/sumvox.rb
+          git commit -m "Update sumvox to v${VERSION}" || echo "No changes to commit"
+          git push
