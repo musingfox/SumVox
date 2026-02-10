@@ -162,6 +162,17 @@ async fn handle_notification(
         notification_tts_opts.engine = provider.clone();
     }
 
+    // Set notification-specific volume (priority: CLI > hook config > default)
+    if notification_tts_opts.volume.is_none() {
+        notification_tts_opts.volume = Some(
+            config
+                .hooks
+                .claude_code
+                .notification_volume
+                .unwrap_or(80), // Default notification volume
+        );
+    }
+
     speak_text(config, &notification_tts_opts, message).await?;
 
     Ok(())
@@ -227,6 +238,11 @@ async fn handle_stop(
     if let Some(ref provider) = config.hooks.claude_code.stop_tts_provider {
         tracing::info!("Using configured stop TTS provider: {}", provider);
         stop_tts_opts.engine = provider.clone();
+    }
+
+    // Set stop hook specific volume (priority: CLI > hook config > default)
+    if stop_tts_opts.volume.is_none() {
+        stop_tts_opts.volume = Some(config.hooks.claude_code.stop_volume.unwrap_or(100)); // Default stop/summary volume
     }
 
     if summary.is_empty() {

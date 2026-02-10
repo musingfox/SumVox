@@ -27,7 +27,7 @@ sumvox init
 
 Edit your config file:
 ```bash
-open ~/.config/sumvox/config.yaml
+open ~/.config/sumvox/config.toml
 ```
 
 Replace `${PROVIDER_API_KEY}` with your actual API key:
@@ -67,7 +67,7 @@ Edit `~/.claude/settings.json`:
 
 ### Default (Recommended)
 ```yaml
-# ~/.config/sumvox/config.yaml
+# ~/.config/sumvox/config.toml
 llm:
   providers:
     - name: google
@@ -154,20 +154,24 @@ hooks:
 ```yaml
 hooks:
   claude_code:
-    notification_tts_provider: macos  # Fast
-    stop_tts_provider: auto           # Best quality
+    notification_tts_provider: macos  # Fast (no volume control)
+    stop_tts_provider: auto           # Best quality (Google TTS supports volume)
+    notification_volume: 80           # Only works with Google TTS
+    stop_volume: 100                  # Only works with Google TTS
 ```
+
+**Note:** Volume control only works with Google TTS. macOS TTS uses system volume.
 
 ## 🔧 Troubleshooting
 
 ### "No API key found"
 ```bash
 # Check your config file
-cat ~/.config/sumvox/config.yaml
+cat ~/.config/sumvox/config.toml
 
 # Make sure api_key is set (not ${PROVIDER_API_KEY})
 # Edit config:
-open ~/.config/sumvox/config.yaml
+open ~/.config/sumvox/config.toml
 ```
 
 ### "No audio"

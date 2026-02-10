@@ -5,6 +5,47 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-10
+
+### Added
+- **TOML Configuration Format**: New TOML format support with automatic migration from YAML/JSON
+  - Auto-migration creates timestamped backup of legacy config files
+  - Priority: `config.toml` > `config.yaml` > `config.json`
+  - Recommended config updated to TOML format (`config/recommended.toml`)
+- **Separate Volume Control**: Independent volume settings for notifications and summaries
+  - `notification_volume` (default: 80) - quieter for non-intrusive alerts
+  - `stop_volume` (default: 100) - full volume for task completion summaries
+  - Volume priority: CLI override > Hook config > Provider config > Defaults
+  - **⚠️ Important**: Volume control only works with Google TTS; macOS TTS does not support volume control (uses system volume)
+
+### Changed
+- **Configuration Format**: TOML is now the preferred format (YAML/JSON still supported for backward compatibility)
+- **Default Volumes**: Notification volume reduced from 100 to 80 for better user experience
+- **Documentation**: Updated all config references to TOML format
+
+### Fixed
+- Documentation references to non-existent `credentials.rs` file in CONTRIBUTING.md
+- Justfile `show-config` command using outdated config path
+- Justfile invalid `credentials` command removed
+
+### Removed
+- GeminiCli hook format (unimplemented feature removed from codebase)
+
+### Migration Guide
+When upgrading to v1.1.0:
+1. Your existing `config.yaml` or `config.json` will be automatically migrated to `config.toml`
+2. A timestamped backup will be created (e.g., `config.yaml.backup-20260210-120000`)
+3. To customize volumes, add to your `config.toml`:
+   ```toml
+   [hooks.claude_code]
+   notification_volume = 80  # 0-100, default: 80
+   stop_volume = 100         # 0-100, default: 100
+   ```
+4. **Volume Control Notes**:
+   - Volume settings only work with **Google TTS**
+   - **macOS TTS** does not support volume control - use system volume settings instead
+   - To use volume control, set `notification_tts_provider = "google"` or `stop_tts_provider = "google"`
+
 ## [1.0.0] - 2026-02-05
 
 ### 🎉 Initial Release

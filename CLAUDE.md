@@ -35,10 +35,10 @@ echo '{"session_id":"test",...}' | cargo run
 
 ### Configuration
 
-- **Main config**: `~/.config/sumvox/config.yaml`
+- **Main config**: `~/.config/sumvox/config.toml`
 - **Hook script**: `.claude/hooks/run_sumvox_hook.sh`
 - **Binary location**: `target/release/sumvox`
-- **Example config**: `config/recommended.yaml`
+- **Example config**: `config/recommended.toml`
 
 ### Environment Variables
 
@@ -47,7 +47,7 @@ echo '{"session_id":"test",...}' | cargo run
 export RUST_LOG=info  # or debug, trace
 ```
 
-**Note:** API keys are configured in `~/.config/sumvox/config.yaml`, not as environment variables.
+**Note:** API keys are configured in `~/.config/sumvox/config.toml`, not as environment variables.
 
 ## Testing
 
@@ -95,7 +95,7 @@ sumvox say "Test" --tts macos --voice Daniel
 
 ### Configuration Format
 
-See `~/.config/sumvox/config.yaml`:
+See `~/.config/sumvox/config.toml`:
 - LLM providers array with fallback chain
 - TTS providers array with fallback chain
 - Summarization settings (turns, prompt_template)
@@ -116,7 +116,7 @@ sumvox/
 │   ├── tts/              # TTS engines
 │   └── provider_factory.rs
 ├── config/
-│   └── recommended.yaml  # Example configuration with comments
+│   └── recommended.toml  # Example configuration with comments
 ├── .github/
 │   ├── workflows/        # CI/CD
 │   └── ISSUE_TEMPLATE/   # Issue templates
@@ -146,8 +146,8 @@ git push origin v1.0.0
 
 ## Recommended Configuration
 
-See `config/recommended.yaml` for the Gemini-based setup:
+See `config/recommended.toml` for the Gemini-based setup:
 - Google Gemini for LLM (tested and optimized)
 - macOS TTS for notifications (fast and free)
 - Google TTS for summaries (high quality)
-- YAML format with inline comments for easy customization
+- TOML format with inline comments for easy customization

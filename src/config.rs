@@ -29,7 +29,7 @@ where
 }
 
 fn default_version() -> String {
-    "1.0.0".to_string()
+    "1.1.0".to_string()
 }
 
 fn default_turns() -> usize {
@@ -356,6 +356,14 @@ pub struct ClaudeCodeHookConfig {
     /// Default: "auto" (uses the default TTS provider fallback chain)
     #[serde(default = "default_auto_tts")]
     pub stop_tts_provider: Option<String>,
+
+    /// Volume for Notification hook (0-100), default: 80 if not specified
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification_volume: Option<u32>,
+
+    /// Volume for Stop hook (0-100), default: 100 if not specified
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_volume: Option<u32>,
 }
 
 impl Default for ClaudeCodeHookConfig {
@@ -364,6 +372,8 @@ impl Default for ClaudeCodeHookConfig {
             notification_filter: default_notification_filter(),
             notification_tts_provider: default_auto_tts(),
             stop_tts_provider: default_auto_tts(),
+            notification_volume: None, // Will use 80 in runtime if None
+            stop_volume: None,         // Will use 100 in runtime if None
         }
     }
 }
@@ -430,22 +440,27 @@ impl SumvoxConfig {
         Ok(Self::config_dir()?.join("config.yaml"))
     }
 
-    /// Load configuration from ~/.config/sumvox/config.yaml (preferred) or config.json (fallback)
+    /// Get the TOML config path: ~/.config/sumvox/config.toml
+    pub fn toml_config_path() -> Result<PathBuf> {
+        Ok(Self::config_dir()?.join("config.toml"))
+    }
+
+    /// Load configuration from ~/.config/sumvox/config.toml (preferred) with auto-migration
     pub fn load_from_home() -> Result<Self> {
-        // Try YAML first (preferred format)
-        let yaml_path = Self::yaml_config_path()?;
-        if yaml_path.exists() {
-            tracing::info!("Loading config from {:?}", yaml_path);
-            return Self::load_yaml(yaml_path);
+        // Priority 1: Try TOML (new format)
+        let toml_path = Self::toml_config_path()?;
+        if toml_path.exists() {
+            tracing::info!("Loading config from {:?}", toml_path);
+            return Self::load_toml(toml_path);
         }
 
-        // Fallback to JSON for backward compatibility
-        let json_path = Self::config_path()?;
-        if json_path.exists() {
-            tracing::info!("Loading config from {:?}", json_path);
-            return Self::load_json(json_path);
+        // Priority 2: Try migrating from YAML/JSON
+        if let Some(migrated_path) = Self::migrate_legacy_config()? {
+            tracing::info!("Auto-migrated legacy config: {:?}", migrated_path);
+            return Self::load_toml(Self::toml_config_path()?);
         }
 
+        // Priority 3: No config file found, use defaults
         tracing::info!("No config file found, using defaults");
         Ok(Self::default())
     }
@@ -485,21 +500,42 @@ impl SumvoxConfig {
         Ok(config)
     }
 
-    /// Save configuration to ~/.config/sumvox/config.yaml (preferred format)
+    /// Load configuration from a TOML file
+    pub fn load_toml(path: PathBuf) -> Result<Self> {
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e)))?;
+        let config: SumvoxConfig = toml::from_str(&content)
+            .map_err(|e| VoiceError::Config(format!("Failed to parse TOML config: {}", e)))?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    /// Save configuration to a TOML file
+    pub fn save_toml(&self, path: PathBuf) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let toml_str = toml::to_string_pretty(self)
+            .map_err(|e| VoiceError::Config(format!("Failed to serialize TOML: {}", e)))?;
+        std::fs::write(&path, toml_str)?;
+        tracing::info!("Config saved to {:?}", path);
+        Ok(())
+    }
+
+    /// Save configuration to ~/.config/sumvox/config.toml (preferred format)
     pub fn save_to_home(&self) -> Result<()> {
-        let config_path = Self::yaml_config_path()?;
-        self.save_yaml(config_path)
+        let config_path = Self::toml_config_path()?;
+        self.save_toml(config_path)
     }
 
     /// Save configuration to a specific path (auto-detect format)
     #[allow(dead_code)]
     pub fn save(&self, path: PathBuf) -> Result<()> {
-        if path.extension().and_then(|s| s.to_str()) == Some("yaml")
-            || path.extension().and_then(|s| s.to_str()) == Some("yml")
-        {
-            self.save_yaml(path)
-        } else {
-            self.save_json(path)
+        match path.extension().and_then(|s| s.to_str()) {
+            Some("toml") => self.save_toml(path),
+            Some("yaml") | Some("yml") => self.save_yaml(path),
+            Some("json") => self.save_json(path),
+            _ => self.save_toml(path), // Default to TOML for unknown extensions
         }
     }
 
@@ -531,6 +567,57 @@ impl SumvoxConfig {
 
         tracing::info!("Config saved to {:?}", path);
         Ok(())
+    }
+
+    /// Backup a config file with timestamp
+    fn backup_config(path: &std::path::Path) -> Result<PathBuf> {
+        if !path.exists() {
+            return Err(VoiceError::Config(format!("Config file {:?} does not exist", path)));
+        }
+        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let backup_name = format!(
+            "{}.backup-{}",
+            path.file_name().unwrap().to_string_lossy(),
+            timestamp
+        );
+        let backup_path = path.parent().unwrap().join(backup_name);
+        std::fs::copy(path, &backup_path)
+            .map_err(|e| VoiceError::Config(format!("Failed to backup config: {}", e)))?;
+        tracing::info!("Created backup: {:?}", backup_path);
+        Ok(backup_path)
+    }
+
+    /// Migrate legacy config (YAML/JSON) to TOML
+    fn migrate_legacy_config() -> Result<Option<PathBuf>> {
+        let yaml_path = Self::yaml_config_path()?;
+        let json_path = Self::config_path()?;
+
+        let (source_path, format_name) = if yaml_path.exists() {
+            (yaml_path, "YAML")
+        } else if json_path.exists() {
+            (json_path, "JSON")
+        } else {
+            return Ok(None); // No legacy config
+        };
+
+        tracing::info!("Migrating {} config to TOML: {:?}", format_name, source_path);
+
+        // Load legacy config
+        let config = if format_name == "YAML" {
+            Self::load_yaml(source_path.clone())?
+        } else {
+            Self::load_json(source_path.clone())?
+        };
+
+        // Backup original file
+        Self::backup_config(&source_path)?;
+
+        // Save as TOML
+        let toml_path = Self::toml_config_path()?;
+        config.save_toml(toml_path.clone())?;
+
+        tracing::info!("Migration completed: {} -> TOML", format_name);
+        Ok(Some(source_path))
     }
 
     /// Validate configuration
@@ -574,6 +661,24 @@ impl SumvoxConfig {
             tracing::warn!("Summarization prompt_template missing required variable: {{context}}");
         }
 
+        // Validate hook-specific volumes
+        if let Some(volume) = self.hooks.claude_code.notification_volume {
+            if volume > 100 {
+                return Err(VoiceError::Config(format!(
+                    "Notification volume {} out of range [0-100]",
+                    volume
+                )));
+            }
+        }
+        if let Some(volume) = self.hooks.claude_code.stop_volume {
+            if volume > 100 {
+                return Err(VoiceError::Config(format!(
+                    "Stop hook volume {} out of range [0-100]",
+                    volume
+                )));
+            }
+        }
+
         Ok(())
     }
 }
@@ -587,7 +692,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SumvoxConfig::default();
-        assert_eq!(config.version, "1.0.0");
+        assert_eq!(config.version, "1.1.0");
         assert!(!config.llm.providers.is_empty());
         assert!(!config.tts.providers.is_empty());
         assert_eq!(config.summarization.turns, 1);
@@ -892,5 +997,72 @@ tts:
             loaded.llm.providers[0].api_key,
             Some("test-yaml-key".to_string())
         );
+    }
+
+    #[test]
+    fn test_load_save_toml() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("test.toml");
+
+        let mut config = SumvoxConfig::default();
+        config.llm.providers[0].api_key = Some("test-toml-key".to_string());
+
+        config.save_toml(path.clone()).unwrap();
+        let loaded = SumvoxConfig::load_toml(path).unwrap();
+
+        assert_eq!(
+            loaded.llm.providers[0].api_key,
+            Some("test-toml-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_backup_creation() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("config.yaml");
+        std::fs::write(&path, "test content").unwrap();
+
+        let backup = SumvoxConfig::backup_config(&path).unwrap();
+        assert!(backup.exists());
+        assert!(backup
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("config.yaml.backup-"));
+    }
+
+    #[test]
+    fn test_hook_volume_validation() {
+        let mut config = SumvoxConfig::default();
+        config.hooks.claude_code.notification_volume = Some(80);
+        config.hooks.claude_code.stop_volume = Some(100);
+        assert!(config.validate().is_ok());
+
+        // Invalid notification volume
+        config.hooks.claude_code.notification_volume = Some(150);
+        assert!(config.validate().is_err());
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("Notification volume"));
+
+        // Reset and test invalid stop volume
+        config.hooks.claude_code.notification_volume = Some(80);
+        config.hooks.claude_code.stop_volume = Some(200);
+        assert!(config.validate().is_err());
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("Stop hook volume"));
+    }
+
+    #[test]
+    fn test_hook_volume_defaults() {
+        let config = SumvoxConfig::default();
+        assert_eq!(config.hooks.claude_code.notification_volume, None);
+        assert_eq!(config.hooks.claude_code.stop_volume, None);
     }
 }

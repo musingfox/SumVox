@@ -13,7 +13,6 @@ use crate::error::{Result, VoiceError};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HookFormat {
     ClaudeCode,
-    GeminiCli,
     Generic,
 }
 
@@ -23,7 +22,6 @@ impl FromStr for HookFormat {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "claude-code" | "claude_code" | "claudecode" => Ok(HookFormat::ClaudeCode),
-            "gemini-cli" | "gemini_cli" | "geminicli" => Ok(HookFormat::GeminiCli),
             "generic" => Ok(HookFormat::Generic),
             _ => Err(VoiceError::Config(format!("Unknown hook format: {}", s))),
         }
@@ -61,17 +59,6 @@ pub fn detect_format(json: &Value) -> HookFormat {
     // Claude Code: has session_id and hook_event_name
     if json.get("session_id").is_some() && json.get("hook_event_name").is_some() {
         return HookFormat::ClaudeCode;
-    }
-
-    // Gemini CLI: has specific fields (to be defined)
-    // For now, check for potential Gemini-specific fields
-    if json.get("gemini_session").is_some()
-        || json
-            .get("tool_name")
-            .map(|v| v.as_str() == Some("gemini"))
-            .unwrap_or(false)
-    {
-        return HookFormat::GeminiCli;
     }
 
     // Default to generic
@@ -131,10 +118,6 @@ mod tests {
         assert_eq!(
             "claude_code".parse::<HookFormat>().ok(),
             Some(HookFormat::ClaudeCode)
-        );
-        assert_eq!(
-            "gemini-cli".parse::<HookFormat>().ok(),
-            Some(HookFormat::GeminiCli)
         );
         assert_eq!(
             "generic".parse::<HookFormat>().ok(),

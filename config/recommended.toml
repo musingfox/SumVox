@@ -1,0 +1,122 @@
+# SumVox Configuration
+# Location: ~/.config/sumvox/config.toml
+# Documentation: https://github.com/musingfox/sumvox
+
+version = "1.1.0"
+
+# ============================================================================
+# LLM Provider Configuration (fallback chain - try in order)
+# ============================================================================
+
+[llm]
+# LLM Parameters (shared across all providers)
+[llm.parameters]
+max_tokens = 10000
+temperature = 0.3
+disable_thinking = false  # Set true to reduce token usage
+
+# Provider list: tried in order until one succeeds
+# Uncomment and configure the providers you want to use
+# Edit api_key = "${PROVIDER_API_KEY}" with your actual API key
+
+# Google Gemini (Recommended: fast, cheap, reliable)
+[[llm.providers]]
+name = "google"
+model = "gemini-2.5-flash"
+api_key = "${PROVIDER_API_KEY}"  # Get from: https://ai.google.dev
+# base_url = "https://generativelanguage.googleapis.com/v1beta"  # Optional: custom API endpoint
+timeout = 10  # seconds
+
+# Anthropic Claude (High quality, best reasoning)
+[[llm.providers]]
+name = "anthropic"
+model = "claude-haiku-4-5-20251001"
+api_key = "${PROVIDER_API_KEY}"  # Get from: https://console.anthropic.com
+# base_url = "https://api.anthropic.com/v1"  # Optional: custom API endpoint (e.g., proxy)
+timeout = 10
+
+# OpenAI GPT (Fast and capable)
+[[llm.providers]]
+name = "openai"
+model = "gpt-5-nano"
+api_key = "${PROVIDER_API_KEY}"  # Get from: https://platform.openai.com
+# base_url = "https://api.openai.com/v1"  # Optional: for Azure OpenAI or compatible APIs
+timeout = 10
+
+# Ollama (Local, free, slower - good fallback)
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+# api_key not required - Ollama runs locally without API key
+# base_url = "http://localhost:11434"  # Optional: custom endpoint
+timeout = 60  # Local inference needs more time
+
+# ============================================================================
+# TTS Provider Configuration (fallback chain - try in order)
+# ============================================================================
+
+[tts]
+# macOS Built-in TTS (Free, fast, offline)
+[[tts.providers]]
+name = "macos"
+# api_key not required - macOS TTS is built-in, no API key needed
+# voice = "Daniel"  # Optional: specify voice (run 'say -v ?' to list available voices)
+rate = 200      # Speech rate (90-300, default: 200)
+# volume = 100  # ⚠️ NOT SUPPORTED - macOS 'say' command does not support volume control
+                # Use system volume settings instead
+
+# Google TTS (High quality, requires API key)
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "google"
+# model = "gemini-2.5-flash-preview-tts"  # Required for Google TTS
+# voice = "Aoede"     # Options: Aoede, Charon, Fenrir, Kore, Puck, Orus
+# api_key = "${GEMINI_API_KEY}"
+# # volume = 100  # ✅ SUPPORTED - Volume control works (0-100)
+
+# ============================================================================
+# Summarization Settings (used by Stop hook and sum command)
+# ============================================================================
+
+[summarization]
+# Number of conversation turns to read (1 = last turn only)
+turns = 1
+
+# System message for LLM (customize for your language and style)
+system_message = "You are a voice notification assistant. Generate concise summaries suitable for voice playback."
+
+# Prompt template ({context} is required)
+prompt_template = "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
+
+# Fallback message when LLM fails (customize for your language)
+fallback_message = "Task completed"
+
+# ============================================================================
+# Hook-specific Configuration
+# ============================================================================
+
+[hooks.claude_code]
+# Notification types to speak (empty = disabled, ["*"] = all)
+# Available: permission_prompt, idle_prompt, elicitation_dialog, auth_success
+notification_filter = [
+    "permission_prompt",
+    "idle_prompt",
+    "elicitation_dialog"
+]
+
+# TTS provider for Notification hook
+# "auto" = use TTS fallback chain
+# "macos" = force macOS TTS (fast, offline)
+# "google" = force Google TTS (high quality)
+notification_tts_provider = "macos"
+
+# TTS provider for Stop hook
+# "auto" = use TTS fallback chain (recommended)
+stop_tts_provider = "auto"
+
+# Volume control for different hook types (0-100)
+# ⚠️ IMPORTANT: Volume control support depends on TTS provider
+#    ✅ Google TTS: Supports volume control
+#    ❌ macOS TTS: Does NOT support volume control (uses system volume)
+notification_volume = 80   # Notification volume (only works with Google TTS)
+stop_volume = 100          # Summary volume (only works with Google TTS)

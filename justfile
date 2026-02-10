@@ -181,10 +181,6 @@ test-formula:
 init:
     ./target/release/sumvox init
 
-# Set credentials (for testing)
-credentials PROVIDER:
-    ./target/release/sumvox credentials set {{PROVIDER}}
-
 # Show config
 show-config:
-    cat ~/.config/sumvox/config.json | jq .
+    cat ~/.config/sumvox/config.toml

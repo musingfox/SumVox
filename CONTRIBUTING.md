@@ -47,7 +47,6 @@ sumvox/
 │   ├── cli.rs            # CLI argument parsing
 │   ├── config.rs         # Configuration management
 │   ├── transcript.rs     # Claude Code transcript parsing
-│   ├── credentials.rs    # Credential management
 │   ├── error.rs          # Error types
 │   ├── llm/              # LLM providers
 │   │   ├── mod.rs
@@ -61,7 +60,7 @@ sumvox/
 │   │   └── macos.rs      # macOS say command
 │   └── provider_factory.rs  # Provider creation
 ├── config/
-│   └── recommended.json  # Recommended configuration
+│   └── recommended.toml  # Recommended configuration
 ├── tests/                # Integration tests
 └── Cargo.toml           # Dependencies and metadata
 ```

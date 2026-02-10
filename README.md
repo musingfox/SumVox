@@ -15,8 +15,8 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
   - Google Gemini (recommended, tested and optimized)
   - Anthropic Claude, OpenAI GPT, Ollama (code support, not fully tested)
 - 🔊 **Multi-TTS Engines**:
-  - Google TTS (high quality, cloud-based)
-  - macOS say (local, always available)
+  - Google TTS (high quality, cloud-based, **volume control supported**)
+  - macOS say (local, always available, **volume control NOT supported**)
 - 🎨 **Simple Configuration**: YAML format with comments and easy setup
 - 🔄 **Smart Fallback**: Automatic provider switching on failure
 - ✅ **Production Ready**: 90+ automated tests
@@ -529,20 +529,22 @@ RUST_LOG=trace sumvox
 
 #### TTS Providers
 
-| Provider | Voices | API Key Required | Speed | Quality | Cost |
-|----------|--------|------------------|-------|---------|------|
-| **macOS say** | System voices | ❌ | Instant | Good | Free |
-| **Google TTS** | 40+ voices | ✅ | Fast | Excellent | Low |
+| Provider | Voices | API Key Required | Speed | Quality | Cost | Volume Control |
+|----------|--------|------------------|-------|---------|------|----------------|
+| **macOS say** | System voices | ❌ | Instant | Good | Free | ❌ Not supported |
+| **Google TTS** | 40+ voices | ✅ | Fast | Excellent | Low | ✅ Supported (0-100) |
 
 **macOS Voices:**
 - Run `say -v ?` to list all available voices
 - No voice specified = uses system default language
 - English: `Alex`, `Samantha`, `Daniel`
 - Chinese: `Meijia` (繁體), `Tingting` (简体)
+- ⚠️ **Volume control not supported** - use macOS system volume settings
 
 **Google TTS Voices:**
 - `Aoede`, `Charon`, `Fenrir`, `Kore` (expressive, high quality)
 - Full list: https://cloud.google.com/text-to-speech/docs/voices
+- ✅ **Volume control supported** - adjust playback volume (0-100)
 
 ### Configuration File Structure
 

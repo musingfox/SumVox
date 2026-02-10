@@ -185,11 +185,6 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
 
             hooks::claude_code::process(&input, &config, &tts_opts, &llm_opts).await?;
         }
-        HookFormat::GeminiCli => {
-            // TODO: Implement Gemini CLI hook handler
-            tracing::warn!("Gemini CLI format not yet implemented");
-            eprintln!("Warning: Gemini CLI format not yet implemented");
-        }
         HookFormat::Generic => {
             // Generic format: extract text and summarize
             let generic = hooks::parse_generic(&input_buffer)?;
