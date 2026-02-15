@@ -5,6 +5,11 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-15
+
+### Fixed
+- **Transcript Turn Detection**: Fixed turn boundary logic that treated `tool_result` entries as new turns. In Claude Code transcripts, both human input and tool results share `type: "user"`, causing the last "turn" to often contain only `thinking`/`tool_use` blocks with no text — resulting in empty summaries on every Stop hook. Now only human-authored messages (with text content) are used as turn boundaries.
+
 ## [1.1.0] - 2026-02-10
 
 ### Added
@@ -122,4 +127,6 @@ When upgrading to v1.1.0:
 - Homebrew tap: `musingfox/sumvox`
 - Configuration: Edit YAML file directly instead of using environment variables
 
+[1.1.1]: https://github.com/musingfox/sumvox/releases/tag/v1.1.1
+[1.1.0]: https://github.com/musingfox/sumvox/releases/tag/v1.1.0
 [1.0.0]: https://github.com/musingfox/sumvox/releases/tag/v1.0.0
