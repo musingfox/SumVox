@@ -21,6 +21,9 @@ pub enum VoiceError {
 
     #[error("LLM error: {0}")]
     Llm(#[from] LlmError),
+
+    #[error("Queue error: {0}")]
+    Queue(String),
 }
 
 #[derive(Error, Debug)]
@@ -58,5 +61,11 @@ mod tests {
         let json_err = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
         let voice_err: VoiceError = json_err.into();
         assert!(matches!(voice_err, VoiceError::Json(_)));
+    }
+
+    #[test]
+    fn test_queue_error() {
+        let err = VoiceError::Queue("lock timeout".to_string());
+        assert_eq!(err.to_string(), "Queue error: lock timeout");
     }
 }

@@ -10,6 +10,7 @@ use crate::config::SumvoxConfig;
 use crate::error::Result;
 use crate::llm::GenerationRequest;
 use crate::provider_factory::ProviderFactory;
+use crate::queue::{NotificationQueue, QueueLock};
 use crate::transcript::TranscriptReader;
 use crate::tts::{create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
 
@@ -107,6 +108,25 @@ pub async fn process(
     Ok(())
 }
 
+/// Acquire notification queue lock if queuing is enabled
+async fn acquire_queue_lock(config: &SumvoxConfig) -> Result<Option<QueueLock>> {
+    let timeout_secs = config.hooks.claude_code.queue_timeout.unwrap_or(30);
+    if timeout_secs == 0 {
+        tracing::debug!("Notification queue disabled (timeout=0)");
+        return Ok(None);
+    }
+
+    let timeout = Duration::from_secs(timeout_secs);
+    let queue = NotificationQueue::new(Some(timeout))?;
+    match QueueLock::acquire(&queue).await {
+        Ok(lock) => Ok(Some(lock)),
+        Err(e) => {
+            tracing::warn!("Failed to acquire queue lock, proceeding without lock: {}", e);
+            Ok(None)
+        }
+    }
+}
+
 /// Handle Notification hook - speak notification message directly
 async fn handle_notification(
     input: &ClaudeCodeInput,
@@ -152,6 +172,9 @@ async fn handle_notification(
         return Ok(());
     }
 
+    // Acquire queue lock for cross-process coordination
+    let _lock = acquire_queue_lock(config).await?;
+
     // Speak the notification message directly (no LLM processing)
     tracing::info!("Speaking notification: {}", message);
 
@@ -175,6 +198,7 @@ async fn handle_notification(
 
     speak_text(config, &notification_tts_opts, message).await?;
 
+    // Lock released on drop
     Ok(())
 }
 
@@ -232,6 +256,9 @@ async fn handle_stop(
 
     // Generate summary with LLM
     let summary = generate_summary(config, llm_opts, system_message, &user_prompt).await?;
+
+    // Acquire queue lock before speaking
+    let _lock = acquire_queue_lock(config).await?;
 
     // Use configured stop TTS provider if specified
     let mut stop_tts_opts = tts_opts.clone();
@@ -435,6 +462,24 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 true,
                 api_key,
             )?
+        }
+        TtsEngine::AudioFile => {
+            let audio_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "audio_file" | "audio" | "file"
+                    )
+                })
+                .ok_or_else(|| {
+                    crate::error::VoiceError::Config(
+                        "audio_file provider not found in config".into(),
+                    )
+                })?;
+            crate::tts::create_single_tts(audio_config, true)?
         }
     };
 

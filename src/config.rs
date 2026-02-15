@@ -230,6 +230,11 @@ pub struct TtsProviderConfig {
     /// Volume level (0-100), applies to both macOS and Google TTS
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume: Option<u32>,
+
+    /// Audio file path (for audio_file provider only)
+    /// Can be a single file or a directory (picks random file each time)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 impl TtsProviderConfig {
@@ -281,6 +286,7 @@ impl Default for TtsConfig {
                     api_key: None,
                     rate: None,
                     volume: None,
+                    path: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
@@ -289,6 +295,7 @@ impl Default for TtsConfig {
                     api_key: None,
                     rate: Some(200),
                     volume: None,
+                    path: None,
                 },
             ],
         }
@@ -364,6 +371,11 @@ pub struct ClaudeCodeHookConfig {
     /// Volume for Stop hook (0-100), default: 100 if not specified
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_volume: Option<u32>,
+
+    /// Queue timeout in seconds for cross-process notification ordering
+    /// Default: 30 seconds. Set to 0 to disable queuing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_timeout: Option<u64>,
 }
 
 impl Default for ClaudeCodeHookConfig {
@@ -374,6 +386,7 @@ impl Default for ClaudeCodeHookConfig {
             stop_tts_provider: default_auto_tts(),
             notification_volume: None, // Will use 80 in runtime if None
             stop_volume: None,         // Will use 100 in runtime if None
+            queue_timeout: None,       // Will use 30s in runtime if None
         }
     }
 }
@@ -790,6 +803,7 @@ mod tests {
             api_key: None,
             rate: Some(200),
             volume: None,
+            path: None,
         };
         assert!(macos_provider.is_configured());
     }

@@ -33,6 +33,7 @@ pub trait TtsProvider: Send + Sync {
 pub enum TtsEngine {
     MacOS,
     Google,
+    AudioFile,
     Auto,
 }
 
@@ -43,6 +44,7 @@ impl FromStr for TtsEngine {
         match s.to_lowercase().as_str() {
             "macos" | "say" => Ok(TtsEngine::MacOS),
             "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
+            "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
         }
@@ -54,6 +56,7 @@ impl std::fmt::Display for TtsEngine {
         match self {
             TtsEngine::MacOS => write!(f, "macos"),
             TtsEngine::Google => write!(f, "google"),
+            TtsEngine::AudioFile => write!(f, "audio_file"),
             TtsEngine::Auto => write!(f, "auto"),
         }
     }
@@ -135,6 +138,19 @@ pub fn create_single_tts(
                 api_key, model, voice, volume,
             )))
         }
+        "audio_file" | "audio" | "file" => {
+            let path_str = config.path.as_ref().ok_or_else(|| {
+                VoiceError::Config(
+                    "Audio file provider requires 'path' field. Set to a file or directory path."
+                        .into(),
+                )
+            })?;
+            let expanded = shellexpand::tilde(path_str).to_string();
+            let path = std::path::PathBuf::from(expanded);
+            Ok(Box::new(crate::audio::AudioFileProvider::new(
+                path, volume, is_async,
+            )?))
+        }
         _ => Err(VoiceError::Config(format!(
             "Unknown TTS provider: {}",
             config.name
@@ -159,6 +175,7 @@ pub fn create_tts_by_name(
         api_key,
         rate: Some(rate),
         volume: Some(volume),
+        path: None,
     };
     create_single_tts(&config, is_async)
 }
@@ -198,6 +215,7 @@ mod tests {
             api_key: None,
             rate: Some(200),
             volume: Some(80),
+            path: None,
         }];
 
         let result = create_tts_from_config(&providers, true);
@@ -217,6 +235,7 @@ mod tests {
                 api_key: None, // No API key
                 rate: None,
                 volume: None,
+                path: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
@@ -225,6 +244,7 @@ mod tests {
                 api_key: None,
                 rate: Some(200),
                 volume: None,
+                path: None,
             },
         ];
 

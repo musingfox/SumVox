@@ -37,6 +37,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .claude-plugin/
 .claude/
 
+# Agent Workspace - Local state and dependencies
+.agents/tasks/
+.agents/retro/
+.agents/outputs/
+.agents/node_modules/
+.agents/bun.lockb
+
 # Rust
 target/
 Cargo.lock

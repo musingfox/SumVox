@@ -1,0 +1,16 @@
+# Agent Workspace Configuration
+# This file contains DYNAMIC state and runtime information
+
+workspace:
+  version: "1.0.0"
+  initialized_at: "2026-02-15T00:00:00.000Z"
+  location: ".agents/"
+
+task_management:
+  system: "Local"
+  # Tasks stored in .agents/tasks/
+
+runtime:
+  last_cleanup: null
+  total_tasks_created: 0
+  total_tasks_completed: 0

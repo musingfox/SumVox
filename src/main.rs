@@ -1,12 +1,14 @@
 // sumvox: Voice notification CLI for AI coding tools
 // LLM summarization with TTS - supporting multiple AI coding tools
 
+mod audio;
 mod cli;
 mod config;
 mod error;
 mod hooks;
 mod llm;
 mod provider_factory;
+mod queue;
 mod transcript;
 mod tts;
 
@@ -265,6 +267,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             api_key: None,
             rate: Some(200),
             volume: None,
+            path: None,
         },
         TtsProviderConfig {
             name: "google".to_string(),
@@ -273,6 +276,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             api_key: None,
             rate: None,
             volume: None,
+            path: None,
         },
     ];
 
@@ -482,6 +486,23 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 false,
                 api_key,
             )?
+        }
+        TtsEngine::AudioFile => {
+            // Find audio_file config from config
+            let audio_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "audio_file" | "audio" | "file"
+                    )
+                })
+                .ok_or_else(|| {
+                    VoiceError::Config("audio_file provider not found in config".into())
+                })?;
+            create_single_tts(audio_config, false)?
         }
     };
 
