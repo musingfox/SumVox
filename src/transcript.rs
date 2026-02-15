@@ -46,6 +46,21 @@ impl Message {
                 .collect(),
         }
     }
+
+    /// Check if this is a human-authored user message (not a tool_result).
+    ///
+    /// In Claude Code transcripts, both real user input and tool_result entries
+    /// share `type: "user"` and `role: "user"`. This method distinguishes them:
+    /// - Real user message: content is a string, or content contains "text" blocks
+    /// - Tool result: content contains only "tool_result" blocks (no "text" blocks)
+    pub fn is_human_text(&self) -> bool {
+        match &self.content {
+            MessageContent::Text(_) => true,
+            MessageContent::Blocks(blocks) => {
+                blocks.iter().any(|b| matches!(b, ContentBlock::Text { .. }))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -169,19 +184,23 @@ impl TranscriptReader {
             }
         }
 
-        // Find all user message indices (turn boundaries)
+        // Find human user message indices (turn boundaries).
+        // In Claude Code transcripts, tool_result entries also have type="user"
+        // and role="user", but they should NOT be treated as turn boundaries.
+        // Only real human input (text content) marks a new turn.
         let mut user_indices = Vec::new();
         for (idx, line) in lines_vec.iter().enumerate() {
             if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(line) {
-                // Support both formats:
-                // 1. Test format: {"type":"message","message":{"role":"user",...}}
-                // 2. Claude Code format: {"type":"user","message":{"role":"user",...}}
                 let is_user = entry.entry_type == "user"
                     || (entry.entry_type == "message"
                         && entry.message.as_ref().is_some_and(|m| m.role == "user"));
 
                 if is_user {
-                    user_indices.push(idx);
+                    if let Some(ref message) = entry.message {
+                        if message.is_human_text() {
+                            user_indices.push(idx);
+                        }
+                    }
                 }
             }
         }
@@ -429,5 +448,61 @@ invalid json line
         let texts = TranscriptReader::read_last_n_turns(path, 5).await.unwrap();
         assert_eq!(texts.len(), 1);
         assert_eq!(texts[0], "Response");
+    }
+
+    #[tokio::test]
+    async fn test_read_last_n_turns_ignores_tool_result_boundaries() {
+        // Simulates real Claude Code transcript where tool_result entries
+        // have type="user" but should NOT be treated as turn boundaries.
+        let jsonl_content = r#"{"type":"user","message":{"role":"user","content":"Fix the bug"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Let me look at the code"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"path":"/tmp/test.rs"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123","content":"fn main() {}"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"path":"/tmp/test.rs"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_456","content":"File edited"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Bug fixed successfully"}]}}
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(jsonl_content.as_bytes()).unwrap();
+        let path = temp_file.path();
+
+        let texts = TranscriptReader::read_last_n_turns(path, 1).await.unwrap();
+
+        // Should get ALL assistant texts from the turn, not just the ones after
+        // the last tool_result. tool_result entries should not split the turn.
+        assert_eq!(texts.len(), 2);
+        assert_eq!(texts[0], "Let me look at the code");
+        assert_eq!(texts[1], "Bug fixed successfully");
+    }
+
+    #[tokio::test]
+    async fn test_read_last_n_turns_claude_code_format() {
+        // Uses Claude Code's native format: type="user"/"assistant" (not "message")
+        let jsonl_content = r#"{"type":"user","message":{"role":"user","content":"Summarize the changes"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here is the summary"}]}}
+{"type":"user","message":{"role":"user","content":"Deploy it"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Deploying now"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"deploy.sh"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_789","content":"Deployed!"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Deployment complete"}]}}
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(jsonl_content.as_bytes()).unwrap();
+        let path = temp_file.path();
+
+        // Last 1 turn should be "Deploy it" and all its assistant responses
+        let texts = TranscriptReader::read_last_n_turns(path, 1).await.unwrap();
+        assert_eq!(texts.len(), 2);
+        assert_eq!(texts[0], "Deploying now");
+        assert_eq!(texts[1], "Deployment complete");
+
+        // Last 2 turns should include both
+        let texts = TranscriptReader::read_last_n_turns(path, 2).await.unwrap();
+        assert_eq!(texts.len(), 3);
+        assert_eq!(texts[0], "Here is the summary");
+        assert_eq!(texts[1], "Deploying now");
+        assert_eq!(texts[2], "Deployment complete");
     }
 }
