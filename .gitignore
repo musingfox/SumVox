@@ -44,6 +44,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .agents/node_modules/
 .agents/bun.lockb
 
+# E2E test config and audio files (local only)
+config/e2e_test.toml
+config/sounds/
+
 # Rust
 target/
 Cargo.lock

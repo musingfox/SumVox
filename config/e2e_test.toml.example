@@ -1,0 +1,42 @@
+# E2E Test Configuration
+# Copy to config/e2e_test.toml and fill in real API keys
+#
+# Local: cp config/e2e_test.toml.example config/e2e_test.toml
+# CI: echo "$E2E_CONFIG" > config/e2e_test.toml
+
+version = "1.2.0"
+
+[llm]
+[llm.parameters]
+max_tokens = 500
+temperature = 0.3
+disable_thinking = true
+
+[[llm.providers]]
+name = "google"
+model = "gemini-2.0-flash"
+api_key = "YOUR_GEMINI_API_KEY_HERE"
+timeout = 15
+
+[tts]
+[[tts.providers]]
+name = "macos"
+rate = 200
+
+[[tts.providers]]
+name = "google"
+model = "gemini-2.5-flash-preview-tts"
+voice = "Kore"
+api_key = "YOUR_GEMINI_API_KEY_HERE"
+
+[summarization]
+turns = 1
+system_message = "You are a test assistant. Summarize briefly."
+prompt_template = "Summarize: {context}"
+fallback_message = "Test completed"
+
+[hooks.claude_code]
+notification_filter = ["*"]
+queue_timeout = 30
+notification_tts_provider = "macos"
+stop_tts_provider = "macos"
