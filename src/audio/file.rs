@@ -107,6 +107,34 @@ impl AudioFileProvider {
     }
 }
 
+/// Play an audio file to completion (blocking).
+/// Owns the full audio pipeline: open file → decode → output stream → sink → wait.
+fn play_audio_blocking(file_path: &PathBuf, volume: u32) -> Result<()> {
+    let file = File::open(file_path).map_err(|e| {
+        VoiceError::Voice(format!("Failed to open audio file {:?}: {}", file_path, e))
+    })?;
+    let reader = BufReader::new(file);
+
+    let source = Decoder::new(reader).map_err(|e| {
+        VoiceError::Voice(format!("Failed to decode audio file {:?}: {}", file_path, e))
+    })?;
+
+    let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| {
+        VoiceError::Voice(format!("Failed to open audio output: {}", e))
+    })?;
+
+    let sink = Sink::try_new(&stream_handle).map_err(|e| {
+        VoiceError::Voice(format!("Failed to create audio sink: {}", e))
+    })?;
+
+    let volume_f32 = (volume as f32) / 100.0;
+    sink.set_volume(volume_f32);
+    sink.append(source);
+    sink.sleep_until_end();
+
+    Ok(())
+}
+
 #[async_trait]
 impl TtsProvider for AudioFileProvider {
     fn name(&self) -> &str {
@@ -121,7 +149,6 @@ impl TtsProvider for AudioFileProvider {
     }
 
     async fn speak(&self, _text: &str) -> Result<bool> {
-        // Get file to play
         let file_path = self.get_playback_file()?;
 
         tracing::info!(
@@ -131,44 +158,20 @@ impl TtsProvider for AudioFileProvider {
             self.async_mode
         );
 
-        // Open file
-        let file = File::open(&file_path).map_err(|e| {
-            VoiceError::Voice(format!("Failed to open audio file {:?}: {}", file_path, e))
-        })?;
-        let reader = BufReader::new(file);
-
-        // Decode audio
-        let source = Decoder::new(reader).map_err(|e| {
-            VoiceError::Voice(format!("Failed to decode audio file {:?}: {}", file_path, e))
-        })?;
-
-        // Create output stream
-        let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| {
-            VoiceError::Voice(format!("Failed to open audio output: {}", e))
-        })?;
-
-        // Create sink and set volume
-        let sink = Sink::try_new(&stream_handle).map_err(|e| {
-            VoiceError::Voice(format!("Failed to create audio sink: {}", e))
-        })?;
-
-        // Map volume 0-100 to 0.0-1.0
-        let volume_f32 = (self.volume as f32) / 100.0;
-        sink.set_volume(volume_f32);
-
-        // Append source and start playback
-        sink.append(source);
-
         if self.async_mode {
-            // Non-blocking: spawn task to keep sink alive
-            tokio::spawn(async move {
-                sink.sleep_until_end();
+            // Fire-and-forget: spawn OS thread for the entire audio pipeline.
+            // OutputStream is !Send (CoreAudio), so it must be created on the
+            // thread that uses it. Using std::thread (not tokio::spawn) avoids
+            // blocking the tokio runtime and prevents process-exit hangs.
+            let volume = self.volume;
+            std::thread::spawn(move || {
+                if let Err(e) = play_audio_blocking(&file_path, volume) {
+                    tracing::warn!("Async audio playback failed: {}", e);
+                }
             });
-
             tracing::debug!("Audio playback started (non-blocking)");
         } else {
-            // Blocking: wait for completion
-            sink.sleep_until_end();
+            play_audio_blocking(&file_path, self.volume)?;
             tracing::debug!("Audio playback completed (blocking)");
         }
 
