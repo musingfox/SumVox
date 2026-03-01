@@ -5,6 +5,22 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-01
+
+### Added
+- **Audio File Playback Provider**: Play `.wav`, `.mp3`, `.flac`, `.ogg` sound effects via `audio_file` TTS provider
+  - Single file or directory mode (random selection from directory)
+  - Configurable volume control (0-100)
+  - Non-blocking async playback for hooks
+- **Cross-Process Notification Queue**: File-lock based queue (`flock`) prevents overlapping TTS output across concurrent hook invocations
+- **Vorbis Codec Support**: Added OGG/Vorbis decoding via `rodio` with vorbis feature
+- **E2E Test Infrastructure**: 25 end-to-end tests covering CLI commands, hook dispatch, audio playback, and concurrent queue behavior
+- **Separate E2E CI Job**: E2E tests run independently with secret-based config, not blocking unit test pipeline
+
+### Fixed
+- **Silent Hook Audio Playback**: Fixed bugs where hook audio playback produced no sound
+- **Async Audio Process Hang**: Fixed process hang in async audio playback by properly managing tokio runtime and thread lifecycle
+
 ## [1.1.1] - 2026-02-15
 
 ### Fixed
@@ -127,6 +143,7 @@ When upgrading to v1.1.0:
 - Homebrew tap: `musingfox/sumvox`
 - Configuration: Edit YAML file directly instead of using environment variables
 
+[1.2.0]: https://github.com/musingfox/sumvox/releases/tag/v1.2.0
 [1.1.1]: https://github.com/musingfox/sumvox/releases/tag/v1.1.1
 [1.1.0]: https://github.com/musingfox/sumvox/releases/tag/v1.1.0
 [1.0.0]: https://github.com/musingfox/sumvox/releases/tag/v1.0.0
