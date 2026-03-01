@@ -93,6 +93,7 @@ jobs:
     needs: [fmt, clippy]
     if: github.event_name == 'push'
     runs-on: macos-latest
+    environment: E2E_CONFIG
 
     steps:
       - uses: actions/checkout@v4
