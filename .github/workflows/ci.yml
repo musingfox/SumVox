@@ -83,10 +83,39 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --lib --bins --verbose
 
       - name: Run tests with all features
-        run: cargo test --all-features --verbose
+        run: cargo test --lib --bins --all-features --verbose
+
+  e2e:
+    name: E2E
+    needs: [fmt, clippy]
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Write E2E config
+        env:
+          E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
+        run: |
+          if [ -z "$E2E_CONFIG" ]; then
+            echo "E2E_CONFIG secret not set, skipping"
+            exit 0
+          fi
+          echo "$E2E_CONFIG" > config/e2e_test.toml
+
+      - name: Run E2E tests
+        env:
+          E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
+        if: env.E2E_CONFIG != ''
+        run: cargo test --test e2e --verbose
+        timeout-minutes: 5
 
   build:
     name: Build
