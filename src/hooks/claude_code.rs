@@ -479,7 +479,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                         "audio_file provider not found in config".into(),
                     )
                 })?;
-            crate::tts::create_single_tts(audio_config, true)?
+            crate::tts::create_single_tts(audio_config, false)?
         }
     };
 
@@ -524,6 +524,18 @@ async fn speak_with_provider_fallback(
     let mut last_error = None;
 
     for provider_config in providers {
+        // Skip audio_file providers - they play sound effects,
+        // not speech synthesis, and cannot render arbitrary text.
+        if matches!(
+            provider_config.name.to_lowercase().as_str(),
+            "audio_file" | "audio" | "file"
+        ) {
+            tracing::debug!(
+                "Skipping audio_file provider in fallback chain (not a speech synthesizer)"
+            );
+            continue;
+        }
+
         // Try to create provider
         let provider = match crate::tts::create_single_tts(provider_config, true) {
             Ok(p) => p,
