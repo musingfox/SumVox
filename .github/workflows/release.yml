@@ -212,10 +212,10 @@ jobs:
           git push origin main
 
       - name: Update tap repository
-        if: ${{ secrets.TAP_REPO_TOKEN != '' }}
         env:
           TAP_REPO_TOKEN: ${{ secrets.TAP_REPO_TOKEN }}
           VERSION: ${{ needs.create-release.outputs.version }}
+        if: env.TAP_REPO_TOKEN != ''
         run: |
           git clone "https://x-access-token:${TAP_REPO_TOKEN}@github.com/musingfox/homebrew-sumvox.git" tap-repo
           cp homebrew/sumvox.rb tap-repo/Formula/sumvox.rb
