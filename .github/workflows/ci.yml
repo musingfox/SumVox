@@ -111,13 +111,6 @@ jobs:
           fi
           echo "$E2E_CONFIG" > config/e2e_test.toml
 
-      - name: Debug E2E config
-        run: |
-          echo "=== config/e2e_test.toml ==="
-          cat config/e2e_test.toml
-          echo "=== grep audio ==="
-          grep -i audio config/e2e_test.toml || echo "no audio_file found"
-
       - name: Run E2E tests
         env:
           E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
