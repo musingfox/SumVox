@@ -56,9 +56,9 @@ impl Message {
     pub fn is_human_text(&self) -> bool {
         match &self.content {
             MessageContent::Text(_) => true,
-            MessageContent::Blocks(blocks) => {
-                blocks.iter().any(|b| matches!(b, ContentBlock::Text { .. }))
-            }
+            MessageContent::Blocks(blocks) => blocks
+                .iter()
+                .any(|b| matches!(b, ContentBlock::Text { .. })),
         }
     }
 }

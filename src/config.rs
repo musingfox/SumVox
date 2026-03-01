@@ -515,8 +515,9 @@ impl SumvoxConfig {
 
     /// Load configuration from a TOML file
     pub fn load_toml(path: PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e)))?;
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
+        })?;
         let config: SumvoxConfig = toml::from_str(&content)
             .map_err(|e| VoiceError::Config(format!("Failed to parse TOML config: {}", e)))?;
         config.validate()?;
@@ -585,7 +586,10 @@ impl SumvoxConfig {
     /// Backup a config file with timestamp
     fn backup_config(path: &std::path::Path) -> Result<PathBuf> {
         if !path.exists() {
-            return Err(VoiceError::Config(format!("Config file {:?} does not exist", path)));
+            return Err(VoiceError::Config(format!(
+                "Config file {:?} does not exist",
+                path
+            )));
         }
         let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
         let backup_name = format!(
@@ -613,7 +617,11 @@ impl SumvoxConfig {
             return Ok(None); // No legacy config
         };
 
-        tracing::info!("Migrating {} config to TOML: {:?}", format_name, source_path);
+        tracing::info!(
+            "Migrating {} config to TOML: {:?}",
+            format_name,
+            source_path
+        );
 
         // Load legacy config
         let config = if format_name == "YAML" {

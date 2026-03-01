@@ -28,8 +28,7 @@ impl TestEnv {
 
     /// Install the real e2e_test.toml config into the isolated HOME
     fn setup_base_config(&self) -> &Path {
-        let config_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("config/e2e_test.toml");
+        let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/e2e_test.toml");
         let base_config = fs::read_to_string(&config_path).expect(
             "config/e2e_test.toml not found. \
              Copy from config/e2e_test.toml.example and fill in real API keys.",
@@ -64,7 +63,6 @@ impl TestEnv {
     fn home_path(&self) -> &Path {
         self.home_dir.path()
     }
-
 }
 
 // ============================================================================
@@ -91,7 +89,7 @@ fn create_minimal_wav(path: &Path) {
     wav.extend_from_slice(&88200u32.to_le_bytes()); // byte rate
     wav.extend_from_slice(&2u16.to_le_bytes()); // block align
     wav.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
-    // data chunk
+                                                 // data chunk
     wav.extend_from_slice(b"data");
     wav.extend_from_slice(&data_size.to_le_bytes());
     wav.extend_from_slice(&vec![0u8; data_size as usize]); // silence
@@ -318,10 +316,11 @@ fn test_init_creates_config() {
 
     env.cmd().arg("init").assert().success();
 
-    let config_path = env
-        .home_path()
-        .join(".config/sumvox/config.toml");
-    assert!(config_path.exists(), "config.toml should be created by init");
+    let config_path = env.home_path().join(".config/sumvox/config.toml");
+    assert!(
+        config_path.exists(),
+        "config.toml should be created by init"
+    );
 }
 
 #[test]
@@ -341,10 +340,7 @@ fn test_init_force() {
         .stderr(predicate::str::contains("already exists"));
 
     // With --force: should overwrite and create config.toml
-    env.cmd()
-        .args(["init", "--force"])
-        .assert()
-        .success();
+    env.cmd().args(["init", "--force"]).assert().success();
 
     let config_path = config_dir.join("config.toml");
     assert!(
@@ -363,7 +359,11 @@ fn test_sum_no_speak() {
     env.setup_base_config();
 
     env.cmd()
-        .args(["sum", "The quick brown fox jumps over the lazy dog", "--no-speak"])
+        .args([
+            "sum",
+            "The quick brown fox jumps over the lazy dog",
+            "--no-speak",
+        ])
         .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success()
@@ -534,7 +534,12 @@ fn test_sum_full_flow_macos() {
     env.setup_base_config();
 
     env.cmd()
-        .args(["sum", "Explain Rust ownership in one sentence", "--tts", "macos"])
+        .args([
+            "sum",
+            "Explain Rust ownership in one sentence",
+            "--tts",
+            "macos",
+        ])
         .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success()
@@ -690,8 +695,12 @@ fn test_queue_concurrent() {
         .unwrap();
 
     // Wait for both to complete
-    let output1 = child1.wait_with_output().expect("Failed to wait for child 1");
-    let output2 = child2.wait_with_output().expect("Failed to wait for child 2");
+    let output1 = child1
+        .wait_with_output()
+        .expect("Failed to wait for child 1");
+    let output2 = child2
+        .wait_with_output()
+        .expect("Failed to wait for child 2");
 
     assert!(
         output1.status.success(),

@@ -97,9 +97,9 @@ impl AudioFileProvider {
 
                 // Randomly select one file
                 let mut rng = rand::thread_rng();
-                let selected = audio_files
-                    .choose(&mut rng)
-                    .ok_or_else(|| VoiceError::Config("Failed to select random audio file".into()))?;
+                let selected = audio_files.choose(&mut rng).ok_or_else(|| {
+                    VoiceError::Config("Failed to select random audio file".into())
+                })?;
 
                 Ok(selected.clone())
             }
@@ -116,16 +116,17 @@ fn play_audio_blocking(file_path: &PathBuf, volume: u32) -> Result<()> {
     let reader = BufReader::new(file);
 
     let source = Decoder::new(reader).map_err(|e| {
-        VoiceError::Voice(format!("Failed to decode audio file {:?}: {}", file_path, e))
+        VoiceError::Voice(format!(
+            "Failed to decode audio file {:?}: {}",
+            file_path, e
+        ))
     })?;
 
-    let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| {
-        VoiceError::Voice(format!("Failed to open audio output: {}", e))
-    })?;
+    let (_stream, stream_handle) = OutputStream::try_default()
+        .map_err(|e| VoiceError::Voice(format!("Failed to open audio output: {}", e)))?;
 
-    let sink = Sink::try_new(&stream_handle).map_err(|e| {
-        VoiceError::Voice(format!("Failed to create audio sink: {}", e))
-    })?;
+    let sink = Sink::try_new(&stream_handle)
+        .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
 
     let volume_f32 = (volume as f32) / 100.0;
     sink.set_volume(volume_f32);
@@ -218,10 +219,7 @@ mod tests {
         let path = PathBuf::from("/nonexistent/path/to/audio.wav");
         let result = AudioFileProvider::new(path, 100, false);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("does not exist"));
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 
     #[test]

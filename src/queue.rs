@@ -87,9 +87,7 @@ impl QueueLock {
                     let elapsed = start_time.elapsed();
                     tracing::info!("Queue lock acquired after {:?}", elapsed);
 
-                    return Ok(QueueLock {
-                        _flock: flock,
-                    });
+                    return Ok(QueueLock { _flock: flock });
                 }
                 Err((_, nix::errno::Errno::EWOULDBLOCK)) => {
                     // Lock is held by another process
