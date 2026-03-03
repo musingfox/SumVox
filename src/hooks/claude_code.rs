@@ -479,7 +479,14 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                         "audio_file provider not found in config".into(),
                     )
                 })?;
-            crate::tts::create_single_tts(audio_config, false)?
+
+            // Apply hook volume override (priority: CLI > hook config > provider config)
+            let mut audio_config = audio_config.clone();
+            if let Some(vol) = tts_opts.volume {
+                audio_config.volume = Some(vol);
+            }
+
+            crate::tts::create_single_tts(&audio_config, false)?
         }
     };
 
