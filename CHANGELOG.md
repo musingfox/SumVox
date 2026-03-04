@@ -5,6 +5,14 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-03-04
+
+### Fixed
+- **Auto Mode Volume Override**: Fixed `stop_volume` and `notification_volume` hook settings being ignored when TTS provider is set to `"auto"`. The volume override is now correctly propagated through `speak_with_provider_fallback`, preventing unexpectedly loud Gemini TTS playback.
+
+### Changed
+- **Recommended Config**: Updated Google TTS volume guidance to suggest 40-60 range (Gemini TTS output is loud by default).
+
 ## [1.2.1] - 2026-03-03
 
 ### Fixed

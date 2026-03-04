@@ -2,7 +2,7 @@
 # Location: ~/.config/sumvox/config.toml
 # Documentation: https://github.com/musingfox/sumvox
 
-version = "1.2.1"
+version = "1.2.2"
 
 # ============================================================================
 # LLM Provider Configuration (fallback chain - try in order)
