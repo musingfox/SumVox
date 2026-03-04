@@ -505,7 +505,8 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
     match tts_engine {
         TtsEngine::Auto => {
             // For Auto mode, try all providers in config order
-            speak_with_provider_fallback(&config.tts.providers, text).await
+            // Pass volume override so hook-level volume (stop_volume/notification_volume) is applied
+            speak_with_provider_fallback(&config.tts.providers, text, tts_opts.volume).await
         }
         _ => {
             // Single provider mode - just try once
@@ -524,9 +525,13 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
 }
 
 /// Try TTS providers in order with automatic runtime fallback
+///
+/// `volume_override` applies hook-level volume (e.g., stop_volume, notification_volume)
+/// over provider-level volume settings. Priority: volume_override > provider config > default.
 async fn speak_with_provider_fallback(
     providers: &[crate::config::TtsProviderConfig],
     text: &str,
+    volume_override: Option<u32>,
 ) -> Result<()> {
     let mut last_error = None;
 
@@ -543,8 +548,14 @@ async fn speak_with_provider_fallback(
             continue;
         }
 
+        // Apply volume override if provided (hook-level volume takes priority)
+        let mut config_with_volume = provider_config.clone();
+        if let Some(vol) = volume_override {
+            config_with_volume.volume = Some(vol);
+        }
+
         // Try to create provider
-        let provider = match crate::tts::create_single_tts(provider_config, true) {
+        let provider = match crate::tts::create_single_tts(&config_with_volume, true) {
             Ok(p) => p,
             Err(e) => {
                 tracing::debug!(
@@ -665,5 +676,175 @@ mod tests {
         assert!(opts.provider.is_none());
         assert!(opts.model.is_none());
         assert_eq!(opts.timeout, 10);
+    }
+
+    // ── Volume override tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_stop_volume_default_when_config_unset() {
+        let config = SumvoxConfig::default();
+        let tts_opts = TtsOptions::default();
+
+        let mut stop_tts_opts = tts_opts.clone();
+        if stop_tts_opts.volume.is_none() {
+            stop_tts_opts.volume =
+                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+        }
+
+        assert_eq!(stop_tts_opts.volume, Some(100));
+    }
+
+    #[test]
+    fn test_stop_volume_from_hook_config() {
+        let mut config = SumvoxConfig::default();
+        config.hooks.claude_code.stop_volume = Some(80);
+        let tts_opts = TtsOptions::default();
+
+        let mut stop_tts_opts = tts_opts.clone();
+        if stop_tts_opts.volume.is_none() {
+            stop_tts_opts.volume =
+                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+        }
+
+        assert_eq!(stop_tts_opts.volume, Some(80));
+    }
+
+    #[test]
+    fn test_notification_volume_from_hook_config() {
+        let mut config = SumvoxConfig::default();
+        config.hooks.claude_code.notification_volume = Some(60);
+        let tts_opts = TtsOptions::default();
+
+        let mut notification_tts_opts = tts_opts.clone();
+        if notification_tts_opts.volume.is_none() {
+            notification_tts_opts.volume = Some(
+                config
+                    .hooks
+                    .claude_code
+                    .notification_volume
+                    .unwrap_or(80),
+            );
+        }
+
+        assert_eq!(notification_tts_opts.volume, Some(60));
+    }
+
+    #[test]
+    fn test_cli_volume_overrides_hook_config() {
+        let mut config = SumvoxConfig::default();
+        config.hooks.claude_code.stop_volume = Some(80);
+
+        let mut tts_opts = TtsOptions::default();
+        tts_opts.volume = Some(50); // CLI override
+
+        let mut stop_tts_opts = tts_opts.clone();
+        if stop_tts_opts.volume.is_none() {
+            stop_tts_opts.volume =
+                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+        }
+
+        // CLI volume (50) takes priority over hook config (80)
+        assert_eq!(stop_tts_opts.volume, Some(50));
+    }
+
+    #[test]
+    fn test_volume_override_applies_to_provider_config() {
+        use crate::config::TtsProviderConfig;
+
+        let provider = TtsProviderConfig {
+            name: "google".to_string(),
+            model: Some("gemini-2.5-flash-preview-tts".to_string()),
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: Some(100), // Provider default
+            path: None,
+        };
+
+        let volume_override = Some(60u32);
+        let mut config_with_volume = provider.clone();
+        if let Some(vol) = volume_override {
+            config_with_volume.volume = Some(vol);
+        }
+
+        // Hook-level volume (60) overrides provider-level (100)
+        assert_eq!(config_with_volume.volume, Some(60));
+    }
+
+    #[test]
+    fn test_volume_override_none_preserves_provider_volume() {
+        use crate::config::TtsProviderConfig;
+
+        let provider = TtsProviderConfig {
+            name: "google".to_string(),
+            model: Some("gemini-2.5-flash-preview-tts".to_string()),
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: Some(100),
+            path: None,
+        };
+
+        let volume_override: Option<u32> = None;
+        let mut config_with_volume = provider.clone();
+        if let Some(vol) = volume_override {
+            config_with_volume.volume = Some(vol);
+        }
+
+        // No override → provider volume preserved
+        assert_eq!(config_with_volume.volume, Some(100));
+    }
+
+    #[test]
+    fn test_volume_override_applies_to_provider_without_volume() {
+        use crate::config::TtsProviderConfig;
+
+        let provider = TtsProviderConfig {
+            name: "google".to_string(),
+            model: Some("gemini-2.5-flash-preview-tts".to_string()),
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None, // No provider volume set
+            path: None,
+        };
+
+        let volume_override = Some(80u32);
+        let mut config_with_volume = provider.clone();
+        if let Some(vol) = volume_override {
+            config_with_volume.volume = Some(vol);
+        }
+
+        // Hook-level volume applies even when provider has no volume
+        assert_eq!(config_with_volume.volume, Some(80));
+    }
+
+    #[test]
+    fn test_auto_engine_propagates_volume_to_tts_opts() {
+        // Simulate the full flow: config → TtsOptions → speak_text
+        let mut config = SumvoxConfig::default();
+        config.hooks.claude_code.stop_volume = Some(70);
+        config.hooks.claude_code.stop_tts_provider = Some("auto".to_string());
+
+        let tts_opts = TtsOptions::default();
+
+        // Replicate handle_stop logic
+        let mut stop_tts_opts = tts_opts.clone();
+        if let Some(ref provider) = config.hooks.claude_code.stop_tts_provider {
+            stop_tts_opts.engine = provider.clone();
+        }
+        if stop_tts_opts.volume.is_none() {
+            stop_tts_opts.volume =
+                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+        }
+
+        assert_eq!(stop_tts_opts.engine, "auto");
+        assert_eq!(stop_tts_opts.volume, Some(70));
+
+        // In speak_text, Auto mode passes tts_opts.volume to speak_with_provider_fallback
+        // which applies it as volume_override to each provider config
+        let tts_engine: TtsEngine = stop_tts_opts.engine.parse().unwrap();
+        assert_eq!(tts_engine, TtsEngine::Auto);
+        assert_eq!(stop_tts_opts.volume, Some(70));
     }
 }

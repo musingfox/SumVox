@@ -72,7 +72,8 @@ rate = 200      # Speech rate (90-300, default: 200)
 # model = "gemini-2.5-flash-preview-tts"  # Required for Google TTS
 # voice = "Aoede"     # Options: Aoede, Charon, Fenrir, Kore, Puck, Orus
 # api_key = "${GEMINI_API_KEY}"
-# # volume = 100  # ✅ SUPPORTED - Volume control works (0-100)
+# volume = 50   # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+#               # Gemini TTS output is loud by default, 40-60 is recommended
 
 # ============================================================================
 # Summarization Settings (used by Stop hook and sum command)
