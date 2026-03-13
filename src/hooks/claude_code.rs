@@ -712,8 +712,7 @@ mod tests {
 
         let mut stop_tts_opts = tts_opts.clone();
         if stop_tts_opts.volume.is_none() {
-            stop_tts_opts.volume =
-                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+            stop_tts_opts.volume = Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
         }
 
         assert_eq!(stop_tts_opts.volume, Some(100));
@@ -727,8 +726,7 @@ mod tests {
 
         let mut stop_tts_opts = tts_opts.clone();
         if stop_tts_opts.volume.is_none() {
-            stop_tts_opts.volume =
-                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+            stop_tts_opts.volume = Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
         }
 
         assert_eq!(stop_tts_opts.volume, Some(80));
@@ -742,13 +740,8 @@ mod tests {
 
         let mut notification_tts_opts = tts_opts.clone();
         if notification_tts_opts.volume.is_none() {
-            notification_tts_opts.volume = Some(
-                config
-                    .hooks
-                    .claude_code
-                    .notification_volume
-                    .unwrap_or(80),
-            );
+            notification_tts_opts.volume =
+                Some(config.hooks.claude_code.notification_volume.unwrap_or(80));
         }
 
         assert_eq!(notification_tts_opts.volume, Some(60));
@@ -764,8 +757,7 @@ mod tests {
 
         let mut stop_tts_opts = tts_opts.clone();
         if stop_tts_opts.volume.is_none() {
-            stop_tts_opts.volume =
-                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+            stop_tts_opts.volume = Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
         }
 
         // CLI volume (50) takes priority over hook config (80)
@@ -865,8 +857,7 @@ mod tests {
             stop_tts_opts.engine = provider.clone();
         }
         if stop_tts_opts.volume.is_none() {
-            stop_tts_opts.volume =
-                Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
+            stop_tts_opts.volume = Some(config.hooks.claude_code.stop_volume.unwrap_or(100));
         }
 
         assert_eq!(stop_tts_opts.engine, "auto");
