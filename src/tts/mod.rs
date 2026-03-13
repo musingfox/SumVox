@@ -1,6 +1,8 @@
 // TTS (Text-to-Speech) module
 // Provides abstraction over different TTS engines with fallback support
 
+pub mod cloud_tts;
+pub mod cloud_tts_auth;
 pub mod google;
 pub mod macos;
 
@@ -33,6 +35,7 @@ pub trait TtsProvider: Send + Sync {
 pub enum TtsEngine {
     MacOS,
     Google,
+    CloudTts,
     AudioFile,
     Auto,
 }
@@ -44,6 +47,7 @@ impl FromStr for TtsEngine {
         match s.to_lowercase().as_str() {
             "macos" | "say" => Ok(TtsEngine::MacOS),
             "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
+            "cloud_tts" | "gcp_tts" | "google_cloud" => Ok(TtsEngine::CloudTts),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
@@ -56,6 +60,7 @@ impl std::fmt::Display for TtsEngine {
         match self {
             TtsEngine::MacOS => write!(f, "macos"),
             TtsEngine::Google => write!(f, "google"),
+            TtsEngine::CloudTts => write!(f, "cloud_tts"),
             TtsEngine::AudioFile => write!(f, "audio_file"),
             TtsEngine::Auto => write!(f, "auto"),
         }
@@ -63,6 +68,7 @@ impl std::fmt::Display for TtsEngine {
 }
 
 // Re-export providers
+pub use cloud_tts::CloudTtsProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
 
@@ -138,6 +144,20 @@ pub fn create_single_tts(
                 api_key, model, voice, volume,
             )))
         }
+        "cloud_tts" | "gcp_tts" | "google_cloud" => {
+            let sa_json = config.get_service_account_key().ok_or_else(|| {
+                VoiceError::Config("Cloud TTS requires service_account_key".into())
+            })?;
+
+            let voice = config.voice.clone();
+            let language_code = config.language_code.clone();
+            Ok(Box::new(CloudTtsProvider::new(
+                sa_json,
+                voice,
+                language_code,
+                volume,
+            )))
+        }
         "audio_file" | "audio" | "file" => {
             let path_str = config.path.as_ref().ok_or_else(|| {
                 VoiceError::Config(
@@ -176,6 +196,8 @@ pub fn create_tts_by_name(
         rate: Some(rate),
         volume: Some(volume),
         path: None,
+        service_account_key: None,
+        language_code: None,
     };
     create_single_tts(&config, is_async)
 }
@@ -199,9 +221,39 @@ mod tests {
     }
 
     #[test]
+    fn test_cloud_tts_engine_from_str() {
+        assert_eq!(
+            "cloud_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::CloudTts)
+        );
+        assert_eq!(
+            "gcp_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::CloudTts)
+        );
+        assert_eq!(
+            "google_cloud".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::CloudTts)
+        );
+    }
+
+    #[test]
+    fn test_cloud_tts_display() {
+        assert_eq!(TtsEngine::CloudTts.to_string(), "cloud_tts");
+    }
+
+    #[test]
+    fn test_google_still_maps_to_google() {
+        assert!(matches!(
+            "google".parse::<TtsEngine>(),
+            Ok(TtsEngine::Google)
+        ));
+    }
+
+    #[test]
     fn test_tts_engine_display() {
         assert_eq!(TtsEngine::MacOS.to_string(), "macos");
         assert_eq!(TtsEngine::Google.to_string(), "google");
+        assert_eq!(TtsEngine::CloudTts.to_string(), "cloud_tts");
         assert_eq!(TtsEngine::Auto.to_string(), "auto");
     }
 
@@ -216,6 +268,8 @@ mod tests {
             rate: Some(200),
             volume: Some(80),
             path: None,
+            service_account_key: None,
+            language_code: None,
         }];
 
         let result = create_tts_from_config(&providers, true);
@@ -236,6 +290,8 @@ mod tests {
                 rate: None,
                 volume: None,
                 path: None,
+                service_account_key: None,
+                language_code: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
@@ -245,6 +301,8 @@ mod tests {
                 rate: Some(200),
                 volume: None,
                 path: None,
+                service_account_key: None,
+                language_code: None,
             },
         ];
 

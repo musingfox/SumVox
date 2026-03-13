@@ -235,6 +235,16 @@ pub struct TtsProviderConfig {
     /// Can be a single file or a directory (picks random file each time)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+
+    /// Service account key path (for cloud_tts provider only)
+    /// Path to JSON service account key file
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_account_key: Option<String>,
+
+    /// Language code (for cloud_tts provider)
+    /// Examples: "en-US", "zh-TW", "ja-JP"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_code: Option<String>,
 }
 
 impl TtsProviderConfig {
@@ -266,6 +276,18 @@ impl TtsProviderConfig {
             .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
             .filter(|k| !k.is_empty())
     }
+
+    /// Get service account key file content
+    /// Expands ~ and reads file content
+    pub fn get_service_account_key(&self) -> Option<String> {
+        let path_str = self.service_account_key.as_ref()?;
+
+        // Expand ~ to home directory
+        let expanded = shellexpand::tilde(path_str).to_string();
+
+        // Read file content
+        std::fs::read_to_string(&expanded).ok()
+    }
 }
 
 /// Complete TTS configuration
@@ -287,6 +309,8 @@ impl Default for TtsConfig {
                     rate: None,
                     volume: None,
                     path: None,
+                    service_account_key: None,
+                    language_code: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
@@ -296,6 +320,8 @@ impl Default for TtsConfig {
                     rate: Some(200),
                     volume: None,
                     path: None,
+                    service_account_key: None,
+                    language_code: None,
                 },
             ],
         }
@@ -812,6 +838,8 @@ mod tests {
             rate: Some(200),
             volume: None,
             path: None,
+            service_account_key: None,
+            language_code: None,
         };
         assert!(macos_provider.is_configured());
     }
@@ -1086,5 +1114,60 @@ tts:
         let config = SumvoxConfig::default();
         assert_eq!(config.hooks.claude_code.notification_volume, None);
         assert_eq!(config.hooks.claude_code.stop_volume, None);
+    }
+
+    #[test]
+    fn test_service_account_key_reads_file() {
+        use std::io::Write;
+
+        // Create temp file with JSON content
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let json_content = r#"{"test": "content"}"#;
+        temp_file.write_all(json_content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let config = TtsProviderConfig {
+            name: "cloud_tts".to_string(),
+            model: None,
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: Some(temp_file.path().to_string_lossy().to_string()),
+            language_code: None,
+        };
+
+        let content = config.get_service_account_key();
+        assert!(content.is_some());
+        assert_eq!(content.unwrap(), json_content);
+    }
+
+    #[test]
+    fn test_service_account_key_none() {
+        let config = TtsProviderConfig {
+            name: "cloud_tts".to_string(),
+            model: None,
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+        };
+
+        assert_eq!(config.get_service_account_key(), None);
+    }
+
+    #[test]
+    fn test_language_code_deserialization() {
+        let config_json = r#"{
+            "name": "cloud_tts",
+            "language_code": "zh-TW"
+        }"#;
+
+        let config: TtsProviderConfig = serde_json::from_str(config_json).unwrap();
+        assert_eq!(config.language_code, Some("zh-TW".to_string()));
     }
 }

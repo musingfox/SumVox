@@ -5,6 +5,23 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-13
+
+### Added
+- **Google Cloud TTS Provider**: New `cloud_tts` TTS provider using Google Cloud Text-to-Speech API
+  - OAuth2 authentication via service account JSON key with automatic token caching
+  - Support for Standard, WaveNet, and Chirp3-HD voices
+  - Multi-language support with `language_code` config (e.g., `cmn-TW`, `cmn-CN`, `en-US`)
+  - Volume control via rodio (0-100)
+  - Automatic text chunking for messages exceeding 5,000 byte API limit
+  - Cost estimation at $4/1M characters (Standard voices)
+  - Integrates into existing TTS fallback chain
+- **WAV Audio Codec Support**: Added WAV/PCM decoding via `rodio` wav feature
+- **Config Fields**: `service_account_key` and `language_code` options for TTS provider configuration
+
+### Changed
+- **Recommended Config**: Added commented Cloud TTS provider example with setup instructions and pricing info
+
 ## [1.2.2] - 2026-03-04
 
 ### Fixed

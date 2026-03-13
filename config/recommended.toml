@@ -75,6 +75,20 @@ rate = 200      # Speech rate (90-300, default: 200)
 # volume = 50   # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
 #               # Gemini TTS output is loud by default, 40-60 is recommended
 
+# Google Cloud TTS (Professional-grade, requires service account)
+# Pricing:
+#   Standard voices: $4 per 1M characters (first 4M/month free)
+#   WaveNet voices: $16 per 1M characters (first 1M/month free)
+# Setup: https://cloud.google.com/text-to-speech/docs/before-you-begin
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "cloud_tts"
+# service_account_key = "~/.config/gcp/service-account.json"  # Path to service account key file
+# language_code = "cmn-TW"  # Language code (en-US, cmn-TW, ja-JP, etc.)
+#                           # Note: Traditional Chinese uses "cmn-TW" (Mandarin-Taiwan), NOT "zh-TW"
+# voice = "cmn-TW-Standard-A"  # Voice name (Standard-A/B/C, Wavenet-A/B/C, etc.)
+# volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+
 # ============================================================================
 # Summarization Settings (used by Stop hook and sum command)
 # ============================================================================

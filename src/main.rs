@@ -268,6 +268,8 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             rate: Some(200),
             volume: None,
             path: None,
+            service_account_key: None,
+            language_code: None,
         },
         TtsProviderConfig {
             name: "google".to_string(),
@@ -277,6 +279,8 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             rate: None,
             volume: None,
             path: None,
+            service_account_key: None,
+            language_code: None,
         },
     ];
 
@@ -486,6 +490,23 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 false,
                 api_key,
             )?
+        }
+        TtsEngine::CloudTts => {
+            // Find cloud_tts config from config
+            let cloud_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "cloud_tts" | "gcp_tts" | "google_cloud"
+                    )
+                })
+                .ok_or_else(|| {
+                    VoiceError::Config("cloud_tts provider not found in config".into())
+                })?;
+            create_single_tts(cloud_config, false)?
         }
         TtsEngine::AudioFile => {
             // Find audio_file config from config

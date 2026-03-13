@@ -463,6 +463,31 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 api_key,
             )?
         }
+        TtsEngine::CloudTts => {
+            let cloud_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "cloud_tts" | "gcp_tts" | "google_cloud"
+                    )
+                })
+                .ok_or_else(|| {
+                    crate::error::VoiceError::Config(
+                        "cloud_tts provider not found in config".into(),
+                    )
+                })?;
+
+            // Apply hook volume override
+            let mut cloud_config = cloud_config.clone();
+            if let Some(vol) = tts_opts.volume {
+                cloud_config.volume = Some(vol);
+            }
+
+            crate::tts::create_single_tts(&cloud_config, false)?
+        }
         TtsEngine::AudioFile => {
             let audio_config = config
                 .tts
@@ -759,6 +784,8 @@ mod tests {
             rate: None,
             volume: Some(100), // Provider default
             path: None,
+            service_account_key: None,
+            language_code: None,
         };
 
         let volume_override = Some(60u32);
@@ -783,6 +810,8 @@ mod tests {
             rate: None,
             volume: Some(100),
             path: None,
+            service_account_key: None,
+            language_code: None,
         };
 
         let volume_override: Option<u32> = None;
@@ -807,6 +836,8 @@ mod tests {
             rate: None,
             volume: None, // No provider volume set
             path: None,
+            service_account_key: None,
+            language_code: None,
         };
 
         let volume_override = Some(80u32);
