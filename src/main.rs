@@ -27,6 +27,11 @@ use tts::{create_single_tts, create_tts_by_name, create_tts_from_config, TtsEngi
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Allow disabling via environment variable (e.g., SUMVOX_DISABLE=1 claude)
+    if std::env::var("SUMVOX_DISABLE").is_ok() {
+        return Ok(());
+    }
+
     // Parse CLI arguments
     let cli = Cli::parse();
 

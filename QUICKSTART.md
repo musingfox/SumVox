@@ -162,6 +162,24 @@ hooks:
 
 **Note:** Volume control only works with Google TTS. macOS TTS uses system volume.
 
+## 🔇 Temporarily Disable SumVox
+
+Launch Claude Code without voice notifications:
+
+```bash
+# Bash / Zsh
+SUMVOX_DISABLE=1 claude
+
+# Fish
+env SUMVOX_DISABLE=1 claude
+```
+
+**Tip:** Create an alias for quick access:
+```bash
+alias claude-quiet='SUMVOX_DISABLE=1 claude'  # Bash/Zsh
+alias claude-quiet 'env SUMVOX_DISABLE=1 claude'  # Fish
+```
+
 ## 🔧 Troubleshooting
 
 ### "No API key found"

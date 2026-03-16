@@ -573,10 +573,31 @@ hooks:
 
 ### Environment Variables
 
-Optional debug logging can be enabled:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SUMVOX_DISABLE` | Temporarily disable SumVox (any value) | `SUMVOX_DISABLE=1 claude` |
+| `RUST_LOG` | Set log level for debugging | `RUST_LOG=debug sumvox say "test"` |
+
+#### Temporarily Disable SumVox
+
+Set `SUMVOX_DISABLE` to skip all SumVox processing. Useful when you want a quiet Claude Code session:
 
 ```bash
-export RUST_LOG="info"  # Options: debug, info, warn, error
+# Bash / Zsh
+SUMVOX_DISABLE=1 claude
+
+# Fish
+env SUMVOX_DISABLE=1 claude
+```
+
+You can also create a shell alias for convenience:
+
+```bash
+# Bash / Zsh (~/.bashrc or ~/.zshrc)
+alias claude-quiet='SUMVOX_DISABLE=1 claude'
+
+# Fish (~/.config/fish/config.fish)
+alias claude-quiet 'env SUMVOX_DISABLE=1 claude'
 ```
 
 **Note:** API keys should be configured in `~/.config/sumvox/config.yaml`, not as environment variables.
