@@ -15,7 +15,9 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
   - Google Gemini (recommended, tested and optimized)
   - Anthropic Claude, OpenAI GPT, Ollama (code support, not fully tested)
 - 🔊 **Multi-TTS Engines**:
-  - Google TTS (high quality, cloud-based, **volume control supported**)
+  - xAI TTS (natural speech, 5 voices, **volume control supported**)
+  - Google TTS (Gemini-powered, high quality, **volume control supported**)
+  - Google Cloud TTS (Standard/WaveNet/Chirp3-HD voices, **volume control supported**)
   - macOS say (local, always available, **volume control NOT supported**)
 - 🎨 **Simple Configuration**: YAML format with comments and easy setup
 - 🔄 **Smart Fallback**: Automatic provider switching on failure
@@ -225,7 +227,9 @@ hooks:
 ```
 
 - `macos` = Use only macOS TTS
-- `google` = Use only Google TTS
+- `google` = Use only Google TTS (Gemini)
+- `xai` = Use only xAI TTS
+- `cloud_tts` = Use only Google Cloud TTS
 - `auto` = Try all TTS providers in order (recommended for summaries)
 
 ### Configuration Examples
@@ -464,6 +468,7 @@ sumvox say "Hello world"
 # Specify TTS provider
 sumvox say "Hello" --tts macos
 sumvox say "Hello" --tts google --voice Aoede
+sumvox say "Hello" --tts xai --voice rex
 
 # Adjust speech rate (macOS only, 90-300)
 sumvox say "Hello" --rate 250
@@ -532,7 +537,9 @@ RUST_LOG=trace sumvox
 | Provider | Voices | API Key Required | Speed | Quality | Cost | Volume Control |
 |----------|--------|------------------|-------|---------|------|----------------|
 | **macOS say** | System voices | ❌ | Instant | Good | Free | ❌ Not supported |
-| **Google TTS** | 40+ voices | ✅ | Fast | Excellent | Low | ✅ Supported (0-100) |
+| **xAI TTS** | 5 voices | ✅ | Fast | Excellent | $4.20/1M chars | ✅ Supported (0-100) |
+| **Google TTS** | 6+ voices | ✅ | Fast | Excellent | ~$0.016/1K chars | ✅ Supported (0-100) |
+| **Google Cloud TTS** | 100+ voices | ✅ (Service Account) | Fast | Professional | $4-16/1M chars | ✅ Supported (0-100) |
 
 **macOS Voices:**
 - Run `say -v ?` to list all available voices
@@ -541,9 +548,20 @@ RUST_LOG=trace sumvox
 - Chinese: `Meijia` (繁體), `Tingting` (简体)
 - ⚠️ **Volume control not supported** - use macOS system volume settings
 
-**Google TTS Voices:**
-- `Aoede`, `Charon`, `Fenrir`, `Kore` (expressive, high quality)
-- Full list: https://cloud.google.com/text-to-speech/docs/voices
+**xAI TTS Voices:**
+- `eve` (default), `ara`, `rex`, `sal`, `leo`
+- Automatic language detection or specify with `language_code`
+- Get API key: https://console.x.ai
+- ✅ **Volume control supported** - adjust playback volume (0-100)
+
+**Google TTS Voices (Gemini):**
+- `Aoede`, `Charon`, `Fenrir`, `Kore`, `Puck`, `Orus` (expressive, high quality)
+- Get API key: https://ai.google.dev
+- ✅ **Volume control supported** - adjust playback volume (0-100)
+
+**Google Cloud TTS Voices:**
+- Standard, WaveNet, and Chirp3-HD voices across 40+ languages
+- Requires service account key: https://cloud.google.com/text-to-speech/docs/before-you-begin
 - ✅ **Volume control supported** - adjust playback volume (0-100)
 
 ### Configuration File Structure
@@ -567,8 +585,8 @@ summarization:
 hooks:
   claude_code:
     notification_filter: [...]  # Which notification types to speak
-    notification_tts_provider: "macos" | "google" | "auto"
-    stop_tts_provider: "macos" | "google" | "auto"
+    notification_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "auto"
+    stop_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "auto"
 ```
 
 ### Environment Variables
@@ -576,6 +594,7 @@ hooks:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SUMVOX_DISABLE` | Temporarily disable SumVox (any value) | `SUMVOX_DISABLE=1 claude` |
+| `XAI_API_KEY` | xAI API key (alternative to config) | `export XAI_API_KEY=xai-...` |
 | `RUST_LOG` | Set log level for debugging | `RUST_LOG=debug sumvox say "test"` |
 
 #### Temporarily Disable SumVox

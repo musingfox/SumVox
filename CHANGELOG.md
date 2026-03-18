@@ -5,6 +5,23 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-19
+
+### Added
+- **xAI TTS Provider**: New `xai` TTS provider using the xAI Text-to-Speech API
+  - 5 natural voices: `eve` (default), `ara`, `rex`, `sal`, `leo`
+  - Automatic language detection or explicit language setting via `language_code`
+  - MP3 audio output decoded via rodio
+  - Volume control (0-100)
+  - 15,000 character per-request limit with automatic truncation
+  - Cost estimation at $4.20/1M characters (Beta pricing)
+  - API key from config or `XAI_API_KEY` environment variable
+- **Config**: `get_xai_api_key()` for xAI API key resolution
+- **Recommended Config**: Added xAI TTS provider example with voice options and pricing
+
+### Changed
+- **Documentation**: Updated README and recommended config to reflect all 4 TTS providers (macOS, xAI, Google TTS, Google Cloud TTS)
+
 ## [1.3.1] - 2026-03-16
 
 ### Added
@@ -178,6 +195,11 @@ When upgrading to v1.1.0:
 - Homebrew tap: `musingfox/sumvox`
 - Configuration: Edit YAML file directly instead of using environment variables
 
+[1.4.0]: https://github.com/musingfox/sumvox/releases/tag/v1.4.0
+[1.3.1]: https://github.com/musingfox/sumvox/releases/tag/v1.3.1
+[1.3.0]: https://github.com/musingfox/sumvox/releases/tag/v1.3.0
+[1.2.2]: https://github.com/musingfox/sumvox/releases/tag/v1.2.2
+[1.2.1]: https://github.com/musingfox/sumvox/releases/tag/v1.2.1
 [1.2.0]: https://github.com/musingfox/sumvox/releases/tag/v1.2.0
 [1.1.1]: https://github.com/musingfox/sumvox/releases/tag/v1.1.1
 [1.1.0]: https://github.com/musingfox/sumvox/releases/tag/v1.1.0
