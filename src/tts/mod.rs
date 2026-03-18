@@ -5,6 +5,7 @@ pub mod cloud_tts;
 pub mod cloud_tts_auth;
 pub mod google;
 pub mod macos;
+pub mod xai;
 
 use async_trait::async_trait;
 use std::str::FromStr;
@@ -36,6 +37,7 @@ pub enum TtsEngine {
     MacOS,
     Google,
     CloudTts,
+    Xai,
     AudioFile,
     Auto,
 }
@@ -48,6 +50,7 @@ impl FromStr for TtsEngine {
             "macos" | "say" => Ok(TtsEngine::MacOS),
             "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
             "cloud_tts" | "gcp_tts" | "google_cloud" => Ok(TtsEngine::CloudTts),
+            "xai" | "xai_tts" | "grok" => Ok(TtsEngine::Xai),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
@@ -61,6 +64,7 @@ impl std::fmt::Display for TtsEngine {
             TtsEngine::MacOS => write!(f, "macos"),
             TtsEngine::Google => write!(f, "google"),
             TtsEngine::CloudTts => write!(f, "cloud_tts"),
+            TtsEngine::Xai => write!(f, "xai"),
             TtsEngine::AudioFile => write!(f, "audio_file"),
             TtsEngine::Auto => write!(f, "auto"),
         }
@@ -71,6 +75,7 @@ impl std::fmt::Display for TtsEngine {
 pub use cloud_tts::CloudTtsProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
+pub use xai::XaiTtsProvider;
 
 /// Create TTS provider from config array with automatic fallback
 ///
@@ -156,6 +161,19 @@ pub fn create_single_tts(
                 voice,
                 language_code,
                 volume,
+            )))
+        }
+        "xai" | "xai_tts" | "grok" => {
+            let api_key = config.get_xai_api_key().ok_or_else(|| {
+                VoiceError::Config(
+                    "xAI API key not found. Set in config or env var XAI_API_KEY".into(),
+                )
+            })?;
+
+            let voice = config.voice.clone();
+            let language = config.language_code.clone();
+            Ok(Box::new(XaiTtsProvider::new(
+                api_key, voice, language, volume,
             )))
         }
         "audio_file" | "audio" | "file" => {

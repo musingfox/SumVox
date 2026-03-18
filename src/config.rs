@@ -257,6 +257,7 @@ impl TtsProviderConfig {
                 // Need API key from config or env
                 self.get_api_key().is_some()
             }
+            "xai" | "xai_tts" | "grok" => self.get_xai_api_key().is_some(),
             _ => false,
         }
     }
@@ -274,6 +275,19 @@ impl TtsProviderConfig {
         std::env::var("GEMINI_API_KEY")
             .ok()
             .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
+            .filter(|k| !k.is_empty())
+    }
+
+    /// Get xAI API key from config or environment
+    pub fn get_xai_api_key(&self) -> Option<String> {
+        if let Some(ref key) = self.api_key {
+            if !key.is_empty() && !key.starts_with("${") {
+                return Some(key.clone());
+            }
+        }
+
+        std::env::var("XAI_API_KEY")
+            .ok()
             .filter(|k| !k.is_empty())
     }
 

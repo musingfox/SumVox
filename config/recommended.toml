@@ -75,6 +75,18 @@ rate = 200      # Speech rate (90-300, default: 200)
 # volume = 50   # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
 #               # Gemini TTS output is loud by default, 40-60 is recommended
 
+# xAI TTS (Natural speech, 5 voices, requires API key)
+# Pricing: $4.20 per 1M characters (Beta)
+# Voices: eve (default), ara, rex, sal, leo
+# Get API key: https://console.x.ai
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "xai"
+# voice = "eve"           # Options: eve, ara, rex, sal, leo
+# language_code = "auto"  # Language: "auto", "en", "zh", "ja", etc.
+# api_key = "${XAI_API_KEY}"
+# volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+
 # Google Cloud TTS (Professional-grade, requires service account)
 # Pricing:
 #   Standard voices: $4 per 1M characters (first 4M/month free)

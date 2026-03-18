@@ -513,6 +513,30 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
 
             crate::tts::create_single_tts(&audio_config, false)?
         }
+        TtsEngine::Xai => {
+            let xai_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "xai" | "xai_tts" | "grok"
+                    )
+                })
+                .ok_or_else(|| {
+                    crate::error::VoiceError::Config(
+                        "xai provider not found in config".into(),
+                    )
+                })?;
+
+            let mut xai_config = xai_config.clone();
+            if let Some(vol) = tts_opts.volume {
+                xai_config.volume = Some(vol);
+            }
+
+            crate::tts::create_single_tts(&xai_config, false)?
+        }
     };
 
     if !provider.is_available() {
