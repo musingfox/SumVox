@@ -5,6 +5,19 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-03-24
+
+### Changed
+- **Audio playback**: Replace `rodio` with macOS native `afplay` for all TTS providers
+  - Peak memory footprint reduced by 56% (6.6MB → 2.9MB)
+  - CPU instructions reduced by 73% (247M → 66M)
+  - Eliminates symphonia codec initialization and CPAL audio device binding
+- **xAI TTS**: Switch output format from MP3 to WAV for zero-decode-overhead playback
+- **Shared audio utilities**: Extract common `afplay` and WAV header logic into `audio::afplay` and `audio::wav_header` modules
+
+### Removed
+- **rodio dependency**: Fully removed — all audio playback now uses system `afplay`
+
 ## [1.4.0] - 2026-03-19
 
 ### Added

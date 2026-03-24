@@ -2,9 +2,7 @@
 
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
-use rodio::{Decoder, OutputStream, Sink};
-use std::fs::{self, File};
-use std::io::BufReader;
+use std::fs;
 use std::path::PathBuf;
 
 use crate::error::{Result, VoiceError};
@@ -107,31 +105,22 @@ impl AudioFileProvider {
     }
 }
 
-/// Play an audio file to completion (blocking).
-/// Owns the full audio pipeline: open file → decode → output stream → sink → wait.
+/// Play an audio file to completion (blocking) using afplay.
 fn play_audio_blocking(file_path: &PathBuf, volume: u32) -> Result<()> {
-    let file = File::open(file_path).map_err(|e| {
-        VoiceError::Voice(format!("Failed to open audio file {:?}: {}", file_path, e))
-    })?;
-    let reader = BufReader::new(file);
+    tracing::debug!("Playing audio file: {:?}, volume: {}", file_path, volume);
 
-    let source = Decoder::new(reader).map_err(|e| {
-        VoiceError::Voice(format!(
-            "Failed to decode audio file {:?}: {}",
-            file_path, e
-        ))
-    })?;
+    // afplay -v takes a float: 0.0 = silent, 1.0 = full volume
+    let afplay_volume = volume as f32 / 100.0;
+    let status = std::process::Command::new("afplay")
+        .arg("-v")
+        .arg(format!("{:.2}", afplay_volume))
+        .arg(file_path)
+        .status()
+        .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
 
-    let (_stream, stream_handle) = OutputStream::try_default()
-        .map_err(|e| VoiceError::Voice(format!("Failed to open audio output: {}", e)))?;
-
-    let sink = Sink::try_new(&stream_handle)
-        .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
-
-    let volume_f32 = (volume as f32) / 100.0;
-    sink.set_volume(volume_f32);
-    sink.append(source);
-    sink.sleep_until_end();
+    if !status.success() {
+        return Err(VoiceError::Voice("afplay exited with error".to_string()));
+    }
 
     Ok(())
 }

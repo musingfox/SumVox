@@ -1,10 +1,9 @@
 // xAI Text-to-Speech provider using the xAI TTS API
-// Supports 5 voices (eve, ara, rex, sal, leo) with MP3 output
+// Supports 5 voices (eve, ara, rex, sal, leo) with WAV output for minimal decode latency
 
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;
-use std::io::Cursor;
 use std::time::Duration;
 
 use super::TtsProvider;
@@ -32,6 +31,13 @@ struct XaiTtsRequest {
     text: String,
     voice_id: String,
     language: String,
+    output_format: XaiOutputFormat,
+}
+
+#[derive(Debug, Serialize)]
+struct XaiOutputFormat {
+    codec: String,
+    sample_rate: u32,
 }
 
 impl XaiTtsProvider {
@@ -58,7 +64,7 @@ impl XaiTtsProvider {
     }
 
     fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
-        use rodio::{Decoder, OutputStream, Sink};
+        use crate::audio::afplay::play_with_afplay;
 
         tracing::debug!(
             "Playing xAI TTS audio: {} bytes, volume: {}",
@@ -66,22 +72,7 @@ impl XaiTtsProvider {
             self.volume
         );
 
-        let (_stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| VoiceError::Voice(format!("Failed to open audio output: {}", e)))?;
-
-        let sink = Sink::try_new(&stream_handle)
-            .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
-
-        sink.set_volume(self.volume as f32 / 100.0);
-
-        let cursor = Cursor::new(audio_data.to_vec());
-        let source = Decoder::new(cursor)
-            .map_err(|e| VoiceError::Voice(format!("Failed to decode MP3 audio: {}", e)))?;
-
-        sink.append(source);
-        sink.sleep_until_end();
-
-        Ok(())
+        play_with_afplay(audio_data, self.volume, "sumvox_xai")
     }
 }
 
@@ -122,6 +113,10 @@ impl TtsProvider for XaiTtsProvider {
             text: text.to_string(),
             voice_id: self.voice_id.clone(),
             language: self.language.clone(),
+            output_format: XaiOutputFormat {
+                codec: "wav".to_string(),
+                sample_rate: 24000,
+            },
         };
 
         let client = Self::create_client()?;
@@ -150,7 +145,7 @@ impl TtsProvider for XaiTtsProvider {
             .await
             .map_err(|e| VoiceError::Voice(format!("Failed to read audio response: {}", e)))?;
 
-        tracing::debug!("Received {} bytes of MP3 audio data", audio_data.len());
+        tracing::debug!("Received {} bytes of WAV audio data", audio_data.len());
 
         self.play_audio(&audio_data)?;
 

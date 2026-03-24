@@ -1,5 +1,5 @@
 // Google Cloud Text-to-Speech provider using service account authentication
-// Supports LINEAR16 audio with volume control via rodio
+// Supports LINEAR16 audio with volume control via afplay
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -165,10 +165,9 @@ impl CloudTtsProvider {
         Ok(audio_data)
     }
 
-    /// Play audio data using rodio
+    /// Play audio data using afplay
     fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
-        use rodio::{Decoder, OutputStream, Sink};
-        use std::io::Cursor;
+        use crate::audio::afplay::play_with_afplay;
 
         tracing::debug!(
             "Playing audio: {} bytes, volume: {}",
@@ -176,29 +175,8 @@ impl CloudTtsProvider {
             self.volume
         );
 
-        // Create output stream
-        let (_stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| VoiceError::Voice(format!("Failed to open audio output: {}", e)))?;
-
-        // Create sink
-        let sink = Sink::try_new(&stream_handle)
-            .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
-
-        // Set volume (0-100 to 0.0-1.0)
-        sink.set_volume(self.volume as f32 / 100.0);
-
-        // Decode WAV data (Cloud TTS LINEAR16 response includes WAV header)
-        // Clone data to owned Vec for Decoder
-        let audio_vec = audio_data.to_vec();
-        let cursor = Cursor::new(audio_vec);
-        let source = Decoder::new(cursor)
-            .map_err(|e| VoiceError::Voice(format!("Failed to decode audio: {}", e)))?;
-
-        // Play and wait
-        sink.append(source);
-        sink.sleep_until_end();
-
-        Ok(())
+        // Cloud TTS LINEAR16 response already includes WAV header
+        play_with_afplay(audio_data, self.volume, "sumvox_cloud_tts")
     }
 }
 

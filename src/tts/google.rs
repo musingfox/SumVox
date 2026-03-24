@@ -127,9 +127,10 @@ impl GoogleTtsProvider {
             })
     }
 
-    /// Play audio data using rodio
+    /// Play audio data using afplay
     fn play_audio(&self, audio_data: &[u8], mime_type: &str) -> Result<()> {
-        use rodio::{buffer::SamplesBuffer, OutputStream, Sink};
+        use crate::audio::afplay::play_with_afplay;
+        use crate::audio::wav_header::create_wav_file;
 
         tracing::debug!(
             "Playing audio: {} bytes, mime_type: {}, volume: {}",
@@ -138,34 +139,12 @@ impl GoogleTtsProvider {
             self.volume
         );
 
-        // Create output stream
-        let (_stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| VoiceError::Voice(format!("Failed to open audio output: {}", e)))?;
+        // Gemini TTS returns LINEAR16 PCM format (16-bit signed little-endian at 24kHz mono)
+        // Convert raw PCM to WAV format
+        let wav_data = create_wav_file(audio_data, 24000, 1, 16);
 
-        // Create sink for playback
-        let sink = Sink::try_new(&stream_handle)
-            .map_err(|e| VoiceError::Voice(format!("Failed to create audio sink: {}", e)))?;
-
-        // Set volume (0-100 to 0.0-1.0)
-        sink.set_volume(self.volume as f32 / 100.0);
-
-        // Gemini TTS returns LINEAR16 PCM format (16-bit signed little-endian at 24kHz)
-        // Convert bytes to i16 samples
-        let samples: Vec<i16> = audio_data
-            .chunks_exact(2)
-            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect();
-
-        tracing::debug!("Converted {} samples for playback", samples.len());
-
-        // Create samples buffer (24kHz mono, as per Gemini TTS)
-        let source = SamplesBuffer::new(1, 24000, samples);
-
-        // Play and wait for completion
-        sink.append(source);
-        sink.sleep_until_end();
-
-        Ok(())
+        // Play using afplay
+        play_with_afplay(&wav_data, self.volume, "sumvox_google")
     }
 }
 

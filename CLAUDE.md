@@ -96,6 +96,7 @@ sumvox say "Test" --tts macos --voice Daniel
 ### Configuration Format
 
 See `~/.config/sumvox/config.toml`:
+
 - LLM providers array with fallback chain
 - TTS providers array with fallback chain
 - Summarization settings (turns, prompt_template)
@@ -135,6 +136,7 @@ sumvox/
 See the "Release Process" section in [CONTRIBUTING.md](CONTRIBUTING.md) for detailed release steps.
 
 Quick version:
+
 ```bash
 # Using justfile
 just release 1.0.0
@@ -147,6 +149,7 @@ git push origin v1.0.0
 ## Recommended Configuration
 
 See `config/recommended.toml` for the Gemini-based setup:
+
 - Google Gemini for LLM (tested and optimized)
 - macOS TTS for notifications (fast and free)
 - Google TTS for summaries (high quality)
