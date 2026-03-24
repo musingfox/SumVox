@@ -33,9 +33,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Claude Code local configurations (user-specific, not part of the project)
+# Claude Code
 .claude-plugin/
-.claude/
+.claude/settings.local.json
 
 # Agent Workspace - Local state and dependencies
 .agents/tasks/

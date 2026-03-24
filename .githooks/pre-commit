@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit hook: ensure cargo fmt is applied before committing
+
+# Only check Rust files
+if git diff --cached --name-only | grep -q '\.rs$'; then
+    cargo fmt -- --check
+    if [ $? -ne 0 ]; then
+        echo "ERROR: cargo fmt check failed. Run 'cargo fmt' and re-stage."
+        exit 1
+    fi
+fi
