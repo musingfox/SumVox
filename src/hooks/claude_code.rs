@@ -518,16 +518,9 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .tts
                 .providers
                 .iter()
-                .find(|p| {
-                    matches!(
-                        p.name.to_lowercase().as_str(),
-                        "xai" | "xai_tts" | "grok"
-                    )
-                })
+                .find(|p| matches!(p.name.to_lowercase().as_str(), "xai" | "xai_tts" | "grok"))
                 .ok_or_else(|| {
-                    crate::error::VoiceError::Config(
-                        "xai provider not found in config".into(),
-                    )
+                    crate::error::VoiceError::Config("xai provider not found in config".into())
                 })?;
 
             let mut xai_config = xai_config.clone();

@@ -98,6 +98,9 @@ mod tests {
         let result = play_with_afplay(&wav_data, 50, "sumvox_test");
         // On non-macOS, afplay won't exist, so this should error
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to run afplay"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to run afplay"));
     }
 }

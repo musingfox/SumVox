@@ -286,9 +286,7 @@ impl TtsProviderConfig {
             }
         }
 
-        std::env::var("XAI_API_KEY")
-            .ok()
-            .filter(|k| !k.is_empty())
+        std::env::var("XAI_API_KEY").ok().filter(|k| !k.is_empty())
     }
 
     /// Get service account key file content

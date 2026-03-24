@@ -535,15 +535,8 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .tts
                 .providers
                 .iter()
-                .find(|p| {
-                    matches!(
-                        p.name.to_lowercase().as_str(),
-                        "xai" | "xai_tts" | "grok"
-                    )
-                })
-                .ok_or_else(|| {
-                    VoiceError::Config("xai provider not found in config".into())
-                })?;
+                .find(|p| matches!(p.name.to_lowercase().as_str(), "xai" | "xai_tts" | "grok"))
+                .ok_or_else(|| VoiceError::Config("xai provider not found in config".into()))?;
             create_single_tts(xai_config, false)?
         }
     };
