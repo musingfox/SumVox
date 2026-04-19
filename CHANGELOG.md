@@ -5,6 +5,19 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-20
+
+### Added
+- **Stop hook content source option**: New `summarization.content_source` config field with two variants:
+  - `"transcript"` (default) — parse last N turns from JSONL transcript file (existing behavior).
+  - `"last_message"` — use Claude Code's `last_assistant_message` hook field directly, skipping transcript I/O and the 50ms/100ms filesystem-sync retries.
+- **`ClaudeCodeInput.last_assistant_message`**: Deserializes the new Claude Code Stop hook field. Backward-compatible (missing → `None`).
+- **Graceful fallback**: When `content_source = "last_message"` is set but the field is absent or empty/whitespace, falls back to the transcript path with a warning log.
+
+### Changed
+- **`handle_stop` branching**: Refactored to select content source via a pure `select_stop_context_source` helper (unit-testable). LLM summarization always runs regardless of source.
+- **Documentation**: README, QUICKSTART, and `recommended.toml` document the new option and clarify that `turns` only applies to the transcript source.
+
 ## [1.4.1] - 2026-03-24
 
 ### Changed
