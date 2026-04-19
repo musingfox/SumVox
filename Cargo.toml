@@ -1,6 +1,6 @@
 [package]
 name = "sumvox"
-version = "1.4.1"
+version = "1.5.0"
 edition = "2021"
 authors = ["Nick Huang"]
 description = "Intelligent voice notifications for AI coding tools - LLM-powered summarization with TTS"
