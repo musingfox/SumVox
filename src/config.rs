@@ -40,6 +40,10 @@ fn default_fallback_message() -> String {
     "Task completed".to_string()
 }
 
+fn default_content_source() -> ContentSource {
+    ContentSource::Transcript
+}
+
 fn default_max_tokens() -> u32 {
     10000
 }
@@ -344,9 +348,23 @@ impl Default for TtsConfig {
 // Summarization Configuration (generic, used by sum command and hooks)
 // ============================================================================
 
+/// Content source for Stop hook context
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentSource {
+    /// Read from transcript JSONL file
+    Transcript,
+    /// Use last_assistant_message from hook input
+    LastMessage,
+}
+
 /// Summarization configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SummarizationConfig {
+    /// Content source for Stop hook context (default: Transcript)
+    #[serde(default = "default_content_source")]
+    pub content_source: ContentSource,
+
     /// Number of conversation turns to summarize (default: 1)
     /// A turn is from a user message to the next user message or EOF
     #[serde(default = "default_turns")]
@@ -368,6 +386,7 @@ pub struct SummarizationConfig {
 impl Default for SummarizationConfig {
     fn default() -> Self {
         Self {
+            content_source: default_content_source(),
             turns: default_turns(),
             system_message: default_system_message(),
             prompt_template: default_prompt_template(),
@@ -1181,5 +1200,64 @@ tts:
 
         let config: TtsProviderConfig = serde_json::from_str(config_json).unwrap();
         assert_eq!(config.language_code, Some("zh-TW".to_string()));
+    }
+
+    // ── ContentSource tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_content_source_default() {
+        let config = SummarizationConfig::default();
+        assert_eq!(config.content_source, ContentSource::Transcript);
+    }
+
+    #[test]
+    fn test_content_source_serde_round_trip() {
+        let toml_absent = r#"
+[summarization]
+turns = 1
+"#;
+        let config: SumvoxConfig = toml::from_str(toml_absent).unwrap();
+        assert_eq!(
+            config.summarization.content_source,
+            ContentSource::Transcript
+        );
+
+        let toml_transcript = r#"
+[summarization]
+content_source = "transcript"
+turns = 1
+"#;
+        let config: SumvoxConfig = toml::from_str(toml_transcript).unwrap();
+        assert_eq!(
+            config.summarization.content_source,
+            ContentSource::Transcript
+        );
+
+        let toml_last_message = r#"
+[summarization]
+content_source = "last_message"
+turns = 1
+"#;
+        let config: SumvoxConfig = toml::from_str(toml_last_message).unwrap();
+        assert_eq!(
+            config.summarization.content_source,
+            ContentSource::LastMessage
+        );
+
+        let toml_invalid = r#"
+[summarization]
+content_source = "invalid"
+turns = 1
+"#;
+        let result = toml::from_str::<SumvoxConfig>(toml_invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_summarization_config_default_unchanged() {
+        let config = SummarizationConfig::default();
+        assert_eq!(config.content_source, ContentSource::Transcript);
+        assert_eq!(config.turns, 1);
+        assert_eq!(config.fallback_message, "Task completed");
     }
 }

@@ -577,7 +577,8 @@ tts:
   providers: [...]      # Array, tries in order
 
 summarization:
-  turns: 1              # Number of conversation turns to read
+  content_source: "transcript" | "last_message"  # Stop hook content source (default: transcript)
+  turns: 1              # Number of conversation turns to read (only for transcript source)
   system_message: "..." # LLM instruction for summary style
   prompt_template: "..." # Template with {context} placeholder
   fallback_message: "..." # Spoken when LLM fails

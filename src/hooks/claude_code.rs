@@ -26,6 +26,8 @@ pub struct ClaudeCodeInput {
     // Notification hook specific fields
     pub message: Option<String>,
     pub notification_type: Option<String>,
+    // Stop hook content source alternative
+    pub last_assistant_message: Option<String>,
 }
 
 impl ClaudeCodeInput {
@@ -201,6 +203,32 @@ async fn handle_notification(
     Ok(())
 }
 
+/// Content source selection result for Stop hook
+enum StopContextSource {
+    UseLastMessage(String),
+    ReadTranscript,
+}
+
+/// Select content source based on config and available input
+fn select_stop_context_source(
+    content_source: crate::config::ContentSource,
+    last_message: Option<&str>,
+) -> StopContextSource {
+    use crate::config::ContentSource;
+
+    match content_source {
+        ContentSource::Transcript => StopContextSource::ReadTranscript,
+        ContentSource::LastMessage => {
+            if let Some(text) = last_message {
+                if !text.trim().is_empty() {
+                    return StopContextSource::UseLastMessage(text.to_string());
+                }
+            }
+            StopContextSource::ReadTranscript
+        }
+    }
+}
+
 /// Handle Stop hook - read transcript and generate summary
 async fn handle_stop(
     input: &ClaudeCodeInput,
@@ -210,40 +238,67 @@ async fn handle_stop(
 ) -> Result<()> {
     tracing::info!("Processing Stop hook");
 
-    // Read transcript
-    let transcript_path = PathBuf::from(&input.transcript_path);
-    tracing::debug!("Reading transcript from: {:?}", transcript_path);
-
-    // Initial delay to let filesystem sync (hardcoded 50ms)
-    const INITIAL_DELAY_MS: u64 = 50;
-    let initial_delay = Duration::from_millis(INITIAL_DELAY_MS);
-    tracing::debug!("Waiting {}ms for filesystem sync", INITIAL_DELAY_MS);
-    tokio::time::sleep(initial_delay).await;
-
-    let turns = config.summarization.turns.max(1); // At least 1 turn
-    let mut texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
-
-    // Retry once if empty (race condition workaround, hardcoded 100ms)
-    if texts.is_empty() {
-        const RETRY_DELAY_MS: u64 = 100;
-        tracing::debug!("No texts found, retrying after {}ms", RETRY_DELAY_MS);
-        let retry_delay = Duration::from_millis(RETRY_DELAY_MS);
-        tokio::time::sleep(retry_delay).await;
-        texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
-    }
-
-    if texts.is_empty() {
-        tracing::warn!("No assistant texts found in transcript after retry");
-        return Ok(());
-    }
-
-    let context = texts.join("\n\n");
-    tracing::debug!(
-        "Extracted {} text blocks from last {} turn(s), total length: {}",
-        texts.len(),
-        turns,
-        context.len()
+    // Determine content source
+    let source = select_stop_context_source(
+        config.summarization.content_source,
+        input.last_assistant_message.as_deref(),
     );
+
+    let context = match source {
+        StopContextSource::UseLastMessage(text) => {
+            tracing::info!("Using last_assistant_message as content source");
+            text
+        }
+        StopContextSource::ReadTranscript => {
+            // Emit warning if user configured LastMessage but it wasn't available
+            if matches!(
+                config.summarization.content_source,
+                crate::config::ContentSource::LastMessage
+            ) {
+                tracing::warn!(
+                    "content_source=last_message but last_assistant_message is empty/missing; falling back to transcript"
+                );
+            } else {
+                tracing::info!("Using transcript as content source");
+            }
+
+            // Read transcript
+            let transcript_path = PathBuf::from(&input.transcript_path);
+            tracing::debug!("Reading transcript from: {:?}", transcript_path);
+
+            // Initial delay to let filesystem sync (hardcoded 50ms)
+            const INITIAL_DELAY_MS: u64 = 50;
+            let initial_delay = Duration::from_millis(INITIAL_DELAY_MS);
+            tracing::debug!("Waiting {}ms for filesystem sync", INITIAL_DELAY_MS);
+            tokio::time::sleep(initial_delay).await;
+
+            let turns = config.summarization.turns.max(1); // At least 1 turn
+            let mut texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
+
+            // Retry once if empty (race condition workaround, hardcoded 100ms)
+            if texts.is_empty() {
+                const RETRY_DELAY_MS: u64 = 100;
+                tracing::debug!("No texts found, retrying after {}ms", RETRY_DELAY_MS);
+                let retry_delay = Duration::from_millis(RETRY_DELAY_MS);
+                tokio::time::sleep(retry_delay).await;
+                texts = TranscriptReader::read_last_n_turns(&transcript_path, turns).await?;
+            }
+
+            if texts.is_empty() {
+                tracing::warn!("No assistant texts found in transcript after retry");
+                return Ok(());
+            }
+
+            let joined = texts.join("\n\n");
+            tracing::debug!(
+                "Extracted {} text blocks from last {} turn(s), total length: {}",
+                texts.len(),
+                turns,
+                joined.len()
+            );
+            joined
+        }
+    };
 
     // Build summarization prompt
     let user_prompt = config
@@ -885,5 +940,89 @@ mod tests {
         let tts_engine: TtsEngine = stop_tts_opts.engine.parse().unwrap();
         assert_eq!(tts_engine, TtsEngine::Auto);
         assert_eq!(stop_tts_opts.volume, Some(70));
+    }
+
+    // ── Contract 1: last_assistant_message deserialization ──────────────
+
+    #[test]
+    fn test_last_assistant_message_absent() {
+        let json = r#"{
+            "session_id": "s1",
+            "transcript_path": "/tmp/t.jsonl",
+            "hook_event_name": "Stop"
+        }"#;
+        let input = ClaudeCodeInput::parse(json).unwrap();
+        assert_eq!(input.last_assistant_message, None);
+    }
+
+    #[test]
+    fn test_last_assistant_message_present() {
+        let json = r#"{
+            "session_id": "s1",
+            "transcript_path": "/tmp/t.jsonl",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "Done"
+        }"#;
+        let input = ClaudeCodeInput::parse(json).unwrap();
+        assert_eq!(input.last_assistant_message, Some("Done".to_string()));
+    }
+
+    #[test]
+    fn test_last_assistant_message_empty() {
+        let json = r#"{
+            "session_id": "s1",
+            "transcript_path": "/tmp/t.jsonl",
+            "hook_event_name": "Stop",
+            "last_assistant_message": ""
+        }"#;
+        let input = ClaudeCodeInput::parse(json).unwrap();
+        assert_eq!(input.last_assistant_message, Some("".to_string()));
+    }
+
+    // ── Contract 3: select_stop_context_source logic ────────────────────
+
+    #[test]
+    fn test_select_source_transcript_none() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::Transcript, None);
+        assert!(matches!(source, StopContextSource::ReadTranscript));
+    }
+
+    #[test]
+    fn test_select_source_transcript_some() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::Transcript, Some("anything"));
+        assert!(matches!(source, StopContextSource::ReadTranscript));
+    }
+
+    #[test]
+    fn test_select_source_last_message_present() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::LastMessage, Some("hello"));
+        match source {
+            StopContextSource::UseLastMessage(text) => assert_eq!(text, "hello"),
+            _ => panic!("Expected UseLastMessage"),
+        }
+    }
+
+    #[test]
+    fn test_select_source_last_message_whitespace() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::LastMessage, Some("  "));
+        assert!(matches!(source, StopContextSource::ReadTranscript));
+    }
+
+    #[test]
+    fn test_select_source_last_message_empty() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::LastMessage, Some(""));
+        assert!(matches!(source, StopContextSource::ReadTranscript));
+    }
+
+    #[test]
+    fn test_select_source_last_message_none() {
+        use crate::config::ContentSource;
+        let source = select_stop_context_source(ContentSource::LastMessage, None);
+        assert!(matches!(source, StopContextSource::ReadTranscript));
     }
 }

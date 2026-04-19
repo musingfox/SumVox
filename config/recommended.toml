@@ -106,7 +106,14 @@ rate = 200      # Speech rate (90-300, default: 200)
 # ============================================================================
 
 [summarization]
+# Content source for Stop hook context.
+# "transcript" (default) — parse last N turns from JSONL transcript file.
+# "last_message" — use Claude Code's last_assistant_message hook field directly
+#   (skips transcript I/O; falls back to transcript if field missing).
+# content_source = "transcript"
+
 # Number of conversation turns to read (1 = last turn only)
+# (only used when content_source = "transcript")
 turns = 1
 
 # System message for LLM (customize for your language and style)

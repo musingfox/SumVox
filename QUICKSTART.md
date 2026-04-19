@@ -134,6 +134,10 @@ List voices: `say -v ?`
 ### Change Summary Style
 ```yaml
 summarization:
+  # Skip transcript file I/O by using Claude Code's last_assistant_message field
+  # directly (LLM summarization still runs — only the JSONL read is skipped)
+  content_source: "last_message"  # Or "transcript" (default)
+  
   system_message: "Be concise and technical"
   # Or: "Be friendly and casual"
   # Or: "用中文總結，語氣輕鬆"
