@@ -57,3 +57,6 @@ Cargo.lock
 # Release artifacts
 *.tar.gz
 SHA256SUMS*.txt
+
+# Obsidian Workspace (personal config)
+.obsidian.yaml
