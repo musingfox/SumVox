@@ -81,14 +81,11 @@ pub use xai::XaiTtsProvider;
 ///
 /// Tries each provider in order until one is available.
 /// Returns an error if no provider can be created.
-pub fn create_tts_from_config(
-    providers: &[TtsProviderConfig],
-    is_async: bool,
-) -> Result<Box<dyn TtsProvider>> {
+pub fn create_tts_from_config(providers: &[TtsProviderConfig]) -> Result<Box<dyn TtsProvider>> {
     let mut errors = Vec::new();
 
     for config in providers {
-        match create_single_tts(config, is_async) {
+        match create_single_tts(config) {
             Ok(provider) => {
                 if provider.is_available() {
                     tracing::info!(
@@ -116,19 +113,14 @@ pub fn create_tts_from_config(
 }
 
 /// Create a single TTS provider from config
-pub fn create_single_tts(
-    config: &TtsProviderConfig,
-    is_async: bool,
-) -> Result<Box<dyn TtsProvider>> {
+pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvider>> {
     let volume = config.volume.unwrap_or(100);
 
     match config.name.to_lowercase().as_str() {
         "macos" | "say" => {
             let voice = config.voice.clone();
             let rate = config.rate.unwrap_or(200);
-            Ok(Box::new(MacOsTtsProvider::new(
-                voice, rate, volume, is_async,
-            )))
+            Ok(Box::new(MacOsTtsProvider::new(voice, rate, volume)))
         }
         "google" | "google_tts" | "gcloud" | "gemini" => {
             let api_key = config.get_api_key().ok_or_else(|| {
@@ -186,7 +178,7 @@ pub fn create_single_tts(
             let expanded = shellexpand::tilde(path_str).to_string();
             let path = std::path::PathBuf::from(expanded);
             Ok(Box::new(crate::audio::AudioFileProvider::new(
-                path, volume, is_async,
+                path, volume,
             )?))
         }
         _ => Err(VoiceError::Config(format!(
@@ -203,7 +195,6 @@ pub fn create_tts_by_name(
     voice: Option<String>,
     rate: u32,
     volume: u32,
-    is_async: bool,
     api_key: Option<String>,
 ) -> Result<Box<dyn TtsProvider>> {
     let config = TtsProviderConfig {
@@ -217,7 +208,7 @@ pub fn create_tts_by_name(
         service_account_key: None,
         language_code: None,
     };
-    create_single_tts(&config, is_async)
+    create_single_tts(&config)
 }
 
 #[cfg(test)]
@@ -290,7 +281,7 @@ mod tests {
             language_code: None,
         }];
 
-        let result = create_tts_from_config(&providers, true);
+        let result = create_tts_from_config(&providers);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
     }
@@ -328,22 +319,15 @@ mod tests {
         std::env::remove_var("GOOGLE_CLOUD_PROJECT");
         std::env::remove_var("GCP_PROJECT");
 
-        let result = create_tts_from_config(&providers, true);
+        let result = create_tts_from_config(&providers);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
     }
 
     #[test]
     fn test_create_tts_by_name_macos() {
-        let result = create_tts_by_name(
-            "macos",
-            None,
-            Some("Tingting".to_string()),
-            200,
-            100,
-            true,
-            None,
-        );
+        let result =
+            create_tts_by_name("macos", None, Some("Tingting".to_string()), 200, 100, None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
     }
@@ -352,7 +336,7 @@ mod tests {
     fn test_create_tts_empty_providers() {
         let providers: Vec<TtsProviderConfig> = vec![];
 
-        let result = create_tts_from_config(&providers, true);
+        let result = create_tts_from_config(&providers);
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(err.to_string().contains("No TTS provider"));

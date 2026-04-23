@@ -457,7 +457,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
     let provider: Box<dyn TtsProvider> = match tts_engine {
         TtsEngine::Auto => {
             // Use config fallback chain
-            create_tts_from_config(&config.tts.providers, true)?
+            create_tts_from_config(&config.tts.providers)?
         }
         TtsEngine::MacOS => {
             // Get macOS config for fallback values
@@ -478,7 +478,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| macos_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, true, None)?
+            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, None)?
         }
         TtsEngine::Google => {
             // Get Google config for fallback values
@@ -508,15 +508,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| google_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            create_tts_by_name(
-                "google",
-                model,
-                Some(voice),
-                tts_opts.rate,
-                volume,
-                true,
-                api_key,
-            )?
+            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, api_key)?
         }
         TtsEngine::CloudTts => {
             let cloud_config = config
@@ -541,7 +533,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 cloud_config.volume = Some(vol);
             }
 
-            crate::tts::create_single_tts(&cloud_config, false)?
+            crate::tts::create_single_tts(&cloud_config)?
         }
         TtsEngine::AudioFile => {
             let audio_config = config
@@ -566,7 +558,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 audio_config.volume = Some(vol);
             }
 
-            crate::tts::create_single_tts(&audio_config, false)?
+            crate::tts::create_single_tts(&audio_config)?
         }
         TtsEngine::Xai => {
             let xai_config = config
@@ -583,7 +575,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 xai_config.volume = Some(vol);
             }
 
-            crate::tts::create_single_tts(&xai_config, false)?
+            crate::tts::create_single_tts(&xai_config)?
         }
     };
 
@@ -652,7 +644,7 @@ async fn speak_with_provider_fallback(
         }
 
         // Try to create provider
-        let provider = match crate::tts::create_single_tts(&config_with_volume, true) {
+        let provider = match crate::tts::create_single_tts(&config_with_volume) {
             Ok(p) => p,
             Err(e) => {
                 tracing::debug!(
