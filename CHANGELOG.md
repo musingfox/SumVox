@@ -5,7 +5,7 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.1] - 2026-04-23
 
 ### Fixed
 - **Concurrent Stop hook voice overlap**: Multiple Claude Code instances triggering Stop hooks simultaneously no longer cause overlapping TTS playback. Root cause: local TTS providers (`macos say`, `audio_file`) returned from `speak()` before the underlying subprocess finished, causing `QueueLock` (flock) to release prematurely.
