@@ -1,26 +1,26 @@
 class Sumvox < Formula
   desc "Intelligent voice notifications for AI coding tools"
   homepage "https://github.com/musingfox/sumvox"
-  version "1.5.0"
+  version "1.5.1"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/musingfox/sumvox/releases/download/v1.5.0/sumvox-macos-aarch64.tar.gz"
-      sha256 "a90cdaaa6fcdf24bec406d223c8ee6289c184dea476d75ebc199268698b0021d"
+      url "https://github.com/musingfox/sumvox/releases/download/v1.5.1/sumvox-macos-aarch64.tar.gz"
+      sha256 "32ccf16c26e58c13c63797c8c0d0d038ba2bbe8896067dfb43ebff78678db4f7"
     else
-      url "https://github.com/musingfox/sumvox/releases/download/v1.5.0/sumvox-macos-x86_64.tar.gz"
-      sha256 "70704df3b7dab96521066c1e71b336e39c519aa9236e1bf011b29be0bca00dbf"
+      url "https://github.com/musingfox/sumvox/releases/download/v1.5.1/sumvox-macos-x86_64.tar.gz"
+      sha256 "905ae2ace08a5577413d6242ef1a149e2e196ed4f61a0969b8f72a0b470e33ee"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/musingfox/sumvox/releases/download/v1.5.0/sumvox-linux-aarch64.tar.gz"
-      sha256 "4e579133a1fd41371bb658db22729adceb76b818ab70be79282b10ea07c27f32"
+      url "https://github.com/musingfox/sumvox/releases/download/v1.5.1/sumvox-linux-aarch64.tar.gz"
+      sha256 "effcbf013d8040590591c95df8ed0cfe57c9bf12b1a929cbe967c7016b43d069"
     else
-      url "https://github.com/musingfox/sumvox/releases/download/v1.5.0/sumvox-linux-x86_64.tar.gz"
-      sha256 "59621cd913ae37ad8ca818f4acb6919cbbdd93d8fb2d973a50d900c03b91af59"
+      url "https://github.com/musingfox/sumvox/releases/download/v1.5.1/sumvox-linux-x86_64.tar.gz"
+      sha256 "b790bdfd64c38dc5b030f7ff6ae00bb66587ce1f81220b1bc59e9c51155a489d"
     end
   end
 
