@@ -432,8 +432,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
     let provider: Box<dyn TtsProvider> = match tts_engine {
         TtsEngine::Auto => {
             // Use config fallback chain
-            // is_async=false for CLI commands (wait for speech to complete)
-            create_tts_from_config(&config.tts.providers, false)?
+            create_tts_from_config(&config.tts.providers)?
         }
         TtsEngine::MacOS => {
             // Get macOS config for fallback values
@@ -454,8 +453,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| macos_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            // is_async=false for CLI commands (wait for speech to complete)
-            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, false, None)?
+            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, None)?
         }
         TtsEngine::Google => {
             // Get Google config for fallback values
@@ -485,16 +483,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .or_else(|| google_config.and_then(|p| p.volume))
                 .unwrap_or(100);
 
-            // is_async=false for CLI commands (wait for speech to complete)
-            create_tts_by_name(
-                "google",
-                model,
-                Some(voice),
-                tts_opts.rate,
-                volume,
-                false,
-                api_key,
-            )?
+            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, api_key)?
         }
         TtsEngine::CloudTts => {
             // Find cloud_tts config from config
@@ -511,7 +500,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .ok_or_else(|| {
                     VoiceError::Config("cloud_tts provider not found in config".into())
                 })?;
-            create_single_tts(cloud_config, false)?
+            create_single_tts(cloud_config)?
         }
         TtsEngine::AudioFile => {
             // Find audio_file config from config
@@ -528,7 +517,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .ok_or_else(|| {
                     VoiceError::Config("audio_file provider not found in config".into())
                 })?;
-            create_single_tts(audio_config, false)?
+            create_single_tts(audio_config)?
         }
         TtsEngine::Xai => {
             let xai_config = config
@@ -537,7 +526,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .iter()
                 .find(|p| matches!(p.name.to_lowercase().as_str(), "xai" | "xai_tts" | "grok"))
                 .ok_or_else(|| VoiceError::Config("xai provider not found in config".into()))?;
-            create_single_tts(xai_config, false)?
+            create_single_tts(xai_config)?
         }
     };
 
@@ -556,7 +545,7 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
     match tts_engine {
         TtsEngine::Auto => {
             // For Auto mode, try all providers in config order
-            speak_with_provider_fallback(&config.tts.providers, text, false).await
+            speak_with_provider_fallback(&config.tts.providers, text).await
         }
         _ => {
             // Single provider mode - just try once
@@ -575,16 +564,12 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
 }
 
 /// Try TTS providers in order with automatic runtime fallback
-async fn speak_with_provider_fallback(
-    providers: &[TtsProviderConfig],
-    text: &str,
-    is_async: bool,
-) -> Result<()> {
+async fn speak_with_provider_fallback(providers: &[TtsProviderConfig], text: &str) -> Result<()> {
     let mut last_error = None;
 
     for provider_config in providers {
         // Try to create provider
-        let provider = match create_single_tts(provider_config, is_async) {
+        let provider = match create_single_tts(provider_config) {
             Ok(p) => p,
             Err(e) => {
                 tracing::debug!(

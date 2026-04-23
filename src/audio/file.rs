@@ -21,8 +21,7 @@ pub enum AudioFileMode {
 #[derive(Debug)]
 pub struct AudioFileProvider {
     mode: AudioFileMode,
-    volume: u32,      // 0-100
-    async_mode: bool, // true = non-blocking, false = blocking
+    volume: u32, // 0-100
 }
 
 impl AudioFileProvider {
@@ -31,11 +30,10 @@ impl AudioFileProvider {
     /// # Arguments
     /// * `path` - Path to audio file or directory
     /// * `volume` - Volume level 0-100
-    /// * `async_mode` - true for non-blocking playback
     ///
     /// # Errors
     /// Returns error if path doesn't exist or isn't readable
-    pub fn new(path: PathBuf, volume: u32, async_mode: bool) -> Result<Self> {
+    pub fn new(path: PathBuf, volume: u32) -> Result<Self> {
         let mode = if path.is_dir() {
             AudioFileMode::Directory(path)
         } else if path.is_file() {
@@ -52,11 +50,7 @@ impl AudioFileProvider {
             )));
         };
 
-        Ok(Self {
-            mode,
-            volume,
-            async_mode,
-        })
+        Ok(Self { mode, volume })
     }
 
     /// Get a file to play (handles single file or random directory selection)
@@ -142,28 +136,13 @@ impl TtsProvider for AudioFileProvider {
         let file_path = self.get_playback_file()?;
 
         tracing::info!(
-            "Playing audio file: {:?} (volume: {}, async: {})",
+            "Playing audio file: {:?} (volume: {})",
             file_path,
-            self.volume,
-            self.async_mode
+            self.volume
         );
 
-        if self.async_mode {
-            // Fire-and-forget: spawn OS thread for the entire audio pipeline.
-            // OutputStream is !Send (CoreAudio), so it must be created on the
-            // thread that uses it. Using std::thread (not tokio::spawn) avoids
-            // blocking the tokio runtime and prevents process-exit hangs.
-            let volume = self.volume;
-            std::thread::spawn(move || {
-                if let Err(e) = play_audio_blocking(&file_path, volume) {
-                    tracing::warn!("Async audio playback failed: {}", e);
-                }
-            });
-            tracing::debug!("Audio playback started (non-blocking)");
-        } else {
-            play_audio_blocking(&file_path, self.volume)?;
-            tracing::debug!("Audio playback completed (blocking)");
-        }
+        play_audio_blocking(&file_path, self.volume)?;
+        tracing::debug!("Audio playback completed (blocking)");
 
         Ok(true)
     }
@@ -186,10 +165,9 @@ mod tests {
         temp_file.write_all(b"fake audio data").unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let provider = AudioFileProvider::new(path, 80, false).unwrap();
+        let provider = AudioFileProvider::new(path, 80).unwrap();
         assert_eq!(provider.name(), "audio_file");
         assert_eq!(provider.volume, 80);
-        assert!(!provider.async_mode);
         assert!(matches!(provider.mode, AudioFileMode::SingleFile(_)));
     }
 
@@ -198,7 +176,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().to_path_buf();
 
-        let provider = AudioFileProvider::new(path, 100, true).unwrap();
+        let provider = AudioFileProvider::new(path, 100).unwrap();
         assert_eq!(provider.name(), "audio_file");
         assert!(matches!(provider.mode, AudioFileMode::Directory(_)));
     }
@@ -206,7 +184,7 @@ mod tests {
     #[test]
     fn test_create_audio_provider_missing_path() {
         let path = PathBuf::from("/nonexistent/path/to/audio.wav");
-        let result = AudioFileProvider::new(path, 100, false);
+        let result = AudioFileProvider::new(path, 100);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
@@ -217,7 +195,7 @@ mod tests {
         temp_file.write_all(b"fake audio data").unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let provider = AudioFileProvider::new(path.clone(), 100, false).unwrap();
+        let provider = AudioFileProvider::new(path.clone(), 100).unwrap();
         let result = provider.get_playback_file().unwrap();
         assert_eq!(result, path);
     }
@@ -232,7 +210,7 @@ mod tests {
         std::fs::write(&file1, b"fake wav").unwrap();
         std::fs::write(&file2, b"fake mp3").unwrap();
 
-        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100, false).unwrap();
+        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100).unwrap();
         let result = provider.get_playback_file().unwrap();
 
         // Should be one of the audio files
@@ -249,7 +227,7 @@ mod tests {
         std::fs::write(&txt_file, b"text").unwrap();
         std::fs::write(&json_file, b"{}").unwrap();
 
-        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100, false).unwrap();
+        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100).unwrap();
         let result = provider.get_playback_file();
 
         // Should fail because no audio files
@@ -266,13 +244,13 @@ mod tests {
         temp_file.write_all(b"fake audio").unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let provider_0 = AudioFileProvider::new(path.clone(), 0, false).unwrap();
+        let provider_0 = AudioFileProvider::new(path.clone(), 0).unwrap();
         assert_eq!(provider_0.volume, 0);
 
-        let provider_50 = AudioFileProvider::new(path.clone(), 50, false).unwrap();
+        let provider_50 = AudioFileProvider::new(path.clone(), 50).unwrap();
         assert_eq!(provider_50.volume, 50);
 
-        let provider_100 = AudioFileProvider::new(path, 100, false).unwrap();
+        let provider_100 = AudioFileProvider::new(path, 100).unwrap();
         assert_eq!(provider_100.volume, 100);
     }
 
@@ -282,14 +260,14 @@ mod tests {
         temp_file.write_all(b"fake audio").unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let provider = AudioFileProvider::new(path, 100, false).unwrap();
+        let provider = AudioFileProvider::new(path, 100).unwrap();
         assert!(provider.is_available());
     }
 
     #[test]
     fn test_is_available_directory() {
         let temp_dir = tempdir().unwrap();
-        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100, false).unwrap();
+        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100).unwrap();
         assert!(provider.is_available());
     }
 
@@ -299,7 +277,7 @@ mod tests {
         temp_file.write_all(b"fake audio").unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let provider = AudioFileProvider::new(path, 100, false).unwrap();
+        let provider = AudioFileProvider::new(path, 100).unwrap();
         assert_eq!(provider.estimate_cost(100), 0.0);
         assert_eq!(provider.estimate_cost(10000), 0.0);
     }

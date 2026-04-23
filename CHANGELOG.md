@@ -5,6 +5,18 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Concurrent Stop hook voice overlap**: Multiple Claude Code instances triggering Stop hooks simultaneously no longer cause overlapping TTS playback. Root cause: local TTS providers (`macos say`, `audio_file`) returned from `speak()` before the underlying subprocess finished, causing `QueueLock` (flock) to release prematurely.
+
+### Changed
+- **TTS flow unified to always-blocking**: All TTS providers now block until playback completes. Removed `is_async` / `async_mode` parameters from `create_tts_from_config`, `create_single_tts`, `create_tts_by_name`, `MacOsTtsProvider::new`, `AudioFileProvider::new`, and the CLI `speak_with_provider_fallback`.
+
+### Removed
+- **Fire-and-forget TTS branches**: `MacOsTtsProvider::speak` no longer spawns a detached `tokio::process` task; `AudioFileProvider::speak` no longer spawns a detached `std::thread`. Both paths now call the blocking implementation directly.
+- **Stale rodio comment**: Removed the obsolete `OutputStream !Send / tokio runtime hang` comment in `audio/file.rs` left over from the rodio → afplay migration (v1.4.1).
+
 ## [1.5.0] - 2026-04-20
 
 ### Added
