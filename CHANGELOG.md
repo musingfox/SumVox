@@ -5,6 +5,22 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-04-28
+
+### Added
+- **Per-provider `disable_thinking` override**: Each entry in `[[llm.providers]]` now accepts an optional `disable_thinking` field. When set, it overrides the global `[llm.parameters].disable_thinking` for that provider only. Lets you keep thinking enabled for capable models (e.g. Gemini Pro) while disabling it on faster/cheaper fallbacks without juggling multiple config files.
+- **Ollama `think` parameter**: Ollama provider now sends `"think": false` at the request top-level when thinking is disabled, suppressing reasoning output on models that support it (DeepSeek-R1, Qwen3, etc.). Models without `think` support silently ignore the field — no model-name heuristics required.
+
+### Changed
+- **Gemini thinking control simplified**: Replaced model-name heuristics (`gemini-3*` vs `gemini-2.5*pro-exp`) with a uniform `thinkingConfig.thinkingBudget = 0` when disabling thinking. Works across the entire 2.5 / 3.x family that supports the field; models that don't support it ignore it.
+- **OpenAI reasoning effort heuristic-free**: `reasoning_effort` is now sent as `"low"` whenever `disable_thinking = true`, regardless of model name. The `is_reasoning_model` heuristic is retained only for `max_completion_tokens` / `temperature` dispatch (which still need it for o1/o3/o4 quirks).
+
+### Removed
+- **Anthropic request-side `thinking` field**: Removed the always-`enabled` `thinking: {type, budget_tokens}` block that broke Claude Opus 4.7 with HTTP 400. Anthropic providers now omit the field entirely; thinking is governed by Anthropic's per-model defaults. Response-side parsing of thinking content is unchanged.
+
+### Fixed
+- **e2e test suite under Claude Code**: Tests no longer inherit `SUMVOX_DISABLE=1` from the developer shell. Previously 20 of 25 e2e tests silently passed `assert().success()` because the binary returned `Ok(())` immediately at startup, then failed any stdout/stderr assertion.
+
 ## [1.5.1] - 2026-04-23
 
 ### Fixed
