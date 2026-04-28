@@ -36,21 +36,23 @@ struct Part {
 }
 
 #[derive(Debug, Serialize)]
+struct ThinkingConfig {
+    /// Values: 0 = disable, -1 = dynamic, >0 = token budget
+    /// API docs: https://ai.google.dev/gemini-api/docs/thinking
+    #[serde(rename = "thinkingBudget")]
+    thinking_budget: i32,
+}
+
+#[derive(Debug, Serialize)]
 struct GenerationConfig {
     temperature: f32,
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: u32,
 
-    /// Gemini 3 thinking control
-    /// Values: "low", "high"
-    /// API docs: https://ai.google.dev/gemini-api/docs/thinking
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking_level: Option<String>,
-
-    /// Gemini 2.5 thinking control (backward compatibility)
-    /// Values: 0 = disable, -1 = dynamic, >0 = token budget
-    #[serde(skip_serializing_if = "Option::is_none", rename = "thinkingBudget")]
-    thinking_budget: Option<i32>,
+    /// Thinking configuration — send only when disable_thinking=true to set budget=0.
+    /// When None (disable_thinking=false), the field is omitted entirely.
+    #[serde(skip_serializing_if = "Option::is_none", rename = "thinkingConfig")]
+    thinking_config: Option<ThinkingConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,36 +160,13 @@ impl LlmProvider for GeminiProvider {
                 parts: vec![Part { text: msg.clone() }],
             });
 
-        // Detect model generation and thinking support
-        // Only certain models support thinking parameters:
-        // - Gemini 3: uses thinking_level ("low"/"high")
-        // - Gemini 2.5 Pro with -exp or -thinking suffix: uses thinkingBudget
-        // - gemini-2.5-flash does NOT support thinking parameters
-        let is_gemini_3 = model_name.contains("gemini-3");
-        let is_gemini_2_5_thinking = (model_name.contains("2.5") || model_name.contains("2-5"))
-            && model_name.contains("pro")
-            && (model_name.contains("-exp") || model_name.contains("-thinking"));
-
-        // Set thinking parameters based on model and disable_thinking
-        let (thinking_level, thinking_budget) = if is_gemini_3 {
-            // Gemini 3: use thinking_level
-            let level = if request.disable_thinking {
-                Some("low".to_string())
-            } else {
-                Some("high".to_string())
-            };
-            (level, None)
-        } else if is_gemini_2_5_thinking {
-            // Gemini 2.5 Pro (experimental): use thinkingBudget
-            let budget = if request.disable_thinking {
-                Some(0) // Disable
-            } else {
-                Some(-1) // Dynamic adjustment
-            };
-            (None, budget)
+        // Set thinkingConfig based solely on disable_thinking flag.
+        // disable_thinking=true  → send thinkingConfig.thinkingBudget=0 (disable thinking)
+        // disable_thinking=false → omit thinkingConfig entirely (model default)
+        let thinking_config = if request.disable_thinking {
+            Some(ThinkingConfig { thinking_budget: 0 })
         } else {
-            // Other models (including gemini-2.5-flash): no thinking parameters
-            (None, None)
+            None
         };
 
         let gemini_request = GeminiRequest {
@@ -199,8 +178,7 @@ impl LlmProvider for GeminiProvider {
             generation_config: GenerationConfig {
                 temperature: request.temperature,
                 max_output_tokens: request.max_tokens,
-                thinking_level,
-                thinking_budget,
+                thinking_config,
             },
             system_instruction,
         };
@@ -368,6 +346,51 @@ mod tests {
         let result = provider.generate(&request).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), LlmError::Unavailable(_)));
+    }
+
+    // ── C3: GeminiRequestSerialization ──────────────────────────────────
+
+    fn make_generation_config(disable_thinking: bool) -> GenerationConfig {
+        let thinking_config = if disable_thinking {
+            Some(ThinkingConfig { thinking_budget: 0 })
+        } else {
+            None
+        };
+        GenerationConfig {
+            temperature: 0.3,
+            max_output_tokens: 100,
+            thinking_config,
+        }
+    }
+
+    #[test]
+    fn test_c3_disable_thinking_true_sets_thinking_budget_zero() {
+        let config = make_generation_config(true);
+        let val = serde_json::to_value(&config).unwrap();
+        assert_eq!(val["thinkingConfig"]["thinkingBudget"], 0);
+    }
+
+    #[test]
+    fn test_c3_disable_thinking_false_omits_thinking_config() {
+        let config = make_generation_config(false);
+        let val = serde_json::to_value(&config).unwrap();
+        assert!(val.get("thinkingConfig").is_none());
+    }
+
+    /// Past heuristic would exclude gemini-1.5-flash from thinking params.
+    /// Now disable_thinking=true always sets thinkingConfig regardless of model name.
+    #[test]
+    fn test_c3_gemini_1_5_flash_disable_thinking_true() {
+        let config = make_generation_config(true);
+        let val = serde_json::to_value(&config).unwrap();
+        assert_eq!(val["thinkingConfig"]["thinkingBudget"], 0);
+    }
+
+    #[test]
+    fn test_c3_gemini_1_5_flash_disable_thinking_false() {
+        let config = make_generation_config(false);
+        let val = serde_json::to_value(&config).unwrap();
+        assert!(val.get("thinkingConfig").is_none());
     }
 
     // Integration test - requires actual API key

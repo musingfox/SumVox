@@ -110,6 +110,18 @@ impl OpenAIProvider {
     }
 }
 
+/// Returns true for OpenAI reasoning models that require special API treatment:
+/// - max_completion_tokens instead of max_tokens
+/// - no temperature parameter (only supports default=1)
+///
+/// Matches: o1*, o3*, o4*, gpt-5*
+fn is_reasoning_model(model_name: &str) -> bool {
+    model_name.starts_with("o1")
+        || model_name.starts_with("o3")
+        || model_name.starts_with("o4")
+        || model_name.starts_with("gpt-5")
+}
+
 #[async_trait]
 impl LlmProvider for OpenAIProvider {
     fn name(&self) -> &str {
@@ -144,39 +156,21 @@ impl LlmProvider for OpenAIProvider {
             content: request.prompt.clone(),
         });
 
-        // Check if this is a reasoning model
-        // Supported: o1, o3, o3-mini, GPT-5, gpt-5.1, etc.
-        let is_reasoning_model = model_name.starts_with("o1")
-            || model_name.starts_with("o3")
-            || model_name.starts_with("gpt-5");
-
-        // Set reasoning_effort based on disable_thinking
-        // disable_thinking = true: use "low" to minimize reasoning
-        // disable_thinking = false: use "high" to maximize reasoning
-        let reasoning_effort = if is_reasoning_model {
-            Some(if request.disable_thinking {
-                "low".to_string() // Minimize reasoning
-            } else {
-                "high".to_string() // Maximize reasoning
-            })
+        // Set reasoning_effort based solely on disable_thinking flag (no model-name heuristic).
+        // disable_thinking=true  → "low" (minimize reasoning effort)
+        // disable_thinking=false → omit the field entirely
+        let reasoning_effort = if request.disable_thinking {
+            Some("low".to_string())
         } else {
-            None // Non-reasoning models, don't send parameter
-        };
-
-        // Newer models (o1, o3, GPT-5) use max_completion_tokens
-        // Older models (GPT-4, GPT-3.5) use max_tokens
-        let (max_completion_tokens, max_tokens) = if is_reasoning_model {
-            (Some(request.max_tokens), None)
-        } else {
-            (None, Some(request.max_tokens))
-        };
-
-        // Reasoning models only support temperature=1 (default)
-        // Don't send temperature parameter for these models
-        let temperature = if is_reasoning_model {
             None
+        };
+
+        // Reasoning models (o1, o3, o4, gpt-5) use max_completion_tokens and no temperature.
+        // Standard models use max_tokens and temperature.
+        let (max_completion_tokens, max_tokens, temperature) = if is_reasoning_model(model_name) {
+            (Some(request.max_tokens), None, None)
         } else {
-            Some(request.temperature)
+            (None, Some(request.max_tokens), Some(request.temperature))
         };
 
         let openai_request = OpenAIRequest {
@@ -348,6 +342,109 @@ mod tests {
         let result = provider.generate(&request).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), LlmError::Unavailable(_)));
+    }
+
+    // ── C5: OpenAIRequestSerialization ───────────────────────────────────
+
+    fn build_openai_request(model: &str, disable_thinking: bool) -> OpenAIRequest {
+        let reasoning_effort = if disable_thinking {
+            Some("low".to_string())
+        } else {
+            None
+        };
+        let (max_completion_tokens, max_tokens, temperature) = if is_reasoning_model(model) {
+            (Some(100u32), None, None)
+        } else {
+            (None, Some(100u32), Some(0.3f32))
+        };
+        OpenAIRequest {
+            model: model.to_string(),
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: "Test".to_string(),
+            }],
+            max_completion_tokens,
+            max_tokens,
+            temperature,
+            reasoning_effort,
+        }
+    }
+
+    #[test]
+    fn test_c5_disable_thinking_true_sets_reasoning_effort_low() {
+        for model in &["gpt-4o", "o3-mini", "gpt-5-pro"] {
+            let req = build_openai_request(model, true);
+            let val = serde_json::to_value(&req).unwrap();
+            assert_eq!(
+                val["reasoning_effort"],
+                serde_json::Value::String("low".to_string()),
+                "model={model} should have reasoning_effort=low"
+            );
+        }
+    }
+
+    #[test]
+    fn test_c5_disable_thinking_false_omits_reasoning_effort() {
+        for model in &["gpt-4o", "o3-mini", "gpt-5-pro"] {
+            let req = build_openai_request(model, false);
+            let val = serde_json::to_value(&req).unwrap();
+            assert!(
+                val.get("reasoning_effort").is_none(),
+                "model={model} must not have reasoning_effort when disable_thinking=false"
+            );
+        }
+    }
+
+    // ── A2: reasoning model branching ────────────────────────────────────
+
+    #[test]
+    fn test_a2_reasoning_model_uses_max_completion_tokens() {
+        let req = build_openai_request("o3-mini", false);
+        let val = serde_json::to_value(&req).unwrap();
+        assert!(
+            val.get("max_completion_tokens").is_some(),
+            "o3-mini must have max_completion_tokens"
+        );
+        assert!(
+            val.get("max_tokens").is_none(),
+            "o3-mini must not have max_tokens"
+        );
+        assert!(
+            val.get("temperature").is_none(),
+            "o3-mini must not have temperature"
+        );
+    }
+
+    #[test]
+    fn test_a2_standard_model_uses_max_tokens_and_temperature() {
+        let req = build_openai_request("gpt-4o", false);
+        let val = serde_json::to_value(&req).unwrap();
+        assert!(
+            val.get("max_tokens").is_some(),
+            "gpt-4o must have max_tokens"
+        );
+        assert!(
+            val.get("temperature").is_some(),
+            "gpt-4o must have temperature"
+        );
+        assert!(
+            val.get("max_completion_tokens").is_none(),
+            "gpt-4o must not have max_completion_tokens"
+        );
+    }
+
+    #[test]
+    fn test_a2_is_reasoning_model_detection() {
+        assert!(is_reasoning_model("o1-mini"));
+        assert!(is_reasoning_model("o1-preview"));
+        assert!(is_reasoning_model("o3-mini"));
+        assert!(is_reasoning_model("o3"));
+        assert!(is_reasoning_model("o4-mini"));
+        assert!(is_reasoning_model("gpt-5"));
+        assert!(is_reasoning_model("gpt-5-pro"));
+        assert!(!is_reasoning_model("gpt-4o"));
+        assert!(!is_reasoning_model("gpt-4o-mini"));
+        assert!(!is_reasoning_model("gpt-3.5-turbo"));
     }
 
     // Integration test - requires actual API key

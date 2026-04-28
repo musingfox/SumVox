@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::config::SumvoxConfig;
+use crate::config::{effective_disable_thinking, SumvoxConfig};
 use crate::error::Result;
 use crate::llm::GenerationRequest;
 use crate::provider_factory::ProviderFactory;
@@ -348,14 +348,6 @@ async fn generate_summary(
 ) -> Result<String> {
     let llm_config = &config.llm;
 
-    let request = GenerationRequest {
-        system_message,
-        prompt: prompt.to_string(),
-        max_tokens: llm_config.parameters.max_tokens,
-        temperature: llm_config.parameters.temperature,
-        disable_thinking: llm_config.parameters.disable_thinking,
-    };
-
     // Try providers with fallback
     if llm_opts.provider.is_some() || llm_opts.model.is_some() {
         // CLI specified - try only that provider
@@ -363,13 +355,27 @@ async fn generate_summary(
         let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
         let timeout = Duration::from_secs(llm_opts.timeout);
 
-        // Try to get API key from config or env
-        let api_key = config
+        // Find the matching provider config for per-provider override resolution
+        let matching_provider = config
             .llm
             .providers
             .iter()
-            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
-            .and_then(|p| p.get_api_key());
+            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase());
+
+        let api_key = matching_provider.and_then(|p| p.get_api_key());
+
+        // Resolve effective disable_thinking: provider override > global
+        let disable_thinking = matching_provider
+            .map(|p| effective_disable_thinking(p, &llm_config.parameters))
+            .unwrap_or(llm_config.parameters.disable_thinking);
+
+        let request = GenerationRequest {
+            system_message: system_message.clone(),
+            prompt: prompt.to_string(),
+            max_tokens: llm_config.parameters.max_tokens,
+            temperature: llm_config.parameters.temperature,
+            disable_thinking,
+        };
 
         match ProviderFactory::create_by_name(
             provider_name,
@@ -405,8 +411,19 @@ async fn generate_summary(
         }
     }
 
-    // Try each provider in config order until one succeeds
+    // Try each provider in config order until one succeeds.
+    // Build a per-provider GenerationRequest so each gets its own effective disable_thinking.
     for provider_config in &llm_config.providers {
+        let disable_thinking = effective_disable_thinking(provider_config, &llm_config.parameters);
+
+        let request = GenerationRequest {
+            system_message: system_message.clone(),
+            prompt: prompt.to_string(),
+            max_tokens: llm_config.parameters.max_tokens,
+            temperature: llm_config.parameters.temperature,
+            disable_thinking,
+        };
+
         match ProviderFactory::create_single(provider_config) {
             Ok(provider) => {
                 if !provider.is_available() {
@@ -816,8 +833,10 @@ mod tests {
         let mut config = SumvoxConfig::default();
         config.hooks.claude_code.stop_volume = Some(80);
 
-        let mut tts_opts = TtsOptions::default();
-        tts_opts.volume = Some(50); // CLI override
+        let tts_opts = TtsOptions {
+            volume: Some(50), // CLI override
+            ..Default::default()
+        };
 
         let mut stop_tts_opts = tts_opts.clone();
         if stop_tts_opts.volume.is_none() {

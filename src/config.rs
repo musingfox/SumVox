@@ -93,6 +93,17 @@ pub struct LlmProviderConfig {
     /// Request timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+
+    /// Per-provider override for disable_thinking.
+    /// When Some, overrides the global llm.parameters.disable_thinking.
+    /// When None, falls back to the global value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_thinking: Option<bool>,
+}
+
+/// Resolve effective disable_thinking: provider override takes priority over global default.
+pub fn effective_disable_thinking(provider: &LlmProviderConfig, params: &LlmParameters) -> bool {
+    provider.disable_thinking.unwrap_or(params.disable_thinking)
 }
 
 impl LlmProviderConfig {
@@ -175,6 +186,7 @@ impl Default for LlmConfig {
                     api_key: None,
                     base_url: None,
                     timeout: default_timeout(),
+                    disable_thinking: None,
                 },
                 LlmProviderConfig {
                     name: "anthropic".to_string(),
@@ -182,6 +194,7 @@ impl Default for LlmConfig {
                     api_key: None,
                     base_url: None,
                     timeout: default_timeout(),
+                    disable_thinking: None,
                 },
                 LlmProviderConfig {
                     name: "openai".to_string(),
@@ -189,6 +202,7 @@ impl Default for LlmConfig {
                     api_key: None,
                     base_url: None,
                     timeout: default_timeout(),
+                    disable_thinking: None,
                 },
                 LlmProviderConfig {
                     name: "ollama".to_string(),
@@ -196,6 +210,7 @@ impl Default for LlmConfig {
                     api_key: None,
                     base_url: None,
                     timeout: default_ollama_timeout(),
+                    disable_thinking: None,
                 },
             ],
             parameters: LlmParameters::default(),
@@ -837,6 +852,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             base_url: None,
             timeout: 10,
+            disable_thinking: None,
         };
         assert!(provider_with_key.has_credentials());
 
@@ -846,6 +862,7 @@ mod tests {
             api_key: None,
             base_url: None,
             timeout: 10,
+            disable_thinking: None,
         };
         assert!(!provider_without_key.has_credentials());
 
@@ -855,6 +872,7 @@ mod tests {
             api_key: None,
             base_url: None,
             timeout: 10,
+            disable_thinking: None,
         };
         assert!(ollama_provider.has_credentials()); // Ollama doesn't need API key
     }
@@ -960,6 +978,7 @@ mod tests {
             api_key: None,
             base_url: None,
             timeout: 10,
+            disable_thinking: None,
         };
 
         let json = serde_json::to_string(&provider).unwrap();
@@ -1259,5 +1278,97 @@ turns = 1
         assert_eq!(config.content_source, ContentSource::Transcript);
         assert_eq!(config.turns, 1);
         assert_eq!(config.fallback_message, "Task completed");
+    }
+
+    // ── C1: effective_disable_thinking resolver ──────────────────────────
+
+    fn make_provider(override_val: Option<bool>) -> LlmProviderConfig {
+        LlmProviderConfig {
+            name: "google".to_string(),
+            model: "gemini-2.5-flash".to_string(),
+            api_key: None,
+            base_url: None,
+            timeout: 10,
+            disable_thinking: override_val,
+        }
+    }
+
+    fn make_params(global: bool) -> LlmParameters {
+        LlmParameters {
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: global,
+        }
+    }
+
+    #[test]
+    fn test_c1_provider_none_uses_global_false() {
+        let provider = make_provider(None);
+        let params = make_params(false);
+        assert!(!effective_disable_thinking(&provider, &params));
+    }
+
+    #[test]
+    fn test_c1_provider_none_uses_global_true() {
+        let provider = make_provider(None);
+        let params = make_params(true);
+        assert!(effective_disable_thinking(&provider, &params));
+    }
+
+    #[test]
+    fn test_c1_provider_some_true_overrides_global_false() {
+        let provider = make_provider(Some(true));
+        let params = make_params(false);
+        assert!(effective_disable_thinking(&provider, &params));
+    }
+
+    #[test]
+    fn test_c1_provider_some_false_overrides_global_true() {
+        let provider = make_provider(Some(false));
+        let params = make_params(true);
+        assert!(!effective_disable_thinking(&provider, &params));
+    }
+
+    // ── C6: per-provider disable_thinking TOML deserialization ──────────
+
+    #[test]
+    fn test_c6_provider_disable_thinking_absent_is_none() {
+        let toml = r#"
+[[llm.providers]]
+name = "google"
+model = "gemini-2.5-flash"
+api_key = "${KEY}"
+timeout = 10
+"#;
+        let config: SumvoxConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.llm.providers[0].disable_thinking, None);
+    }
+
+    #[test]
+    fn test_c6_provider_disable_thinking_true() {
+        let toml = r#"
+[[llm.providers]]
+name = "google"
+model = "gemini-2.5-flash"
+api_key = "${KEY}"
+timeout = 10
+disable_thinking = true
+"#;
+        let config: SumvoxConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.llm.providers[0].disable_thinking, Some(true));
+    }
+
+    #[test]
+    fn test_c6_provider_disable_thinking_false() {
+        let toml = r#"
+[[llm.providers]]
+name = "google"
+model = "gemini-2.5-flash"
+api_key = "${KEY}"
+timeout = 10
+disable_thinking = false
+"#;
+        let config: SumvoxConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.llm.providers[0].disable_thinking, Some(false));
     }
 }

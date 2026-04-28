@@ -264,7 +264,7 @@ mod tests {
     #[tokio::test]
     async fn test_speak_empty_text() {
         let p = create_test_provider();
-        assert_eq!(p.speak("").await.unwrap(), false);
+        assert!(!p.speak("").await.unwrap());
     }
 
     #[test]

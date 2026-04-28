@@ -155,6 +155,7 @@ impl ProviderFactory {
             api_key: api_key.map(|s| s.to_string()),
             base_url: None,
             timeout: timeout.as_secs(),
+            disable_thinking: None,
         };
         Self::create_single(&config)
     }
@@ -225,6 +226,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             base_url: None,
             timeout: 10,
+            disable_thinking: None,
         }];
 
         let result = ProviderFactory::create_from_config(&providers);
@@ -242,6 +244,7 @@ mod tests {
                 api_key: None,
                 base_url: None,
                 timeout: 10,
+                disable_thinking: None,
             },
             LlmProviderConfig {
                 name: "ollama".to_string(),
@@ -249,6 +252,7 @@ mod tests {
                 api_key: None,
                 base_url: None,
                 timeout: 10,
+                disable_thinking: None,
             },
         ];
 

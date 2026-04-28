@@ -50,6 +50,7 @@ model = "llama3.2"
 # api_key not required - Ollama runs locally without API key
 # base_url = "http://localhost:11434"  # Optional: custom endpoint
 timeout = 60  # Local inference needs more time
+# disable_thinking = true  # 可在此覆寫全域設定 (overrides llm.parameters.disable_thinking)
 
 # ============================================================================
 # TTS Provider Configuration (fallback chain - try in order)

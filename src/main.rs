@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use cli::{Cli, Commands, InitArgs, JsonArgs, SayArgs, SumArgs};
-use config::{SumvoxConfig, TtsProviderConfig};
+use config::{effective_disable_thinking, SumvoxConfig, TtsProviderConfig};
 use error::{Result, VoiceError};
 use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
 use hooks::HookFormat;
@@ -323,14 +323,6 @@ async fn generate_summary(
 ) -> Result<String> {
     let llm_config = &config.llm;
 
-    let request = GenerationRequest {
-        system_message,
-        prompt: prompt.to_string(),
-        max_tokens: llm_config.parameters.max_tokens,
-        temperature: llm_config.parameters.temperature,
-        disable_thinking: llm_config.parameters.disable_thinking,
-    };
-
     // Try providers with fallback
     if llm_opts.provider.is_some() || llm_opts.model.is_some() {
         // CLI specified - try only that provider
@@ -338,13 +330,27 @@ async fn generate_summary(
         let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
         let timeout = Duration::from_secs(llm_opts.timeout);
 
-        // Try to get API key from config or env
-        let api_key = config
+        // Find the matching provider config for per-provider override resolution
+        let matching_provider = config
             .llm
             .providers
             .iter()
-            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
-            .and_then(|p| p.get_api_key());
+            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase());
+
+        let api_key = matching_provider.and_then(|p| p.get_api_key());
+
+        // Resolve effective disable_thinking: provider override > global
+        let disable_thinking = matching_provider
+            .map(|p| effective_disable_thinking(p, &llm_config.parameters))
+            .unwrap_or(llm_config.parameters.disable_thinking);
+
+        let request = GenerationRequest {
+            system_message: system_message.clone(),
+            prompt: prompt.to_string(),
+            max_tokens: llm_config.parameters.max_tokens,
+            temperature: llm_config.parameters.temperature,
+            disable_thinking,
+        };
 
         match ProviderFactory::create_by_name(
             provider_name,
@@ -380,8 +386,19 @@ async fn generate_summary(
         }
     }
 
-    // Try each provider in config order until one succeeds
+    // Try each provider in config order until one succeeds.
+    // Build a per-provider GenerationRequest so each gets its own effective disable_thinking.
     for provider_config in &llm_config.providers {
+        let disable_thinking = effective_disable_thinking(provider_config, &llm_config.parameters);
+
+        let request = GenerationRequest {
+            system_message: system_message.clone(),
+            prompt: prompt.to_string(),
+            max_tokens: llm_config.parameters.max_tokens,
+            temperature: llm_config.parameters.temperature,
+            disable_thinking,
+        };
+
         match ProviderFactory::create_single(provider_config) {
             Ok(provider) => {
                 if !provider.is_available() {
@@ -639,6 +656,124 @@ async fn speak_with_provider_fallback(providers: &[TtsProviderConfig], text: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use config::{LlmParameters, LlmProviderConfig};
+
+    // ── A1: per-provider disable_thinking in main.rs generate_summary ────
+
+    /// Helper that replicates the resolver logic from generate_summary's CLI path
+    fn resolve_disable_thinking_for_provider(
+        provider_name: &str,
+        providers: &[LlmProviderConfig],
+        params: &LlmParameters,
+    ) -> bool {
+        providers
+            .iter()
+            .find(|p| p.name.to_lowercase() == provider_name.to_lowercase())
+            .map(|p| effective_disable_thinking(p, params))
+            .unwrap_or(params.disable_thinking)
+    }
+
+    #[test]
+    fn test_a1_per_provider_override_applied_in_cli_path() {
+        let params = LlmParameters {
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: false, // global default: false
+        };
+        let providers = [LlmProviderConfig {
+            name: "openai".to_string(),
+            model: "gpt-4o".to_string(),
+            api_key: None,
+            base_url: None,
+            timeout: 10,
+            disable_thinking: Some(true), // per-provider override: true
+        }];
+
+        let result = resolve_disable_thinking_for_provider("openai", &providers, &params);
+        assert!(
+            result,
+            "per-provider disable_thinking=true must override global=false"
+        );
+    }
+
+    #[test]
+    fn test_a1_global_fallback_when_no_provider_override() {
+        let params = LlmParameters {
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: true, // global: true
+        };
+        let providers = [LlmProviderConfig {
+            name: "google".to_string(),
+            model: "gemini-2.5-flash".to_string(),
+            api_key: None,
+            base_url: None,
+            timeout: 10,
+            disable_thinking: None, // no override → falls back to global
+        }];
+
+        let result = resolve_disable_thinking_for_provider("google", &providers, &params);
+        assert!(
+            result,
+            "global disable_thinking=true must apply when provider has no override"
+        );
+    }
+
+    #[test]
+    fn test_a1_unknown_provider_falls_back_to_global() {
+        let params = LlmParameters {
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: true,
+        };
+        let providers: [LlmProviderConfig; 0] = []; // no matching provider
+
+        let result = resolve_disable_thinking_for_provider("nonexistent", &providers, &params);
+        assert!(
+            result,
+            "unknown provider must fall back to global disable_thinking"
+        );
+    }
+
+    #[test]
+    fn test_a1_fallback_loop_per_provider_disable_thinking() {
+        // Verify each provider in the fallback list gets its own effective disable_thinking
+        let params = LlmParameters {
+            max_tokens: 100,
+            temperature: 0.3,
+            disable_thinking: false, // global: false
+        };
+        let providers = [
+            LlmProviderConfig {
+                name: "google".to_string(),
+                model: "gemini-2.5-flash".to_string(),
+                api_key: None,
+                base_url: None,
+                timeout: 10,
+                disable_thinking: None, // inherits global: false
+            },
+            LlmProviderConfig {
+                name: "openai".to_string(),
+                model: "o3-mini".to_string(),
+                api_key: None,
+                base_url: None,
+                timeout: 10,
+                disable_thinking: Some(true), // override: true
+            },
+        ];
+
+        let google_dt = effective_disable_thinking(&providers[0], &params);
+        let openai_dt = effective_disable_thinking(&providers[1], &params);
+
+        assert!(
+            !google_dt,
+            "google must inherit global disable_thinking=false"
+        );
+        assert!(
+            openai_dt,
+            "openai must use per-provider disable_thinking=true"
+        );
+    }
 
     #[test]
     fn test_tts_options_from_say_args() {
