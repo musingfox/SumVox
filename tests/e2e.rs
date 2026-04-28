@@ -51,6 +51,7 @@ impl TestEnv {
     fn cmd(&self) -> Command {
         let mut cmd = cargo_bin_cmd!("sumvox");
         cmd.env("HOME", self.home_dir.path());
+        cmd.env_remove("SUMVOX_DISABLE");
         cmd
     }
 
@@ -275,8 +276,9 @@ stop_tts_provider = "macos"
 
 #[test]
 fn test_version() {
-    cargo_bin_cmd!("sumvox")
-        .arg("--version")
+    let mut cmd = cargo_bin_cmd!("sumvox");
+    cmd.env_remove("SUMVOX_DISABLE");
+    cmd.arg("--version")
         .assert()
         .success()
         .stdout(predicate::str::contains("sumvox"));
@@ -284,8 +286,9 @@ fn test_version() {
 
 #[test]
 fn test_help() {
-    cargo_bin_cmd!("sumvox")
-        .arg("--help")
+    let mut cmd = cargo_bin_cmd!("sumvox");
+    cmd.env_remove("SUMVOX_DISABLE");
+    cmd.arg("--help")
         .assert()
         .success()
         .stdout(predicate::str::contains("say"))
