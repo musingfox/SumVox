@@ -275,6 +275,9 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         },
         TtsProviderConfig {
             name: "google".to_string(),
@@ -286,6 +289,9 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         },
     ];
 
@@ -544,6 +550,22 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
                 .find(|p| matches!(p.name.to_lowercase().as_str(), "xai" | "xai_tts" | "grok"))
                 .ok_or_else(|| VoiceError::Config("xai provider not found in config".into()))?;
             create_single_tts(xai_config)?
+        }
+        TtsEngine::ElevenLabs => {
+            let el_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "elevenlabs" | "eleven_labs" | "11labs"
+                    )
+                })
+                .ok_or_else(|| {
+                    VoiceError::Config("elevenlabs provider not found in config".into())
+                })?;
+            create_single_tts(el_config)?
         }
     };
 

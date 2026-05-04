@@ -594,6 +594,30 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
 
             crate::tts::create_single_tts(&xai_config)?
         }
+        TtsEngine::ElevenLabs => {
+            let el_config = config
+                .tts
+                .providers
+                .iter()
+                .find(|p| {
+                    matches!(
+                        p.name.to_lowercase().as_str(),
+                        "elevenlabs" | "eleven_labs" | "11labs"
+                    )
+                })
+                .ok_or_else(|| {
+                    crate::error::VoiceError::Config(
+                        "elevenlabs provider not found in config".into(),
+                    )
+                })?;
+
+            let mut el_config = el_config.clone();
+            if let Some(vol) = tts_opts.volume {
+                el_config.volume = Some(vol);
+            }
+
+            crate::tts::create_single_tts(&el_config)?
+        }
     };
 
     if !provider.is_available() {
@@ -861,6 +885,9 @@ mod tests {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
 
         let volume_override = Some(60u32);
@@ -887,6 +914,9 @@ mod tests {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
 
         let volume_override: Option<u32> = None;
@@ -913,6 +943,9 @@ mod tests {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
 
         let volume_override = Some(80u32);

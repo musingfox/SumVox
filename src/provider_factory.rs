@@ -11,6 +11,7 @@ pub enum Provider {
     Anthropic,
     OpenAI,
     Ollama,
+    Xai,
 }
 
 impl FromStr for Provider {
@@ -22,6 +23,7 @@ impl FromStr for Provider {
             "anthropic" | "claude" => Ok(Provider::Anthropic),
             "openai" | "gpt" => Ok(Provider::OpenAI),
             "ollama" | "local" => Ok(Provider::Ollama),
+            "xai" | "grok" => Ok(Provider::Xai),
             _ => Err(VoiceError::Config(format!("Unknown provider: {}", s))),
         }
     }
@@ -136,6 +138,24 @@ impl ProviderFactory {
                 Ok(Box::new(OllamaProvider::with_base_url(
                     base_url,
                     config.model.clone(),
+                    timeout,
+                )))
+            }
+            Provider::Xai => {
+                let api_key = config.get_api_key().ok_or_else(|| {
+                    VoiceError::Config(format!(
+                        "No API key for xAI. Set in config or env var {}",
+                        LlmProviderConfig::env_var_name("xai")
+                    ))
+                })?;
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://api.x.ai/v1".to_string());
+                Ok(Box::new(OpenAIProvider::with_base_url(
+                    api_key,
+                    config.model.clone(),
+                    base_url,
                     timeout,
                 )))
             }

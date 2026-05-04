@@ -136,6 +136,7 @@ impl LlmProviderConfig {
             "google" | "gemini" => "GEMINI_API_KEY",
             "anthropic" | "claude" => "ANTHROPIC_API_KEY",
             "openai" | "gpt" => "OPENAI_API_KEY",
+            "xai" | "grok" => "XAI_API_KEY",
             _ => "API_KEY",
         }
     }
@@ -264,6 +265,21 @@ pub struct TtsProviderConfig {
     /// Examples: "en-US", "zh-TW", "ja-JP"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language_code: Option<String>,
+
+    /// Speech speed multiplier (for ElevenLabs).
+    /// Range 0.7-1.2; 1.0 = default, <1.0 slower, >1.0 faster.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f32>,
+
+    /// Voice stability (for ElevenLabs). Range 0.0-1.0.
+    /// Higher = calmer/less pitch variation, lower = more expressive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stability: Option<f32>,
+
+    /// Style exaggeration (for ElevenLabs). Range 0.0-1.0.
+    /// Lower = flatter pitch/less expressive, 0.0 disables style.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<f32>,
 }
 
 impl TtsProviderConfig {
@@ -277,8 +293,22 @@ impl TtsProviderConfig {
                 self.get_api_key().is_some()
             }
             "xai" | "xai_tts" | "grok" => self.get_xai_api_key().is_some(),
+            "elevenlabs" | "eleven_labs" | "11labs" => self.get_elevenlabs_api_key().is_some(),
             _ => false,
         }
+    }
+
+    /// Get ElevenLabs API key from config or environment
+    pub fn get_elevenlabs_api_key(&self) -> Option<String> {
+        if let Some(ref key) = self.api_key {
+            if !key.is_empty() && !key.starts_with("${") {
+                return Some(key.clone());
+            }
+        }
+
+        std::env::var("ELEVENLABS_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
     }
 
     /// Get Gemini API key from config or environment
@@ -342,6 +372,9 @@ impl Default for TtsConfig {
                     path: None,
                     service_account_key: None,
                     language_code: None,
+                    speed: None,
+                    stability: None,
+                    style: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
@@ -353,6 +386,9 @@ impl Default for TtsConfig {
                     path: None,
                     service_account_key: None,
                     language_code: None,
+                    speed: None,
+                    stability: None,
+                    style: None,
                 },
             ],
         }
@@ -889,6 +925,9 @@ mod tests {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
         assert!(macos_provider.is_configured());
     }
@@ -1186,6 +1225,9 @@ tts:
             path: None,
             service_account_key: Some(temp_file.path().to_string_lossy().to_string()),
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
 
         let content = config.get_service_account_key();
@@ -1205,6 +1247,9 @@ tts:
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         };
 
         assert_eq!(config.get_service_account_key(), None);

@@ -3,6 +3,7 @@
 
 pub mod cloud_tts;
 pub mod cloud_tts_auth;
+pub mod elevenlabs;
 pub mod google;
 pub mod macos;
 pub mod xai;
@@ -38,6 +39,7 @@ pub enum TtsEngine {
     Google,
     CloudTts,
     Xai,
+    ElevenLabs,
     AudioFile,
     Auto,
 }
@@ -51,6 +53,7 @@ impl FromStr for TtsEngine {
             "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
             "cloud_tts" | "gcp_tts" | "google_cloud" => Ok(TtsEngine::CloudTts),
             "xai" | "xai_tts" | "grok" => Ok(TtsEngine::Xai),
+            "elevenlabs" | "eleven_labs" | "11labs" => Ok(TtsEngine::ElevenLabs),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
@@ -65,6 +68,7 @@ impl std::fmt::Display for TtsEngine {
             TtsEngine::Google => write!(f, "google"),
             TtsEngine::CloudTts => write!(f, "cloud_tts"),
             TtsEngine::Xai => write!(f, "xai"),
+            TtsEngine::ElevenLabs => write!(f, "elevenlabs"),
             TtsEngine::AudioFile => write!(f, "audio_file"),
             TtsEngine::Auto => write!(f, "auto"),
         }
@@ -73,6 +77,7 @@ impl std::fmt::Display for TtsEngine {
 
 // Re-export providers
 pub use cloud_tts::CloudTtsProvider;
+pub use elevenlabs::ElevenLabsProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
 pub use xai::XaiTtsProvider;
@@ -168,6 +173,23 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 api_key, voice, language, volume,
             )))
         }
+        "elevenlabs" | "eleven_labs" | "11labs" => {
+            let api_key = config.get_elevenlabs_api_key().ok_or_else(|| {
+                VoiceError::Config(
+                    "ElevenLabs API key not found. Set in config or env var ELEVENLABS_API_KEY"
+                        .into(),
+                )
+            })?;
+
+            let voice = config.voice.clone();
+            let model = config.model.clone();
+            let speed = config.speed;
+            let stability = config.stability;
+            let style = config.style;
+            Ok(Box::new(ElevenLabsProvider::new(
+                api_key, voice, model, speed, stability, style, volume,
+            )))
+        }
         "audio_file" | "audio" | "file" => {
             let path_str = config.path.as_ref().ok_or_else(|| {
                 VoiceError::Config(
@@ -207,6 +229,9 @@ pub fn create_tts_by_name(
         path: None,
         service_account_key: None,
         language_code: None,
+        speed: None,
+        stability: None,
+        style: None,
     };
     create_single_tts(&config)
 }
@@ -279,6 +304,9 @@ mod tests {
             path: None,
             service_account_key: None,
             language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
         }];
 
         let result = create_tts_from_config(&providers);
@@ -301,6 +329,9 @@ mod tests {
                 path: None,
                 service_account_key: None,
                 language_code: None,
+                speed: None,
+                stability: None,
+                style: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
@@ -312,6 +343,9 @@ mod tests {
                 path: None,
                 service_account_key: None,
                 language_code: None,
+                speed: None,
+                stability: None,
+                style: None,
             },
         ];
 

@@ -43,6 +43,17 @@ api_key = "${PROVIDER_API_KEY}"  # Get from: https://platform.openai.com
 # base_url = "https://api.openai.com/v1"  # Optional: for Azure OpenAI or compatible APIs
 timeout = 10
 
+# xAI Grok (OpenAI-compatible API; very cheap)
+# Pricing (Jan 2026): grok-4-1-fast: $0.20/$0.50 per 1M tokens (input/output)
+# Get API key: https://console.x.ai
+# Uncomment to enable:
+# [[llm.providers]]
+# name = "xai"
+# model = "grok-4-1-fast-non-reasoning"  # or grok-4-1-fast-reasoning, grok-4.3
+# api_key = "${XAI_API_KEY}"
+# # base_url = "https://api.x.ai/v1"  # default; override only for proxies
+# timeout = 10
+
 # Ollama (Local, free, slower - good fallback)
 [[llm.providers]]
 name = "ollama"
@@ -87,6 +98,22 @@ rate = 200      # Speech rate (90-300, default: 200)
 # language_code = "auto"  # Language: "auto", "en", "zh", "ja", etc.
 # api_key = "${XAI_API_KEY}"
 # volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+
+# ElevenLabs TTS (Premium voices, very natural, requires API key)
+# Pricing:
+#   Flash v2.5 / Turbo v2.5: $0.06 per 1K characters (~75ms latency)
+#   Multilingual v2 / v3:    $0.12 per 1K characters (~300ms latency, higher quality)
+# Get API key: https://elevenlabs.io/app/settings/api-keys
+# Browse voices:  https://elevenlabs.io/app/voice-library
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "elevenlabs"
+# model = "eleven_flash_v2_5"  # Options: eleven_flash_v2_5, eleven_turbo_v2_5, eleven_multilingual_v2, eleven_multilingual_v3
+# voice = "21m00Tcm4TlvDq8ikWAM"  # Voice ID (default: Rachel). Other stock voices:
+#                                  #   JBFqnCBsd6RMkjVDRZzb (George), TX3LPaxmHKxFdv7VOQHJ (Liam),
+#                                  #   pNInz6obpgDQGcFmaJgB (Adam), EXAVITQu4vr4xnSDxMaL (Bella)
+# api_key = "${ELEVENLABS_API_KEY}"
+# volume = 100  # ✅ SUPPORTED - Volume control via afplay (0-100, default: 100)
 
 # Google Cloud TTS (Professional-grade, requires service account)
 # Pricing:
