@@ -5,6 +5,13 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-05-05
+
+### Added
+- **ElevenLabs TTS provider**: New `elevenlabs` provider with full voice tuning controls. Configure `voice` (Voice ID), `model` (`eleven_v3`, `eleven_multilingual_v2`, `eleven_turbo_v2_5`, `eleven_flash_v2_5`), `speed` (0.7–1.2), `stability` (0.0–1.0), and `style` (0.0–1.0). API key via `api_key` field or `ELEVENLABS_API_KEY` env. Plays MP3 output through `afplay` with full volume control. Supports library voices (paid) and Voice Design (all tiers).
+- **xAI Grok LLM provider**: First-class `xai` / `grok` entry in the LLM provider factory, routed through the OpenAI-compatible endpoint at `https://api.x.ai/v1`. API key via `api_key` field or `XAI_API_KEY` env. Works with `grok-4-1-fast-non-reasoning`, `grok-4-1-fast-reasoning`, etc.
+- **`recommended.toml` examples**: Commented-out blocks for both new providers with pricing notes and API key sourcing instructions.
+
 ## [1.6.0] - 2026-04-28
 
 ### Added
