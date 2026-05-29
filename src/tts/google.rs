@@ -105,13 +105,11 @@ struct TtsErrorDetail {
 }
 
 impl GoogleTtsProvider {
-    pub fn new(api_key: String, model: String, voice_name: Option<String>, volume: u32) -> Self {
-        let voice = voice_name.unwrap_or_else(|| "Zephyr".to_string());
-
+    pub fn new(api_key: String, model: String, voice_name: String, volume: u32) -> Self {
         Self {
             api_key,
             model,
-            voice_name: voice,
+            voice_name,
             volume,
         }
     }
@@ -272,11 +270,11 @@ mod tests {
         let provider = GoogleTtsProvider::new(
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
-            None,
+            "Aoede".to_string(),
             100,
         );
         assert_eq!(provider.name(), "google");
-        assert_eq!(provider.voice_name, "Zephyr");
+        assert_eq!(provider.voice_name, "Aoede");
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
     }
@@ -286,7 +284,7 @@ mod tests {
         let provider = GoogleTtsProvider::new(
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
-            Some("Charon".to_string()),
+            "Charon".to_string(),
             75,
         );
         assert_eq!(provider.voice_name, "Charon");
@@ -298,7 +296,7 @@ mod tests {
         let provider = GoogleTtsProvider::new(
             String::new(),
             "gemini-2.5-flash-preview-tts".to_string(),
-            None,
+            "Aoede".to_string(),
             100,
         );
         assert!(!provider.is_available());
@@ -309,7 +307,7 @@ mod tests {
         let provider = GoogleTtsProvider::new(
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
-            None,
+            "Aoede".to_string(),
             100,
         );
 
@@ -327,7 +325,7 @@ mod tests {
         let provider = GoogleTtsProvider::new(
             "test-api-key".to_string(),
             "gemini-2.5-flash-preview-tts".to_string(),
-            None,
+            "Aoede".to_string(),
             100,
         );
         let result = provider.speak("").await.unwrap();

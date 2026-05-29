@@ -89,8 +89,8 @@ sumvox say "Test" --tts macos --voice Daniel
 - `src/main.rs` - Entry point, hook orchestration
 - `src/config.rs` - Configuration loading/saving
 - `src/transcript.rs` - Claude Code transcript parsing
-- `src/llm/` - Multi-provider LLM support (Gemini, Anthropic, OpenAI, Ollama)
-- `src/tts/` - Text-to-Speech engines (Google TTS, macOS say)
+- `src/llm/` - Multi-provider LLM support (Gemini, Anthropic, OpenAI, xAI Grok, Ollama)
+- `src/tts/` - Text-to-Speech engines (macOS say, Google TTS, Google Cloud TTS, xAI TTS, ElevenLabs)
 - `src/provider_factory.rs` - Provider creation with fallback chain
 
 ### Configuration Format

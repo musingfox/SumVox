@@ -141,7 +141,12 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 )
             })?;
 
-            let voice = config.voice.clone();
+            // Voice is required for Google TTS — no hardcoded default.
+            let voice = config.voice.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "Google TTS voice is required. Specify in config, e.g., 'Aoede'".into(),
+                )
+            })?;
             Ok(Box::new(GoogleTtsProvider::new(
                 api_key, model, voice, volume,
             )))
@@ -151,7 +156,13 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 VoiceError::Config("Cloud TTS requires service_account_key".into())
             })?;
 
-            let voice = config.voice.clone();
+            // Voice is required — no hardcoded default.
+            let voice = config.voice.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "Cloud TTS voice is required. Specify in config, e.g., 'en-US-Standard-A'"
+                        .into(),
+                )
+            })?;
             let language_code = config.language_code.clone();
             Ok(Box::new(CloudTtsProvider::new(
                 sa_json,
@@ -167,7 +178,12 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 )
             })?;
 
-            let voice = config.voice.clone();
+            // Voice is required — no hardcoded default.
+            let voice = config.voice.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "xAI TTS voice is required. Specify in config, e.g., 'eve'".into(),
+                )
+            })?;
             let language = config.language_code.clone();
             Ok(Box::new(XaiTtsProvider::new(
                 api_key, voice, language, volume,
@@ -181,8 +197,18 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 )
             })?;
 
-            let voice = config.voice.clone();
-            let model = config.model.clone();
+            // Voice and model are required — no hardcoded defaults.
+            let voice = config.voice.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "ElevenLabs voice is required. Specify a Voice ID in config.".into(),
+                )
+            })?;
+            let model = config.model.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "ElevenLabs model is required. Specify in config, e.g., 'eleven_flash_v2_5'"
+                        .into(),
+                )
+            })?;
             let speed = config.speed;
             let stability = config.stability;
             let style = config.style;
@@ -210,30 +236,34 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
     }
 }
 
-/// Create TTS provider by name (for CLI override)
-pub fn create_tts_by_name(
-    name: &str,
-    model: Option<String>,
-    voice: Option<String>,
+/// Resolve a CLI/hook-selected TTS engine to a provider, sourcing all attributes
+/// from the matching config entry. Only the voice/volume the caller explicitly set
+/// override config; `rate` is taken from the caller (macOS-only). The engine must
+/// exist in config — config is the single source of truth, so an absent engine is
+/// an error and no provider/model/voice value is ever hardcoded here.
+pub fn resolve_tts_provider(
+    providers: &[TtsProviderConfig],
+    aliases: &[&str],
+    voice: Option<&str>,
     rate: u32,
-    volume: u32,
-    api_key: Option<String>,
+    volume: Option<u32>,
 ) -> Result<Box<dyn TtsProvider>> {
-    let config = TtsProviderConfig {
-        name: name.to_string(),
-        model,
-        voice,
-        api_key,
-        rate: Some(rate),
-        volume: Some(volume),
-        path: None,
-        service_account_key: None,
-        language_code: None,
-        speed: None,
-        stability: None,
-        style: None,
-    };
-    create_single_tts(&config)
+    let base = providers
+        .iter()
+        .find(|p| aliases.contains(&p.name.to_lowercase().as_str()))
+        .ok_or_else(|| {
+            VoiceError::Config(format!("{} provider not found in config", aliases[0]))
+        })?;
+
+    let mut resolved = base.clone();
+    if let Some(v) = voice {
+        resolved.voice = Some(v.to_string());
+    }
+    if let Some(vol) = volume {
+        resolved.volume = Some(vol);
+    }
+    resolved.rate = Some(rate);
+    create_single_tts(&resolved)
 }
 
 #[cfg(test)]
@@ -359,11 +389,48 @@ mod tests {
     }
 
     #[test]
-    fn test_create_tts_by_name_macos() {
-        let result =
-            create_tts_by_name("macos", None, Some("Tingting".to_string()), 200, 100, None);
+    fn test_resolve_tts_provider_uses_config_and_cli_override() {
+        let providers = vec![TtsProviderConfig {
+            name: "macos".to_string(),
+            model: None,
+            voice: Some("Meijia".to_string()),
+            api_key: None,
+            rate: Some(200),
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+        }];
+
+        // CLI voice override wins over config voice; engine sourced from config.
+        let result = resolve_tts_provider(
+            &providers,
+            &["macos", "say"],
+            Some("Tingting"),
+            250,
+            Some(80),
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
+    }
+
+    #[test]
+    fn test_resolve_tts_provider_errors_when_engine_absent() {
+        let providers: Vec<TtsProviderConfig> = vec![];
+        let result = resolve_tts_provider(&providers, &["google", "gemini"], None, 200, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_tts_provider_macos_errors_when_absent() {
+        // config is the single source of truth: an unconfigured engine errors,
+        // even the credential-free macOS one.
+        let providers: Vec<TtsProviderConfig> = vec![];
+        let result = resolve_tts_provider(&providers, &["macos", "say"], None, 200, None);
+        assert!(result.is_err());
     }
 
     #[test]
