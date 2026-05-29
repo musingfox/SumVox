@@ -34,7 +34,7 @@ Replace `${PROVIDER_API_KEY}` with your actual API key:
 ```yaml
 providers:
   - name: google
-    model: gemini-2.5-flash
+    model: gemini-3.1-flash-lite
     api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
 ```
 
@@ -71,7 +71,7 @@ Edit `~/.claude/settings.json`:
 llm:
   providers:
     - name: google
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
       api_key: ${GEMINI_API_KEY}
     - name: ollama
       model: llama3.2

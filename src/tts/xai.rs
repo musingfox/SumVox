@@ -41,15 +41,11 @@ struct XaiOutputFormat {
 }
 
 impl XaiTtsProvider {
-    pub fn new(
-        api_key: String,
-        voice_id: Option<String>,
-        language: Option<String>,
-        volume: u32,
-    ) -> Self {
+    pub fn new(api_key: String, voice_id: String, language: Option<String>, volume: u32) -> Self {
         Self {
             api_key,
-            voice_id: voice_id.unwrap_or_else(|| "eve".to_string()),
+            voice_id,
+            // language is a neutral tuning value: unset = auto-detect.
             language: language.unwrap_or_else(|| "auto".to_string()),
             volume,
         }
@@ -164,7 +160,8 @@ mod tests {
 
     #[test]
     fn test_xai_provider_creation() {
-        let provider = XaiTtsProvider::new("test-api-key".to_string(), None, None, 100);
+        let provider =
+            XaiTtsProvider::new("test-api-key".to_string(), "eve".to_string(), None, 100);
         assert_eq!(provider.name(), "xai");
         assert_eq!(provider.voice_id, "eve");
         assert_eq!(provider.language, "auto");
@@ -176,7 +173,7 @@ mod tests {
     fn test_custom_voice_and_language() {
         let provider = XaiTtsProvider::new(
             "test-api-key".to_string(),
-            Some("rex".to_string()),
+            "rex".to_string(),
             Some("zh".to_string()),
             75,
         );
@@ -187,13 +184,14 @@ mod tests {
 
     #[test]
     fn test_empty_api_key() {
-        let provider = XaiTtsProvider::new(String::new(), None, None, 100);
+        let provider = XaiTtsProvider::new(String::new(), "eve".to_string(), None, 100);
         assert!(!provider.is_available());
     }
 
     #[test]
     fn test_cost_estimation() {
-        let provider = XaiTtsProvider::new("test-api-key".to_string(), None, None, 100);
+        let provider =
+            XaiTtsProvider::new("test-api-key".to_string(), "eve".to_string(), None, 100);
 
         // 1M characters = $4.20
         let cost_1m = provider.estimate_cost(1_000_000);
@@ -206,7 +204,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider = XaiTtsProvider::new("test-api-key".to_string(), None, None, 100);
+        let provider =
+            XaiTtsProvider::new("test-api-key".to_string(), "eve".to_string(), None, 100);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }

@@ -183,7 +183,7 @@ impl Default for LlmConfig {
             providers: vec![
                 LlmProviderConfig {
                     name: "google".to_string(),
-                    model: "gemini-2.5-flash".to_string(),
+                    model: "gemini-3.1-flash-lite".to_string(),
                     api_key: None,
                     base_url: None,
                     timeout: default_timeout(),

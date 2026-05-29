@@ -13,12 +13,6 @@ use crate::error::{Result, VoiceError};
 
 const ELEVENLABS_API_BASE: &str = "https://api.elevenlabs.io/v1/text-to-speech";
 
-/// Default voice ID — "Rachel" (one of ElevenLabs' stock voices)
-const DEFAULT_VOICE_ID: &str = "21m00Tcm4TlvDq8ikWAM";
-
-/// Default model — Flash v2.5: ~75ms latency, $0.06/1K chars
-const DEFAULT_MODEL_ID: &str = "eleven_flash_v2_5";
-
 /// Default output format — MP3 44.1kHz 128kbps (free tier)
 const DEFAULT_OUTPUT_FORMAT: &str = "mp3_44100_128";
 
@@ -65,8 +59,8 @@ struct VoiceSettings {
 impl ElevenLabsProvider {
     pub fn new(
         api_key: String,
-        voice_id: Option<String>,
-        model_id: Option<String>,
+        voice_id: String,
+        model_id: String,
         speed: Option<f32>,
         stability: Option<f32>,
         style: Option<f32>,
@@ -74,8 +68,8 @@ impl ElevenLabsProvider {
     ) -> Self {
         Self {
             api_key,
-            voice_id: voice_id.unwrap_or_else(|| DEFAULT_VOICE_ID.to_string()),
-            model_id: model_id.unwrap_or_else(|| DEFAULT_MODEL_ID.to_string()),
+            voice_id,
+            model_id,
             output_format: DEFAULT_OUTPUT_FORMAT.to_string(),
             speed: speed.map(|s| s.clamp(0.7, 1.2)),
             stability: stability.map(|s| s.clamp(0.0, 1.0)),
@@ -227,11 +221,18 @@ mod tests {
 
     #[test]
     fn test_provider_creation_defaults() {
-        let provider =
-            ElevenLabsProvider::new("test-key".to_string(), None, None, None, None, None, 100);
+        let provider = ElevenLabsProvider::new(
+            "test-key".to_string(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            None,
+            None,
+            None,
+            100,
+        );
         assert_eq!(provider.name(), "elevenlabs");
-        assert_eq!(provider.voice_id, DEFAULT_VOICE_ID);
-        assert_eq!(provider.model_id, DEFAULT_MODEL_ID);
+        assert_eq!(provider.voice_id, "21m00Tcm4TlvDq8ikWAM");
+        assert_eq!(provider.model_id, "eleven_flash_v2_5");
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
     }
@@ -240,8 +241,8 @@ mod tests {
     fn test_provider_custom_voice_and_model() {
         let provider = ElevenLabsProvider::new(
             "test-key".to_string(),
-            Some("JBFqnCBsd6RMkjVDRZzb".to_string()),
-            Some("eleven_multilingual_v2".to_string()),
+            "JBFqnCBsd6RMkjVDRZzb".to_string(),
+            "eleven_multilingual_v2".to_string(),
             Some(0.85),
             None,
             None,
@@ -255,23 +256,45 @@ mod tests {
 
     #[test]
     fn test_speed_clamped_to_valid_range() {
-        let too_slow =
-            ElevenLabsProvider::new("k".to_string(), None, None, Some(0.5), None, None, 100);
+        let too_slow = ElevenLabsProvider::new(
+            "k".to_string(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            Some(0.5),
+            None,
+            None,
+            100,
+        );
         assert_eq!(too_slow.speed, Some(0.7));
-        let too_fast =
-            ElevenLabsProvider::new("k".to_string(), None, None, Some(2.0), None, None, 100);
+        let too_fast = ElevenLabsProvider::new(
+            "k".to_string(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            Some(2.0),
+            None,
+            None,
+            100,
+        );
         assert_eq!(too_fast.speed, Some(1.2));
     }
 
     #[test]
     fn test_unavailable_with_empty_or_placeholder_key() {
-        let empty = ElevenLabsProvider::new(String::new(), None, None, None, None, None, 100);
+        let empty = ElevenLabsProvider::new(
+            String::new(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            None,
+            None,
+            None,
+            100,
+        );
         assert!(!empty.is_available());
 
         let placeholder = ElevenLabsProvider::new(
             "${ELEVENLABS_API_KEY}".to_string(),
-            None,
-            None,
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
             None,
             None,
             None,
@@ -282,8 +305,15 @@ mod tests {
 
     #[test]
     fn test_cost_estimation_flash() {
-        let provider =
-            ElevenLabsProvider::new("test-key".to_string(), None, None, None, None, None, 100);
+        let provider = ElevenLabsProvider::new(
+            "test-key".to_string(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            None,
+            None,
+            None,
+            100,
+        );
         // 1M chars × $0.00006 = $60
         let cost = provider.estimate_cost(1_000_000);
         assert!((cost - 60.0).abs() < 0.001);
@@ -293,8 +323,8 @@ mod tests {
     fn test_cost_estimation_multilingual() {
         let provider = ElevenLabsProvider::new(
             "test-key".to_string(),
-            None,
-            Some("eleven_multilingual_v2".to_string()),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_multilingual_v2".to_string(),
             None,
             None,
             None,
@@ -307,8 +337,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_speak_empty_message() {
-        let provider =
-            ElevenLabsProvider::new("test-key".to_string(), None, None, None, None, None, 100);
+        let provider = ElevenLabsProvider::new(
+            "test-key".to_string(),
+            "21m00Tcm4TlvDq8ikWAM".to_string(),
+            "eleven_flash_v2_5".to_string(),
+            None,
+            None,
+            None,
+            100,
+        );
         let result = provider.speak("").await.unwrap();
         assert!(!result);
     }

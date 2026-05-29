@@ -12,9 +12,10 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
 
 - ⚡ **Blazing Fast**: 7ms startup time (Rust implementation)
 - 🧠 **Multi-Model LLM Support**:
-  - Google Gemini (recommended, tested and optimized)
-  - Anthropic Claude, OpenAI GPT, Ollama (code support, not fully tested)
+  - Google Gemini (recommended, optimized)
+  - Anthropic Claude, OpenAI GPT, xAI Grok, Ollama
 - 🔊 **Multi-TTS Engines**:
+  - ElevenLabs TTS (premium natural voices, voice tuning, **volume control supported**)
   - xAI TTS (natural speech, 5 voices, **volume control supported**)
   - Google TTS (Gemini-powered, high quality, **volume control supported**)
   - Google Cloud TTS (Standard/WaveNet/Chirp3-HD voices, **volume control supported**)
@@ -75,7 +76,7 @@ sumvox init
 ```
 
 This creates `~/.config/sumvox/config.yaml` with sensible defaults:
-- **LLM**: Google Gemini + Ollama (local fallback)
+- **LLM**: Google Gemini → Anthropic → OpenAI → Ollama (fallback chain, local last)
 - **TTS**: macOS say (system default voice)
 - **Language**: English (customize in config)
 
@@ -93,7 +94,7 @@ Replace `${PROVIDER_API_KEY}` with your actual API key. For example, to use Goog
 llm:
   providers:
     - name: google
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
       api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
 ```
 
@@ -152,8 +153,16 @@ version: "1.0.0"
 llm:
   providers:
     - name: google
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
       api_key: ${GEMINI_API_KEY}
+      timeout: 10
+    - name: anthropic
+      model: claude-haiku-4-5-20251001
+      api_key: ${ANTHROPIC_API_KEY}
+      timeout: 10
+    - name: openai
+      model: gpt-5-nano
+      api_key: ${OPENAI_API_KEY}
       timeout: 10
     - name: ollama
       model: llama3.2
@@ -161,6 +170,7 @@ llm:
   parameters:
     max_tokens: 10000
     temperature: 0.3
+    disable_thinking: false
 
 tts:
   providers:
@@ -230,6 +240,7 @@ hooks:
 - `google` = Use only Google TTS (Gemini)
 - `xai` = Use only xAI TTS
 - `cloud_tts` = Use only Google Cloud TTS
+- `elevenlabs` = Use only ElevenLabs TTS
 - `auto` = Try all TTS providers in order (recommended for summaries)
 
 ### Configuration Examples
@@ -256,7 +267,7 @@ tts:
 llm:
   providers:
     - name: google
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
       api_key: ${GEMINI_API_KEY}
     - name: ollama
       model: llama3.2
@@ -397,7 +408,7 @@ llm:
     - name: anthropic
       model: claude-haiku-4-5-20251001
     - name: google
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
     - name: ollama
       model: llama3.2
 
@@ -422,7 +433,7 @@ tts:
 llm:
   providers:
     - name: google      # Free tier: 15 requests/min
-      model: gemini-2.5-flash
+      model: gemini-3.1-flash-lite
     - name: ollama      # Unlimited local fallback
 
 tts:
@@ -469,6 +480,7 @@ sumvox say "Hello world"
 sumvox say "Hello" --tts macos
 sumvox say "Hello" --tts google --voice Aoede
 sumvox say "Hello" --tts xai --voice rex
+sumvox say "Hello" --tts elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
 
 # Adjust speech rate (macOS only, 90-300)
 sumvox say "Hello" --rate 250
@@ -518,19 +530,21 @@ RUST_LOG=trace sumvox
 
 #### LLM Providers
 
-| Provider | Model | API Key Required | Speed | Cost | Tested |
-|----------|-------|------------------|-------|------|--------|
-| **Google Gemini** | `gemini-2.5-flash` | ✅ | Fast | Low | ✅ |
-| **Anthropic** | `claude-haiku-4-5-20251001` | ✅ | Fast | Medium | ⚠️ |
-| **OpenAI** | `gpt-4o-mini` | ✅ | Medium | Medium | ⚠️ |
-| **Ollama** | `llama3.2` | ❌ | Slow | Free | ✅ |
+| Provider | Model | API Key Required | Speed | Cost |
+|----------|-------|------------------|-------|------|
+| **Google Gemini** | `gemini-3.1-flash-lite` | ✅ | Fast | Low |
+| **Anthropic** | `claude-haiku-4-5-20251001` | ✅ | Fast | Medium |
+| **OpenAI** | `gpt-5-nano` | ✅ | Medium | Medium |
+| **xAI Grok** | `grok-build-0.1` | ✅ | Fast | Low |
+| **Ollama** | `llama3.2` | ❌ | Slow | Free |
 
-✅ = Fully tested | ⚠️ = Code support only
+**xAI Grok** uses the OpenAI-compatible endpoint at `https://api.x.ai/v1`. Use `name: xai` (or `grok`) in the LLM providers list.
 
 **Get API Keys:**
 - Gemini: https://ai.google.dev
 - Anthropic: https://console.anthropic.com
 - OpenAI: https://platform.openai.com
+- xAI Grok: https://console.x.ai
 
 #### TTS Providers
 
@@ -538,6 +552,7 @@ RUST_LOG=trace sumvox
 |----------|--------|------------------|-------|---------|------|----------------|
 | **macOS say** | System voices | ❌ | Instant | Good | Free | ❌ Not supported |
 | **xAI TTS** | 5 voices | ✅ | Fast | Excellent | $4.20/1M chars | ✅ Supported (0-100) |
+| **ElevenLabs TTS** | Library + Voice Design | ✅ | Fast | Premium | $0.06-0.12/1K chars | ✅ Supported (0-100) |
 | **Google TTS** | 6+ voices | ✅ | Fast | Excellent | ~$0.016/1K chars | ✅ Supported (0-100) |
 | **Google Cloud TTS** | 100+ voices | ✅ (Service Account) | Fast | Professional | $4-16/1M chars | ✅ Supported (0-100) |
 
@@ -552,6 +567,13 @@ RUST_LOG=trace sumvox
 - `eve` (default), `ara`, `rex`, `sal`, `leo`
 - Automatic language detection or specify with `language_code`
 - Get API key: https://console.x.ai
+- ✅ **Volume control supported** - adjust playback volume (0-100)
+
+**ElevenLabs TTS Voices:**
+- Voice selected by **Voice ID** (default: `21m00Tcm4TlvDq8ikWAM`, Rachel); browse the [voice library](https://elevenlabs.io/app/voice-library)
+- Models: `eleven_flash_v2_5`, `eleven_turbo_v2_5` (~75ms, $0.06/1K chars), `eleven_multilingual_v2`, `eleven_multilingual_v3` (~300ms, $0.12/1K chars)
+- Voice tuning: `speed` (0.7-1.2), `stability` (0.0-1.0), `style` (0.0-1.0)
+- API key from config `api_key` or `ELEVENLABS_API_KEY` env: https://elevenlabs.io/app/settings/api-keys
 - ✅ **Volume control supported** - adjust playback volume (0-100)
 
 **Google TTS Voices (Gemini):**
@@ -586,8 +608,8 @@ summarization:
 hooks:
   claude_code:
     notification_filter: [...]  # Which notification types to speak
-    notification_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "auto"
-    stop_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "auto"
+    notification_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "elevenlabs" | "auto"
+    stop_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "elevenlabs" | "auto"
 ```
 
 ### Environment Variables
@@ -595,7 +617,8 @@ hooks:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SUMVOX_DISABLE` | Temporarily disable SumVox (any value) | `SUMVOX_DISABLE=1 claude` |
-| `XAI_API_KEY` | xAI API key (alternative to config) | `export XAI_API_KEY=xai-...` |
+| `XAI_API_KEY` | xAI API key for Grok LLM and xAI TTS (alternative to config) | `export XAI_API_KEY=xai-...` |
+| `ELEVENLABS_API_KEY` | ElevenLabs TTS API key (alternative to config) | `export ELEVENLABS_API_KEY=...` |
 | `RUST_LOG` | Set log level for debugging | `RUST_LOG=debug sumvox say "test"` |
 
 #### Temporarily Disable SumVox

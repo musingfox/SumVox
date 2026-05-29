@@ -23,7 +23,9 @@ use hooks::claude_code::{ClaudeCodeInput, LlmOptions, TtsOptions};
 use hooks::HookFormat;
 use llm::GenerationRequest;
 use provider_factory::ProviderFactory;
-use tts::{create_single_tts, create_tts_by_name, create_tts_from_config, TtsEngine, TtsProvider};
+use tts::{
+    create_single_tts, create_tts_from_config, resolve_tts_provider, TtsEngine, TtsProvider,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -331,17 +333,43 @@ async fn generate_summary(
 
     // Try providers with fallback
     if llm_opts.provider.is_some() || llm_opts.model.is_some() {
-        // CLI specified - try only that provider
-        let provider_name = llm_opts.provider.as_deref().unwrap_or("google");
-        let model_name = llm_opts.model.as_deref().unwrap_or("gemini-2.5-flash");
+        // CLI specified at least one of provider/model - try only that provider.
+        // Defaults are resolved from config, never hardcoded:
+        //   provider -> first configured provider; model -> that provider's configured model.
+        let provider_name = match llm_opts
+            .provider
+            .as_deref()
+            .or_else(|| llm_config.providers.first().map(|p| p.name.as_str()))
+        {
+            Some(name) => name,
+            None => {
+                tracing::error!("No LLM provider specified and none configured");
+                return Ok(String::new());
+            }
+        };
         let timeout = Duration::from_secs(llm_opts.timeout);
 
-        // Find the matching provider config for per-provider override resolution
+        // Find the matching provider config for model + per-provider override resolution
         let matching_provider = config
             .llm
             .providers
             .iter()
             .find(|p| p.name.to_lowercase() == provider_name.to_lowercase());
+
+        let model_name = match llm_opts
+            .model
+            .as_deref()
+            .or_else(|| matching_provider.map(|p| p.model.as_str()))
+        {
+            Some(model) => model,
+            None => {
+                tracing::error!(
+                    "CLI provider '{}' not found in config and no --model provided",
+                    provider_name
+                );
+                return Ok(String::new());
+            }
+        };
 
         let api_key = matching_provider.and_then(|p| p.get_api_key());
 
@@ -457,116 +485,51 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
             // Use config fallback chain
             create_tts_from_config(&config.tts.providers)?
         }
-        TtsEngine::MacOS => {
-            // Get macOS config for fallback values
-            let macos_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == "macos");
-
-            // Priority: CLI > Config > Default
-            let voice = tts_opts
-                .voice
-                .clone()
-                .or_else(|| macos_config.and_then(|p| p.voice.clone()));
-
-            let volume = tts_opts
-                .volume
-                .or_else(|| macos_config.and_then(|p| p.volume))
-                .unwrap_or(100);
-
-            create_tts_by_name("macos", None, voice, tts_opts.rate, volume, None)?
-        }
-        TtsEngine::Google => {
-            // Get Google config for fallback values
-            let google_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| p.name.to_lowercase() == "google");
-
-            // Get API key from config or env
-            let api_key = google_config.and_then(|p| p.get_api_key());
-
-            // Model is required for Google TTS
-            let model = google_config
-                .and_then(|p| p.model.clone())
-                .or_else(|| Some("gemini-2.5-flash-preview-tts".to_string()));
-
-            // Priority: CLI > Config > Default
-            let voice = tts_opts
-                .voice
-                .clone()
-                .or_else(|| google_config.and_then(|p| p.voice.clone()))
-                .unwrap_or_else(|| "Zephyr".to_string());
-
-            let volume = tts_opts
-                .volume
-                .or_else(|| google_config.and_then(|p| p.volume))
-                .unwrap_or(100);
-
-            create_tts_by_name("google", model, Some(voice), tts_opts.rate, volume, api_key)?
-        }
-        TtsEngine::CloudTts => {
-            // Find cloud_tts config from config
-            let cloud_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| {
-                    matches!(
-                        p.name.to_lowercase().as_str(),
-                        "cloud_tts" | "gcp_tts" | "google_cloud"
-                    )
-                })
-                .ok_or_else(|| {
-                    VoiceError::Config("cloud_tts provider not found in config".into())
-                })?;
-            create_single_tts(cloud_config)?
-        }
-        TtsEngine::AudioFile => {
-            // Find audio_file config from config
-            let audio_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| {
-                    matches!(
-                        p.name.to_lowercase().as_str(),
-                        "audio_file" | "audio" | "file"
-                    )
-                })
-                .ok_or_else(|| {
-                    VoiceError::Config("audio_file provider not found in config".into())
-                })?;
-            create_single_tts(audio_config)?
-        }
-        TtsEngine::Xai => {
-            let xai_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| matches!(p.name.to_lowercase().as_str(), "xai" | "xai_tts" | "grok"))
-                .ok_or_else(|| VoiceError::Config("xai provider not found in config".into()))?;
-            create_single_tts(xai_config)?
-        }
-        TtsEngine::ElevenLabs => {
-            let el_config = config
-                .tts
-                .providers
-                .iter()
-                .find(|p| {
-                    matches!(
-                        p.name.to_lowercase().as_str(),
-                        "elevenlabs" | "eleven_labs" | "11labs"
-                    )
-                })
-                .ok_or_else(|| {
-                    VoiceError::Config("elevenlabs provider not found in config".into())
-                })?;
-            create_single_tts(el_config)?
-        }
+        // For an explicitly selected engine, `--tts X` overrides which configured
+        // provider to use; all attributes are sourced from that config entry, with
+        // only explicit CLI voice/volume layered on top. Nothing is hardcoded.
+        TtsEngine::MacOS => resolve_tts_provider(
+            &config.tts.providers,
+            &["macos", "say"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        TtsEngine::Google => resolve_tts_provider(
+            &config.tts.providers,
+            &["google", "google_tts", "gcloud", "gemini"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        TtsEngine::CloudTts => resolve_tts_provider(
+            &config.tts.providers,
+            &["cloud_tts", "gcp_tts", "google_cloud"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        TtsEngine::AudioFile => resolve_tts_provider(
+            &config.tts.providers,
+            &["audio_file", "audio", "file"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        TtsEngine::Xai => resolve_tts_provider(
+            &config.tts.providers,
+            &["xai", "xai_tts", "grok"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        TtsEngine::ElevenLabs => resolve_tts_provider(
+            &config.tts.providers,
+            &["elevenlabs", "eleven_labs", "11labs"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
     };
 
     if !provider.is_available() {

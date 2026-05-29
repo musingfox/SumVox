@@ -22,7 +22,7 @@ disable_thinking = false  # Set true to reduce token usage
 # Google Gemini (Recommended: fast, cheap, reliable)
 [[llm.providers]]
 name = "google"
-model = "gemini-2.5-flash"
+model = "gemini-3.1-flash-lite"
 api_key = "${PROVIDER_API_KEY}"  # Get from: https://ai.google.dev
 # base_url = "https://generativelanguage.googleapis.com/v1beta"  # Optional: custom API endpoint
 timeout = 10  # seconds
@@ -44,12 +44,11 @@ api_key = "${PROVIDER_API_KEY}"  # Get from: https://platform.openai.com
 timeout = 10
 
 # xAI Grok (OpenAI-compatible API; very cheap)
-# Pricing (Jan 2026): grok-4-1-fast: $0.20/$0.50 per 1M tokens (input/output)
 # Get API key: https://console.x.ai
 # Uncomment to enable:
 # [[llm.providers]]
 # name = "xai"
-# model = "grok-4-1-fast-non-reasoning"  # or grok-4-1-fast-reasoning, grok-4.3
+# model = "grok-build-0.1"  # or grok-4-1-fast-non-reasoning, grok-4-1-fast-reasoning
 # api_key = "${XAI_API_KEY}"
 # # base_url = "https://api.x.ai/v1"  # default; override only for proxies
 # timeout = 10

@@ -59,26 +59,17 @@ struct TtsResponse {
 impl CloudTtsProvider {
     pub fn new(
         service_account_json: String,
-        voice: Option<String>,
+        voice: String,
         language_code: Option<String>,
         volume: u32,
     ) -> Self {
-        let lang_code = language_code.clone().unwrap_or_else(|| "en-US".to_string());
-
-        // Determine default voice based on language code
-        // Google Cloud TTS uses "cmn-TW" for Mandarin (Taiwan), not "zh-TW"
-        let default_voice = if lang_code.starts_with("cmn") || lang_code.starts_with("zh") {
-            format!("{}-Standard-A", lang_code)
-        } else {
-            "en-US-Standard-A".to_string()
-        };
-
-        let voice_name = voice.unwrap_or(default_voice);
+        // language_code is a neutral tuning value: unset = en-US.
+        let lang_code = language_code.unwrap_or_else(|| "en-US".to_string());
 
         Self {
             auth: CloudTtsAuth::new(service_account_json.clone()),
             service_account_json,
-            voice: voice_name,
+            voice,
             language_code: lang_code,
             volume,
         }
@@ -237,7 +228,7 @@ mod tests {
     fn create_test_provider() -> CloudTtsProvider {
         CloudTtsProvider::new(
             r#"{"client_email":"test@test.com","private_key":"key"}"#.to_string(),
-            None,
+            "en-US-Standard-A".to_string(),
             None,
             100,
         )
@@ -257,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_is_available_empty() {
-        let p = CloudTtsProvider::new(String::new(), None, None, 100);
+        let p = CloudTtsProvider::new(String::new(), "en-US-Standard-A".to_string(), None, 100);
         assert!(!p.is_available());
     }
 
@@ -275,15 +266,10 @@ mod tests {
     }
 
     #[test]
-    fn test_default_voice_zh() {
-        let p = CloudTtsProvider::new("sa".into(), None, Some("cmn-TW".into()), 100);
-        assert_eq!(p.voice, "cmn-TW-Standard-A");
-        assert_eq!(p.language_code, "cmn-TW");
-    }
-
-    #[test]
-    fn test_default_voice_en() {
-        let p = CloudTtsProvider::new("sa".into(), None, None, 100);
+    fn test_language_defaults_to_en_us_when_absent() {
+        // voice is required and used verbatim; language_code is a neutral tuning
+        // value, defaulting to en-US only when the config leaves it unset.
+        let p = CloudTtsProvider::new("sa".into(), "en-US-Standard-A".into(), None, 100);
         assert_eq!(p.voice, "en-US-Standard-A");
         assert_eq!(p.language_code, "en-US");
     }
@@ -292,7 +278,7 @@ mod tests {
     fn test_custom_voice() {
         let p = CloudTtsProvider::new(
             "sa".into(),
-            Some("zh-TW-Wavenet-B".into()),
+            "zh-TW-Wavenet-B".into(),
             Some("zh-TW".into()),
             100,
         );
