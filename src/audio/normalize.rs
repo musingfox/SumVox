@@ -14,7 +14,8 @@
 use std::io::{Read, Write};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::mpsc;
+use std::time::Duration;
 
 /// Monotonic per-call counter so concurrent calls — even within one process,
 /// where the PID is identical — never collide on temp-file names.
@@ -110,8 +111,18 @@ pub(crate) fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<V
 /// can't deadlock us), and wait up to [`FFMPEG_TIMEOUT`]. On overrun the child
 /// is killed. Returns the exit status and captured stderr, or `None` if ffmpeg
 /// couldn't be spawned or timed out.
+///
+/// stdin is nulled so ffmpeg can't probe and consume the parent's stdin — which,
+/// in a Claude Code hook, carries the event JSON. The reader thread signals
+/// through a channel when stderr hits EOF (i.e. ffmpeg has closed its handles
+/// and is exiting), letting us block on a timeout instead of busy-polling.
 fn run_ffmpeg(mut command: Command) -> Option<(ExitStatus, Vec<u8>)> {
-    let mut child = match command.stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
+    let mut child = match command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
         Ok(child) => child,
         Err(e) => {
             tracing::debug!(
@@ -123,38 +134,31 @@ fn run_ffmpeg(mut command: Command) -> Option<(ExitStatus, Vec<u8>)> {
     };
 
     let stderr_pipe = child.stderr.take();
+    let (done_tx, done_rx) = mpsc::channel();
     let reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(mut pipe) = stderr_pipe {
             let _ = pipe.read_to_end(&mut buf);
         }
+        let _ = done_tx.send(());
         buf
     });
 
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if start.elapsed() >= FFMPEG_TIMEOUT {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = reader.join();
-                    tracing::debug!("loudnorm: ffmpeg timed out, skipping normalization");
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => {
-                let _ = reader.join();
-                tracing::debug!("loudnorm: error waiting on ffmpeg ({})", e);
-                return None;
-            }
+    match done_rx.recv_timeout(FFMPEG_TIMEOUT) {
+        Ok(()) => {
+            // stderr closed ⇒ ffmpeg is exiting, so wait() returns promptly.
+            let status = child.wait().ok()?;
+            let stderr = reader.join().unwrap_or_default();
+            Some((status, stderr))
         }
-    };
-
-    let stderr = reader.join().unwrap_or_default();
-    Some((status, stderr))
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            tracing::debug!("loudnorm: ffmpeg timed out, skipping normalization");
+            None
+        }
+    }
 }
 
 /// First pass: measure the clip's loudness. Returns parsed stats, or `None` if
