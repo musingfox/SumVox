@@ -12,6 +12,11 @@
 // gain — accurate and consistent from clip to clip.
 
 use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Monotonic per-call counter so concurrent calls — even within one process,
+/// where the PID is identical — never collide on temp-file names.
+static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// EBU R128 integrated loudness target (LUFS). -16 is a common target for
 /// speech played back on consumer devices.
@@ -65,12 +70,16 @@ where
 /// can fall back to playing the original audio unmodified.
 pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>> {
     let dir = std::env::temp_dir();
-    // Include the PID so concurrent TTS calls don't clobber each other's temp
-    // files. The input keeps an `.mp3` extension so ffmpeg's demuxer detection
-    // is unambiguous.
-    let pid = std::process::id();
-    let in_path = dir.join(format!("{}_norm_{}_in.mp3", temp_prefix, pid));
-    let out_path = dir.join(format!("{}_norm_{}_out.wav", temp_prefix, pid));
+    // Qualify temp names with PID + a per-call counter so concurrent calls
+    // (across or within a process) never clobber each other's files. The input
+    // keeps an `.mp3` extension so ffmpeg's demuxer detection is unambiguous.
+    let id = format!(
+        "{}_{}",
+        std::process::id(),
+        CALL_SEQ.fetch_add(1, Ordering::Relaxed)
+    );
+    let in_path = dir.join(format!("{}_norm_{}_in.mp3", temp_prefix, id));
+    let out_path = dir.join(format!("{}_norm_{}_out.wav", temp_prefix, id));
 
     if let Err(e) = std::fs::File::create(&in_path).and_then(|mut f| f.write_all(audio_data)) {
         tracing::debug!("loudnorm: failed to write temp input: {}", e);
@@ -106,6 +115,7 @@ fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
         .arg("-f")
         .arg("null")
         .arg("-")
+        .stdout(std::process::Stdio::null())
         .output();
 
     let output = match output {
@@ -170,7 +180,6 @@ fn apply(
         .arg("wav")
         .arg(out_path)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
         .output();
 
     match output {

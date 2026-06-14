@@ -86,7 +86,7 @@ impl ElevenLabsProvider {
             .map_err(|e| VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
     }
 
-    fn play_mp3(&self, audio_data: &[u8]) -> Result<()> {
+    fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
         // ElevenLabs output isn't loudness-normalized, so volume swings between
         // (and within) generations. Even it out before playback; fall back to
         // the raw MP3 when ffmpeg isn't installed.
@@ -213,7 +213,7 @@ impl TtsProvider for ElevenLabsProvider {
 
         tracing::debug!("Received {} bytes of MP3 audio data", audio_data.len());
 
-        self.play_mp3(&audio_data)?;
+        self.play_audio(&audio_data)?;
 
         tracing::debug!("Voice playback completed");
         Ok(true)
