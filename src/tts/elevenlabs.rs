@@ -87,8 +87,17 @@ impl ElevenLabsProvider {
     }
 
     fn play_mp3(&self, audio_data: &[u8]) -> Result<()> {
+        // ElevenLabs output isn't loudness-normalized, so volume swings between
+        // (and within) generations. Even it out before playback; fall back to
+        // the raw MP3 when ffmpeg isn't installed.
+        if let Some(wav) =
+            crate::audio::normalize::normalize_to_wav(audio_data, "sumvox_elevenlabs")
+        {
+            return crate::audio::afplay::play_with_afplay(&wav, self.volume, "sumvox_elevenlabs");
+        }
+
         tracing::debug!(
-            "Playing ElevenLabs audio: {} bytes, volume: {}",
+            "Playing ElevenLabs audio without normalization: {} bytes, volume: {}",
             audio_data.len(),
             self.volume
         );
