@@ -11,12 +11,18 @@
 // feeds those measurements back with `linear=true` so ffmpeg applies one fixed
 // gain — accurate and consistent from clip to clip.
 
-use std::io::Write;
+use std::io::{Read, Write};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Monotonic per-call counter so concurrent calls — even within one process,
 /// where the PID is identical — never collide on temp-file names.
 static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Wall-clock cap per ffmpeg pass. A stalled ffmpeg would otherwise block the
+/// calling thread forever (worst case for a notification tool), so we kill it.
+const FFMPEG_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// EBU R128 integrated loudness target (LUFS). -16 is a common target for
 /// speech played back on consumer devices.
@@ -68,7 +74,7 @@ where
 ///
 /// Returns `None` when ffmpeg is unavailable or any step fails, so the caller
 /// can fall back to playing the original audio unmodified.
-pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>> {
+pub(crate) fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>> {
     let dir = std::env::temp_dir();
     // Qualify temp names with PID + a per-call counter so concurrent calls
     // (across or within a process) never clobber each other's files. The input
@@ -86,23 +92,76 @@ pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>>
         return None;
     }
 
-    let result = (|| {
-        let stats = measure(&in_path)?;
-        apply(&in_path, &out_path, &stats)?;
+    let result = measure(&in_path).and_then(|stats| {
+        if !apply(&in_path, &out_path, &stats) {
+            return None;
+        }
         std::fs::read(&out_path)
             .map_err(|e| tracing::debug!("loudnorm: failed to read normalized output: {}", e))
             .ok()
-    })();
+    });
 
     let _ = std::fs::remove_file(&in_path);
     let _ = std::fs::remove_file(&out_path);
     result
 }
 
+/// Spawn an ffmpeg command, drain its stderr on a helper thread (so a full pipe
+/// can't deadlock us), and wait up to [`FFMPEG_TIMEOUT`]. On overrun the child
+/// is killed. Returns the exit status and captured stderr, or `None` if ffmpeg
+/// couldn't be spawned or timed out.
+fn run_ffmpeg(mut command: Command) -> Option<(ExitStatus, Vec<u8>)> {
+    let mut child = match command.stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            tracing::debug!(
+                "loudnorm: ffmpeg unavailable ({}), skipping normalization",
+                e
+            );
+            return None;
+        }
+    };
+
+    let stderr_pipe = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stderr_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if start.elapsed() >= FFMPEG_TIMEOUT {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = reader.join();
+                    tracing::debug!("loudnorm: ffmpeg timed out, skipping normalization");
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                let _ = reader.join();
+                tracing::debug!("loudnorm: error waiting on ffmpeg ({})", e);
+                return None;
+            }
+        }
+    };
+
+    let stderr = reader.join().unwrap_or_default();
+    Some((status, stderr))
+}
+
 /// First pass: measure the clip's loudness. Returns parsed stats, or `None` if
 /// ffmpeg is missing, exits non-zero, or its JSON can't be parsed.
 fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
-    let output = std::process::Command::new("ffmpeg")
+    let mut command = Command::new("ffmpeg");
+    command
         .arg("-hide_banner")
         .arg("-nostats")
         .arg("-i")
@@ -114,28 +173,17 @@ fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
         ))
         .arg("-f")
         .arg("null")
-        .arg("-")
-        .stdout(std::process::Stdio::null())
-        .output();
+        .arg("-");
 
-    let output = match output {
-        Ok(o) if o.status.success() => o,
-        Ok(_) => {
-            tracing::debug!("loudnorm: measure pass exited non-zero, skipping normalization");
-            return None;
-        }
-        Err(e) => {
-            tracing::debug!(
-                "loudnorm: ffmpeg unavailable ({}), skipping normalization",
-                e
-            );
-            return None;
-        }
-    };
+    let (status, stderr) = run_ffmpeg(command)?;
+    if !status.success() {
+        tracing::debug!("loudnorm: measure pass exited non-zero, skipping normalization");
+        return None;
+    }
 
     // loudnorm prints its JSON block to stderr; with -hide_banner -nostats it's
     // the only `{ ... }` there, so the last one is reliably the stats block.
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = String::from_utf8_lossy(&stderr);
     let json = stderr.rfind('{').and_then(|start| {
         stderr[start..]
             .rfind('}')
@@ -152,13 +200,10 @@ fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
 }
 
 /// Second pass: apply a single fixed gain (`linear=true`) using the measured
-/// values, writing a normalized WAV to `out_path`.
-fn apply(
-    in_path: &std::path::Path,
-    out_path: &std::path::Path,
-    stats: &LoudnormStats,
-) -> Option<()> {
-    let output = std::process::Command::new("ffmpeg")
+/// values, writing a normalized WAV to `out_path`. Returns `true` on success.
+fn apply(in_path: &std::path::Path, out_path: &std::path::Path, stats: &LoudnormStats) -> bool {
+    let mut command = Command::new("ffmpeg");
+    command
         .arg("-hide_banner")
         .arg("-nostats")
         .arg("-y")
@@ -178,24 +223,19 @@ fn apply(
         ))
         .arg("-f")
         .arg("wav")
-        .arg(out_path)
-        .stdout(std::process::Stdio::null())
-        .output();
+        .arg(out_path);
 
-    match output {
-        Ok(o) if o.status.success() => Some(()),
-        Ok(o) => {
+    match run_ffmpeg(command) {
+        Some((status, _)) if status.success() => true,
+        Some((status, stderr)) => {
             tracing::debug!(
                 "loudnorm: apply pass failed ({}): {}",
-                o.status,
-                String::from_utf8_lossy(&o.stderr).trim()
+                status,
+                String::from_utf8_lossy(&stderr).trim()
             );
-            None
+            false
         }
-        Err(e) => {
-            tracing::debug!("loudnorm: apply pass could not run ({})", e);
-            None
-        }
+        None => false,
     }
 }
 
@@ -203,11 +243,54 @@ fn apply(
 mod tests {
     use super::*;
 
+    /// `true` if an `ffmpeg` binary is callable, so happy-path tests can skip
+    /// cleanly on machines (e.g. minimal CI) without it.
+    fn ffmpeg_available() -> bool {
+        Command::new("ffmpeg")
+            .arg("-version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
     #[test]
     fn test_returns_none_on_garbage_input() {
         // Non-decodable bytes: ffmpeg (if present) fails to measure, ffmpeg-absent
         // also yields None. Either way the caller must get None and fall back.
         let result = normalize_to_wav(&[0xDE, 0xAD, 0xBE, 0xEF], "sumvox_test_norm");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_normalizes_valid_audio() {
+        if !ffmpeg_available() {
+            eprintln!("ffmpeg not available; skipping happy-path normalization test");
+            return;
+        }
+
+        // 3 s of a 440 Hz sine at 24 kHz, mono, 16-bit. loudnorm's integrated
+        // gating needs roughly a 3 s window to report finite stats, so a shorter
+        // clip would gate to -inf and (correctly) be rejected. Exercises the full
+        // filter string, guarding against arg-order or stats-parsing regressions
+        // the failure-path test can't catch.
+        let sample_rate = 24_000u32;
+        let samples = (sample_rate as f32 * 3.0) as usize;
+        let mut pcm = Vec::with_capacity(samples * 2);
+        for i in 0..samples {
+            let t = i as f32 / sample_rate as f32;
+            let amplitude = (std::f32::consts::TAU * 440.0 * t).sin() * 0.5;
+            let sample = (amplitude * i16::MAX as f32) as i16;
+            pcm.extend_from_slice(&sample.to_le_bytes());
+        }
+        let wav = crate::audio::wav_header::create_wav_file(&pcm, sample_rate, 1, 16);
+
+        let result = normalize_to_wav(&wav, "sumvox_test_happy");
+        assert!(result.is_some(), "valid audio should normalize to Some");
+        assert!(
+            !result.unwrap().is_empty(),
+            "normalized WAV should be non-empty"
+        );
     }
 }
