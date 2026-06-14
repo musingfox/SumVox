@@ -40,7 +40,7 @@ const TARGET_LRA: &str = "11";
 /// so we parse it through `de_finite_f64`, which both converts to `f64` and
 /// rejects non-finite values — ffmpeg emits `"inf"` for silent clips — rather
 /// than letting them flow verbatim into the second pass's filter string.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct LoudnormStats {
     #[serde(deserialize_with = "de_finite_f64")]
     input_i: f64,
@@ -90,6 +90,8 @@ pub(crate) fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<V
 
     if let Err(e) = std::fs::File::create(&in_path).and_then(|mut f| f.write_all(audio_data)) {
         tracing::debug!("loudnorm: failed to write temp input: {}", e);
+        // create() may have left a partial file behind before write_all failed.
+        let _ = std::fs::remove_file(&in_path);
         return None;
     }
 
@@ -98,7 +100,7 @@ pub(crate) fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<V
             return None;
         }
         std::fs::read(&out_path)
-            .map_err(|e| tracing::debug!("loudnorm: failed to read normalized output: {}", e))
+            .inspect_err(|e| tracing::debug!("loudnorm: failed to read normalized output: {}", e))
             .ok()
     });
 
