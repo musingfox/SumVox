@@ -23,13 +23,39 @@ const TARGET_TP: &str = "-1.5";
 const TARGET_LRA: &str = "11";
 
 /// Measurements emitted by `loudnorm`'s first pass (`print_format=json`).
+///
+/// ffmpeg encodes each value as a JSON *string* (e.g. `"input_i" : "-15.66"`),
+/// so we parse it through `de_finite_f64`, which both converts to `f64` and
+/// rejects non-finite values — ffmpeg emits `"inf"` for silent clips — rather
+/// than letting them flow verbatim into the second pass's filter string.
 #[derive(serde::Deserialize)]
 struct LoudnormStats {
-    input_i: String,
-    input_tp: String,
-    input_lra: String,
-    input_thresh: String,
-    target_offset: String,
+    #[serde(deserialize_with = "de_finite_f64")]
+    input_i: f64,
+    #[serde(deserialize_with = "de_finite_f64")]
+    input_tp: f64,
+    #[serde(deserialize_with = "de_finite_f64")]
+    input_lra: f64,
+    #[serde(deserialize_with = "de_finite_f64")]
+    input_thresh: f64,
+    #[serde(deserialize_with = "de_finite_f64")]
+    target_offset: f64,
+}
+
+/// Parse loudnorm's stringified number into a finite `f64`, rejecting `inf` /
+/// `nan` / non-numeric so a bad measurement becomes a clean `None` upstream.
+fn de_finite_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let s = String::deserialize(deserializer)?;
+    let v: f64 = s.parse().map_err(serde::de::Error::custom)?;
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(serde::de::Error::custom(format!("non-finite value: {}", s)))
+    }
 }
 
 /// Normalize the loudness of `audio_data` (any format ffmpeg can decode) and
@@ -39,8 +65,12 @@ struct LoudnormStats {
 /// can fall back to playing the original audio unmodified.
 pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>> {
     let dir = std::env::temp_dir();
-    let in_path = dir.join(format!("{}_norm_in", temp_prefix));
-    let out_path = dir.join(format!("{}_norm_out.wav", temp_prefix));
+    // Include the PID so concurrent TTS calls don't clobber each other's temp
+    // files. The input keeps an `.mp3` extension so ffmpeg's demuxer detection
+    // is unambiguous.
+    let pid = std::process::id();
+    let in_path = dir.join(format!("{}_norm_{}_in.mp3", temp_prefix, pid));
+    let out_path = dir.join(format!("{}_norm_{}_out.wav", temp_prefix, pid));
 
     if let Err(e) = std::fs::File::create(&in_path).and_then(|mut f| f.write_all(audio_data)) {
         tracing::debug!("loudnorm: failed to write temp input: {}", e);
@@ -50,7 +80,9 @@ pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>>
     let result = (|| {
         let stats = measure(&in_path)?;
         apply(&in_path, &out_path, &stats)?;
-        std::fs::read(&out_path).ok()
+        std::fs::read(&out_path)
+            .map_err(|e| tracing::debug!("loudnorm: failed to read normalized output: {}", e))
+            .ok()
     })();
 
     let _ = std::fs::remove_file(&in_path);
@@ -62,6 +94,8 @@ pub fn normalize_to_wav(audio_data: &[u8], temp_prefix: &str) -> Option<Vec<u8>>
 /// ffmpeg is missing, exits non-zero, or its JSON can't be parsed.
 fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
     let output = std::process::Command::new("ffmpeg")
+        .arg("-hide_banner")
+        .arg("-nostats")
         .arg("-i")
         .arg(in_path)
         .arg("-af")
@@ -89,7 +123,8 @@ fn measure(in_path: &std::path::Path) -> Option<LoudnormStats> {
         }
     };
 
-    // loudnorm prints its JSON block to stderr; it's the last `{ ... }` there.
+    // loudnorm prints its JSON block to stderr; with -hide_banner -nostats it's
+    // the only `{ ... }` there, so the last one is reliably the stats block.
     let stderr = String::from_utf8_lossy(&output.stderr);
     let json = stderr.rfind('{').and_then(|start| {
         stderr[start..]
@@ -113,13 +148,15 @@ fn apply(
     out_path: &std::path::Path,
     stats: &LoudnormStats,
 ) -> Option<()> {
-    let status = std::process::Command::new("ffmpeg")
+    let output = std::process::Command::new("ffmpeg")
+        .arg("-hide_banner")
+        .arg("-nostats")
         .arg("-y")
         .arg("-i")
         .arg(in_path)
         .arg("-af")
         .arg(format!(
-            "loudnorm=I={}:TP={}:LRA={}:measured_I={}:measured_TP={}:measured_LRA={}:measured_thresh={}:offset={}:linear=true:print_format=summary",
+            "loudnorm=I={}:TP={}:LRA={}:measured_I={:.2}:measured_TP={:.2}:measured_LRA={:.2}:measured_thresh={:.2}:offset={:.2}:linear=true:print_format=summary",
             TARGET_I,
             TARGET_TP,
             TARGET_LRA,
@@ -133,13 +170,21 @@ fn apply(
         .arg("wav")
         .arg(out_path)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
+        .stderr(std::process::Stdio::piped())
+        .output();
 
-    match status {
-        Ok(s) if s.success() => Some(()),
-        _ => {
-            tracing::debug!("loudnorm: apply pass failed, skipping normalization");
+    match output {
+        Ok(o) if o.status.success() => Some(()),
+        Ok(o) => {
+            tracing::debug!(
+                "loudnorm: apply pass failed ({}): {}",
+                o.status,
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            None
+        }
+        Err(e) => {
+            tracing::debug!("loudnorm: apply pass could not run ({})", e);
             None
         }
     }

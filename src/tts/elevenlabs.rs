@@ -93,6 +93,11 @@ impl ElevenLabsProvider {
         if let Some(wav) =
             crate::audio::normalize::normalize_to_wav(audio_data, "sumvox_elevenlabs")
         {
+            tracing::debug!(
+                "Playing loudness-normalized ElevenLabs audio: {} bytes, volume: {}",
+                wav.len(),
+                self.volume
+            );
             return crate::audio::afplay::play_with_afplay(&wav, self.volume, "sumvox_elevenlabs");
         }
 
