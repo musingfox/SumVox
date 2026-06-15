@@ -1,3 +1,5 @@
+> **superseded**: 本文件已由 `openab-aggregator.md` 取代，請以該文件為現行設計基準。
+
 # SumVox Agent Aggregator — Design Analysis
 
 ## Overview
