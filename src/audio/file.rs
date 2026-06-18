@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{Result, VoiceError};
 use crate::tts::TtsProvider;
@@ -100,26 +100,10 @@ impl AudioFileProvider {
 }
 
 /// Play an audio file to completion (blocking) using afplay.
-fn play_audio_blocking(file_path: &PathBuf, volume: u32) -> Result<()> {
+fn play_audio_blocking(file_path: &Path, volume: u32) -> Result<()> {
     tracing::debug!("Playing audio file: {:?}, volume: {}", file_path, volume);
 
-    // afplay -v takes a float: 0.0 = silent, 1.0 = full volume
-    let afplay_volume = volume as f32 / 100.0;
-    let status = std::process::Command::new("afplay")
-        .arg("-v")
-        .arg(format!("{:.2}", afplay_volume))
-        .arg(file_path)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
-
-    if !status.success() {
-        return Err(VoiceError::Voice("afplay exited with error".to_string()));
-    }
-
-    Ok(())
+    crate::audio::afplay::run_afplay(file_path, volume)
 }
 
 #[async_trait]
