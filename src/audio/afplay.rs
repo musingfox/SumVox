@@ -44,6 +44,9 @@ pub fn play_with_afplay(audio_data: &[u8], volume: u32, temp_file_prefix: &str) 
         .arg("-v")
         .arg(format!("{:.2}", afplay_volume))
         .arg(&tmp_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
 
