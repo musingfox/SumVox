@@ -5,6 +5,21 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-06-18
+
+### Fixed
+- **ElevenLabs volume swings**: Output is now loudness-normalized through ffmpeg `loudnorm`, so consecutive utterances no longer jump in perceived volume. Hardened `loudnorm` stats parsing and temp-file handling along the way.
+- **ffmpeg robustness**: Added a timeout on the `loudnorm` pass, null the ffmpeg stdin, replaced a busy-poll with a channel timeout, closed a temp-file race, and clean up partial temp files on failure — preventing hangs and leaked files during ElevenLabs playback.
+- **afplay terminal interference**: `afplay` is now spawned with stdin/stdout/stderr redirected to null, so playback under Claude Code hooks no longer disturbs the terminal/PTY.
+- **afplay temp-file leak**: A spawn failure no longer early-returns before cleanup; the temp file is removed on every path. Playback volume is also clamped to ≤100 to avoid amplifying past `-v 1.0`.
+
+### Changed
+- **Config is the single source of truth for provider defaults**: Removed hardcoded provider/model literals; CLI flags only select a configured provider, and all values come from config. Backward compatible with existing configs.
+
+### Internal
+- Extracted the triplicated `afplay` invocation into a shared `run_afplay(&Path, u32)` helper across the audio and ElevenLabs playback paths.
+- Added Claude-based automated PR code review in CI.
+
 ## [1.7.0] - 2026-05-05
 
 ### Added
