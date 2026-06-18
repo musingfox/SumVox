@@ -112,24 +112,11 @@ impl ElevenLabsProvider {
             .and_then(|mut f| f.write_all(audio_data))
             .map_err(|e| VoiceError::Voice(format!("Failed to write temp MP3: {}", e)))?;
 
-        let afplay_volume = self.volume as f32 / 100.0;
-        let status = std::process::Command::new("afplay")
-            .arg("-v")
-            .arg(format!("{:.2}", afplay_volume))
-            .arg(&tmp_path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
-
+        // Capture the result before cleanup so the temp file is removed on
+        // every path, including a spawn failure (the pre-refactor `?` skipped it).
+        let result = crate::audio::afplay::run_afplay(&tmp_path, self.volume);
         let _ = std::fs::remove_file(&tmp_path);
-
-        if !status.success() {
-            return Err(VoiceError::Voice("afplay exited with error".to_string()));
-        }
-
-        Ok(())
+        result
     }
 }
 

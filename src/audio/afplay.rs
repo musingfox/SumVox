@@ -3,6 +3,42 @@
 
 use crate::error::{Result, VoiceError};
 use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Stdio};
+
+/// Run `afplay -v {volume/100.0:.2} {file_path}` to completion (blocking).
+///
+/// # Arguments
+/// * `file_path` - Path to the audio file to play
+/// * `volume` - Volume level 0-100 (values above 100 are clamped to avoid
+///   amplification past `-v 1.0`)
+///
+/// # Errors
+/// Returns VoiceError::Voice on:
+/// - Failed to spawn afplay process ("Failed to run afplay: {e}")
+/// - afplay exited with non-zero status ("afplay exited with error")
+///
+/// Note: this only runs the command; it does not write or clean up temp files.
+pub fn run_afplay(file_path: &Path, volume: u32) -> Result<()> {
+    // afplay -v takes a float: 0.0 = silent, 1.0 = full volume. Clamp to 100 so
+    // a mis-configured volume can't amplify past 1.0 and over-drive the output.
+    let afplay_volume = volume.min(100) as f32 / 100.0;
+    let status = Command::new("afplay")
+        .arg("-v")
+        .arg(format!("{:.2}", afplay_volume))
+        .arg(file_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
+
+    if !status.success() {
+        return Err(VoiceError::Voice("afplay exited with error".to_string()));
+    }
+
+    Ok(())
+}
 
 /// Play audio data using macOS afplay command
 ///
@@ -38,26 +74,13 @@ pub fn play_with_afplay(audio_data: &[u8], volume: u32, temp_file_prefix: &str) 
         .and_then(|mut f| f.write_all(audio_data))
         .map_err(|e| VoiceError::Voice(format!("Failed to write temp WAV: {}", e)))?;
 
-    // afplay -v takes a float: 0.0 = silent, 1.0 = full volume
-    let afplay_volume = volume as f32 / 100.0;
-    let status = std::process::Command::new("afplay")
-        .arg("-v")
-        .arg(format!("{:.2}", afplay_volume))
-        .arg(&tmp_path)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map_err(|e| VoiceError::Voice(format!("Failed to run afplay: {}", e)))?;
-
+    // Capture the result before cleanup so the temp file is removed on every
+    // path — including a spawn failure, which the pre-refactor `?` would have
+    // skipped, leaking the file.
+    let result = run_afplay(&tmp_path, volume);
     // Clean up temp file (best effort)
     let _ = std::fs::remove_file(&tmp_path);
-
-    if !status.success() {
-        return Err(VoiceError::Voice("afplay exited with error".to_string()));
-    }
-
-    Ok(())
+    result
 }
 
 #[cfg(test)]
@@ -100,6 +123,18 @@ mod tests {
         let wav_data = create_test_wav();
         let result = play_with_afplay(&wav_data, 50, "sumvox_test");
         // On non-macOS, afplay won't exist, so this should error
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to run afplay"));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_run_afplay_not_available() {
+        // On non-macOS, afplay won't exist, so spawning it should fail.
+        let result = run_afplay(Path::new("/tmp/sumvox_nonexistent.wav"), 50);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
