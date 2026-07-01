@@ -569,6 +569,11 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
         }
         _ => {
             // Single provider mode - just try once
+            let text = if provider.supports_audio_tags() {
+                text
+            } else {
+                crate::tts::strip_leading_audio_tag(text)
+            };
             match provider.speak(text).await {
                 Ok(_) => {
                     tracing::debug!("TTS playback completed");
@@ -650,8 +655,13 @@ async fn speak_with_provider_fallback(
             tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
         }
 
-        // Try to speak
-        match provider.speak(text).await {
+        // Try to speak (strip audio tags for providers that would read them aloud)
+        let provider_text = if provider.supports_audio_tags() {
+            text
+        } else {
+            crate::tts::strip_leading_audio_tag(text)
+        };
+        match provider.speak(provider_text).await {
             Ok(_) => {
                 tracing::debug!("TTS playback completed with {}", provider.name());
                 return Ok(());
