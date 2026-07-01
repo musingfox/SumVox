@@ -30,6 +30,28 @@ pub trait TtsProvider: Send + Sync {
     /// Estimate cost per character (for cloud providers)
     /// Returns 0.0 for local engines
     fn estimate_cost(&self, char_count: usize) -> f64;
+
+    /// Whether this provider interprets `[tag]`-style audio/emotion tags
+    /// (e.g. ElevenLabs eleven_v3). Providers that don't must have such
+    /// tags stripped before speaking, or they get read aloud literally.
+    fn supports_audio_tags(&self) -> bool {
+        false
+    }
+}
+
+/// Strip a single leading `[tag]` (e.g. "[satisfied] ") from text meant for
+/// providers that don't interpret audio tags, so they don't read it aloud.
+pub fn strip_leading_audio_tag(text: &str) -> &str {
+    let trimmed = text.trim_start();
+    if let Some(rest) = trimmed.strip_prefix('[') {
+        if let Some(end) = rest.find(']') {
+            let tag = &rest[..end];
+            if !tag.is_empty() && tag.chars().all(|c| c.is_ascii_alphabetic()) {
+                return rest[end + 1..].trim_start();
+            }
+        }
+    }
+    text
 }
 
 /// TTS Engine type for CLI selection
@@ -269,6 +291,21 @@ pub fn resolve_tts_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_strip_leading_audio_tag() {
+        assert_eq!(
+            strip_leading_audio_tag("[satisfied] 已經完成任務了"),
+            "已經完成任務了"
+        );
+        assert_eq!(strip_leading_audio_tag("[excited] done"), "done");
+        assert_eq!(strip_leading_audio_tag("沒有標籤的句子"), "沒有標籤的句子");
+        assert_eq!(
+            strip_leading_audio_tag("[123] not a tag"),
+            "[123] not a tag"
+        );
+        assert_eq!(strip_leading_audio_tag("[unclosed tag"), "[unclosed tag");
+    }
 
     #[test]
     fn test_tts_engine_from_str() {

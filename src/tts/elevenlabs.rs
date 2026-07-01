@@ -130,6 +130,10 @@ impl TtsProvider for ElevenLabsProvider {
         !self.api_key.is_empty() && !self.api_key.starts_with("${")
     }
 
+    fn supports_audio_tags(&self) -> bool {
+        true
+    }
+
     async fn speak(&self, text: &str) -> Result<bool> {
         if text.trim().is_empty() {
             tracing::warn!("Empty message, skipping voice notification");
