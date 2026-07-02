@@ -1,6 +1,6 @@
 // ElevenLabs Text-to-Speech provider
 // Docs: https://elevenlabs.io/docs/api-reference/text-to-speech/convert
-// Pricing: $0.06 / 1K chars (Flash v2.5), $0.12 / 1K chars (Multilingual v2/v3)
+// Pricing: $0.05 / 1K chars (Flash v2.5), $0.10 / 1K chars (Multilingual v2/v3)
 
 use async_trait::async_trait;
 use reqwest::Client;
@@ -19,10 +19,10 @@ const DEFAULT_OUTPUT_FORMAT: &str = "mp3_44100_128";
 /// Maximum characters per request (ElevenLabs limit)
 const MAX_TEXT_LENGTH: usize = 5_000;
 
-/// Per-character cost for Flash v2.5 ($0.06 per 1K chars).
+/// Per-character cost for Flash v2.5 ($0.05 per 1K chars).
 /// Multilingual models cost ~2x; this is a coarse estimate.
-const COST_PER_CHAR_FLASH: f64 = 0.00006;
-const COST_PER_CHAR_MULTILINGUAL: f64 = 0.00012;
+const COST_PER_CHAR_FLASH: f64 = 0.00005;
+const COST_PER_CHAR_MULTILINGUAL: f64 = 0.0001;
 
 pub struct ElevenLabsProvider {
     api_key: String,
@@ -322,9 +322,9 @@ mod tests {
             None,
             100,
         );
-        // 1M chars × $0.00006 = $60
+        // 1M chars × $0.00005 = $50
         let cost = provider.estimate_cost(1_000_000);
-        assert!((cost - 60.0).abs() < 0.001);
+        assert!((cost - 50.0).abs() < 0.001);
     }
 
     #[test]
@@ -338,9 +338,9 @@ mod tests {
             None,
             100,
         );
-        // 1M chars × $0.00012 = $120
+        // 1M chars × $0.0001 = $100
         let cost = provider.estimate_cost(1_000_000);
-        assert!((cost - 120.0).abs() < 0.001);
+        assert!((cost - 100.0).abs() < 0.001);
     }
 
     #[tokio::test]

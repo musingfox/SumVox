@@ -12,8 +12,8 @@ use crate::error::{Result, VoiceError};
 /// xAI TTS API endpoint
 const XAI_TTS_API_URL: &str = "https://api.x.ai/v1/tts";
 
-/// Cost per character for xAI TTS ($4.20 / 1M characters)
-const COST_PER_CHAR: f64 = 0.0000042;
+/// Cost per character for xAI TTS ($15.00 / 1M characters)
+const COST_PER_CHAR: f64 = 0.000015;
 
 /// Maximum text length per request
 const MAX_TEXT_LENGTH: usize = 15_000;
@@ -193,13 +193,13 @@ mod tests {
         let provider =
             XaiTtsProvider::new("test-api-key".to_string(), "eve".to_string(), None, 100);
 
-        // 1M characters = $4.20
+        // 1M characters = $15.00
         let cost_1m = provider.estimate_cost(1_000_000);
-        assert!((cost_1m - 4.2).abs() < 0.001);
+        assert!((cost_1m - 15.0).abs() < 0.001);
 
         // 100 characters
         let cost_100 = provider.estimate_cost(100);
-        assert!((cost_100 - 0.00042).abs() < 0.00001);
+        assert!((cost_100 - 0.0015).abs() < 0.00001);
     }
 
     #[tokio::test]
