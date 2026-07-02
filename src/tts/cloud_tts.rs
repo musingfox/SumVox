@@ -14,6 +14,12 @@ use crate::tts::cloud_tts_auth::CloudTtsAuth;
 const API_ENDPOINT: &str = "https://texttospeech.googleapis.com/v1/text:synthesize";
 const COST_PER_CHAR: f64 = 0.000004; // $4 per 1M chars (Standard voices)
 const MAX_TEXT_BYTES: usize = 5000;
+// Gemini-TTS caps input `text` at 4000 bytes (prompt is billed separately).
+const MAX_TEXT_BYTES_GEMINI: usize = 4000;
+// Gemini-TTS is billed per audio token, not per character. Rough estimate:
+//   $10 / 1M audio tokens × 25 tokens/sec ÷ ~15 chars/sec ≈ 0.0000167 / char.
+// Coarse approximation — real cost depends on synthesized audio duration.
+const COST_PER_CHAR_GEMINI: f64 = 0.0000167;
 
 /// Google Cloud TTS provider
 pub struct CloudTtsProvider {
@@ -21,6 +27,11 @@ pub struct CloudTtsProvider {
     service_account_json: String,
     voice: String,
     language_code: String,
+    /// When set (e.g. "gemini-2.5-flash-tts"), switches to the Gemini-TTS
+    /// request shape (bare voice name + model_name) and token-based cost/chunking.
+    model: Option<String>,
+    /// Optional Gemini-TTS style instruction, sent as `input.prompt`.
+    style_prompt: Option<String>,
     volume: u32,
 }
 
@@ -35,6 +46,9 @@ struct TtsRequest {
 #[derive(Debug, Serialize)]
 struct TextInput {
     text: String,
+    /// Gemini-TTS style instruction. Omitted from the wire for traditional voices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +56,9 @@ struct VoiceSelection {
     #[serde(rename = "languageCode")]
     language_code: String,
     name: String,
+    /// Gemini-TTS model. Omitted from the wire for traditional voices.
+    #[serde(rename = "modelName", skip_serializing_if = "Option::is_none")]
+    model_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +78,8 @@ impl CloudTtsProvider {
         service_account_json: String,
         voice: String,
         language_code: Option<String>,
+        model: Option<String>,
+        style_prompt: Option<String>,
         volume: u32,
     ) -> Self {
         // language_code is a neutral tuning value: unset = en-US.
@@ -71,7 +90,25 @@ impl CloudTtsProvider {
             service_account_json,
             voice,
             language_code: lang_code,
+            model,
+            style_prompt,
             volume,
+        }
+    }
+
+    /// Whether this provider is configured for a Gemini-TTS model.
+    fn is_gemini(&self) -> bool {
+        self.model
+            .as_deref()
+            .is_some_and(|m| m.to_lowercase().contains("gemini"))
+    }
+
+    /// Byte cap for a single synthesis chunk (Gemini-TTS is stricter).
+    fn max_chunk_bytes(&self) -> usize {
+        if self.model.is_some() {
+            MAX_TEXT_BYTES_GEMINI
+        } else {
+            MAX_TEXT_BYTES
         }
     }
 
@@ -84,9 +121,9 @@ impl CloudTtsProvider {
             .map_err(|e| VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
     }
 
-    /// Split text into chunks at sentence boundaries
-    fn split_text(text: &str) -> Vec<String> {
-        if text.len() <= MAX_TEXT_BYTES {
+    /// Split text into chunks at sentence boundaries, capped at `max_bytes`.
+    fn split_text(text: &str, max_bytes: usize) -> Vec<String> {
+        if text.len() <= max_bytes {
             return vec![text.to_string()];
         }
 
@@ -94,7 +131,7 @@ impl CloudTtsProvider {
         let mut current = String::new();
 
         for sentence in text.split_inclusive(&['.', '!', '?', '。', '!', '?']) {
-            if current.len() + sentence.len() > MAX_TEXT_BYTES && !current.is_empty() {
+            if current.len() + sentence.len() > max_bytes && !current.is_empty() {
                 chunks.push(current.clone());
                 current.clear();
             }
@@ -115,10 +152,12 @@ impl CloudTtsProvider {
         let request = TtsRequest {
             input: TextInput {
                 text: text.to_string(),
+                prompt: self.style_prompt.clone(),
             },
             voice: VoiceSelection {
                 language_code: self.language_code.clone(),
                 name: self.voice.clone(),
+                model_name: self.model.clone(),
             },
             audio_config: AudioConfig {
                 audio_encoding: "LINEAR16".to_string(),
@@ -195,7 +234,7 @@ impl TtsProvider for CloudTtsProvider {
         );
 
         // Split text if needed
-        let chunks = Self::split_text(text);
+        let chunks = Self::split_text(text, self.max_chunk_bytes());
         let mut audio_chunks = Vec::new();
 
         // Synthesize each chunk
@@ -217,7 +256,14 @@ impl TtsProvider for CloudTtsProvider {
     }
 
     fn estimate_cost(&self, char_count: usize) -> f64 {
-        char_count as f64 * COST_PER_CHAR
+        // Gemini-TTS bills per audio token; use a coarse per-char proxy.
+        // Traditional voices keep the exact $4/1M-char rate.
+        let rate = if self.is_gemini() {
+            COST_PER_CHAR_GEMINI
+        } else {
+            COST_PER_CHAR
+        };
+        char_count as f64 * rate
     }
 }
 
@@ -230,6 +276,19 @@ mod tests {
             r#"{"client_email":"test@test.com","private_key":"key"}"#.to_string(),
             "en-US-Standard-A".to_string(),
             None,
+            None,
+            None,
+            100,
+        )
+    }
+
+    fn create_gemini_provider() -> CloudTtsProvider {
+        CloudTtsProvider::new(
+            r#"{"client_email":"test@test.com","private_key":"key"}"#.to_string(),
+            "Kore".to_string(),
+            Some("en-US".to_string()),
+            Some("gemini-2.5-flash-tts".to_string()),
+            Some("Say the following in a curious way.".to_string()),
             100,
         )
     }
@@ -248,7 +307,14 @@ mod tests {
 
     #[test]
     fn test_is_available_empty() {
-        let p = CloudTtsProvider::new(String::new(), "en-US-Standard-A".to_string(), None, 100);
+        let p = CloudTtsProvider::new(
+            String::new(),
+            "en-US-Standard-A".to_string(),
+            None,
+            None,
+            None,
+            100,
+        );
         assert!(!p.is_available());
     }
 
@@ -269,7 +335,14 @@ mod tests {
     fn test_language_defaults_to_en_us_when_absent() {
         // voice is required and used verbatim; language_code is a neutral tuning
         // value, defaulting to en-US only when the config leaves it unset.
-        let p = CloudTtsProvider::new("sa".into(), "en-US-Standard-A".into(), None, 100);
+        let p = CloudTtsProvider::new(
+            "sa".into(),
+            "en-US-Standard-A".into(),
+            None,
+            None,
+            None,
+            100,
+        );
         assert_eq!(p.voice, "en-US-Standard-A");
         assert_eq!(p.language_code, "en-US");
     }
@@ -280,6 +353,8 @@ mod tests {
             "sa".into(),
             "zh-TW-Wavenet-B".into(),
             Some("zh-TW".into()),
+            None,
+            None,
             100,
         );
         assert_eq!(p.voice, "zh-TW-Wavenet-B");
@@ -289,7 +364,7 @@ mod tests {
     #[test]
     fn test_split_text_short() {
         let text = "Short text.";
-        let chunks = CloudTtsProvider::split_text(text);
+        let chunks = CloudTtsProvider::split_text(text, MAX_TEXT_BYTES);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], text);
     }
@@ -298,7 +373,82 @@ mod tests {
     fn test_split_text_long() {
         let sentence = "A".repeat(3000);
         let text = format!("{}. {}. {}", sentence, sentence, sentence);
-        let chunks = CloudTtsProvider::split_text(&text);
+        let chunks = CloudTtsProvider::split_text(&text, MAX_TEXT_BYTES);
         assert!(chunks.len() >= 2);
+    }
+
+    #[test]
+    fn test_default_request_serialization_omits_gemini_fields() {
+        // With no model/style_prompt set, the wire format must be byte-identical
+        // to the pre-Gemini request: no "modelName", no "prompt" keys.
+        let request = TtsRequest {
+            input: TextInput {
+                text: "hello".to_string(),
+                prompt: None,
+            },
+            voice: VoiceSelection {
+                language_code: "en-US".to_string(),
+                name: "en-US-Standard-A".to_string(),
+                model_name: None,
+            },
+            audio_config: AudioConfig {
+                audio_encoding: "LINEAR16".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(!json.contains("modelName"), "unexpected modelName: {json}");
+        assert!(!json.contains("prompt"), "unexpected prompt: {json}");
+        assert_eq!(
+            json,
+            r#"{"input":{"text":"hello"},"voice":{"languageCode":"en-US","name":"en-US-Standard-A"},"audioConfig":{"audioEncoding":"LINEAR16"}}"#
+        );
+    }
+
+    #[test]
+    fn test_gemini_request_serialization_includes_fields() {
+        let request = TtsRequest {
+            input: TextInput {
+                text: "hello".to_string(),
+                prompt: Some("Say it curiously.".to_string()),
+            },
+            voice: VoiceSelection {
+                language_code: "en-US".to_string(),
+                name: "Kore".to_string(),
+                model_name: Some("gemini-2.5-flash-tts".to_string()),
+            },
+            audio_config: AudioConfig {
+                audio_encoding: "LINEAR16".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains(r#""modelName":"gemini-2.5-flash-tts""#));
+        assert!(json.contains(r#""prompt":"Say it curiously.""#));
+    }
+
+    #[test]
+    fn test_gemini_chunk_cap_is_4000() {
+        let p = create_gemini_provider();
+        assert_eq!(p.max_chunk_bytes(), 4000);
+    }
+
+    #[test]
+    fn test_traditional_chunk_cap_is_5000() {
+        let p = create_test_provider();
+        assert_eq!(p.max_chunk_bytes(), 5000);
+    }
+
+    #[test]
+    fn test_gemini_cost_uses_token_estimate() {
+        let p = create_gemini_provider();
+        let cost = p.estimate_cost(1_000_000);
+        // Coarse per-char proxy for token billing (~$16.7 / 1M chars).
+        assert!((cost - 16.7).abs() < 0.1, "unexpected gemini cost: {cost}");
+    }
+
+    #[test]
+    fn test_traditional_cost_unchanged() {
+        let p = create_test_provider();
+        let cost = p.estimate_cost(1_000_000);
+        assert!((cost - 4.0).abs() < 0.01);
     }
 }

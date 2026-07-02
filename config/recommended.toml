@@ -128,6 +128,23 @@ rate = 200      # Speech rate (90-300, default: 200)
 # voice = "cmn-TW-Standard-A"  # Voice name (Standard-A/B/C, Wavenet-A/B/C, etc.)
 # volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
 
+# Gemini-TTS (expressive voices via the same Cloud TTS endpoint)
+# Set `model` to switch cloud_tts into Gemini-TTS mode: bare voice names
+# (Kore, Charon, Puck, ...) plus an optional `style_prompt` for tone control.
+# Pricing:
+#   Token-based, NOT per-character: $10 per 1M audio output tokens
+#   (25 tokens/sec of audio). No free tier. Coarsely ~4x the cost of Standard.
+# Setup: https://cloud.google.com/text-to-speech/docs/gemini-tts
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "gemini_tts"  # alias for cloud_tts; `model` triggers Gemini-TTS mode
+# service_account_key = "~/.config/gcp/service-account.json"
+# model = "gemini-2.5-flash-tts"
+# voice = "Kore"  # Bare Gemini voice name (Kore, Charon, Puck, Aoede, ...)
+# language_code = "en-US"
+# style_prompt = "Say the following in a calm, encouraging tone."  # Optional
+# volume = 100  # ✅ SUPPORTED - Volume control via afplay (0-100, default: 100)
+
 # ============================================================================
 # Summarization Settings (used by Stop hook and sum command)
 # ============================================================================

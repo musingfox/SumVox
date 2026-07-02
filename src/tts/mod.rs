@@ -73,7 +73,7 @@ impl FromStr for TtsEngine {
         match s.to_lowercase().as_str() {
             "macos" | "say" => Ok(TtsEngine::MacOS),
             "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
-            "cloud_tts" | "gcp_tts" | "google_cloud" => Ok(TtsEngine::CloudTts),
+            "cloud_tts" | "gcp_tts" | "google_cloud" | "gemini_tts" => Ok(TtsEngine::CloudTts),
             "xai" | "xai_tts" | "grok" => Ok(TtsEngine::Xai),
             "elevenlabs" | "eleven_labs" | "11labs" => Ok(TtsEngine::ElevenLabs),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
@@ -173,7 +173,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 api_key, model, voice, volume,
             )))
         }
-        "cloud_tts" | "gcp_tts" | "google_cloud" => {
+        "cloud_tts" | "gcp_tts" | "google_cloud" | "gemini_tts" => {
             let sa_json = config.get_service_account_key().ok_or_else(|| {
                 VoiceError::Config("Cloud TTS requires service_account_key".into())
             })?;
@@ -186,10 +186,15 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 )
             })?;
             let language_code = config.language_code.clone();
+            // model set => Gemini-TTS (bare voice name + model_name); style_prompt optional.
+            let model = config.model.clone();
+            let style_prompt = config.style_prompt.clone();
             Ok(Box::new(CloudTtsProvider::new(
                 sa_json,
                 voice,
                 language_code,
+                model,
+                style_prompt,
                 volume,
             )))
         }
@@ -335,6 +340,41 @@ mod tests {
             "google_cloud".parse::<TtsEngine>().ok(),
             Some(TtsEngine::CloudTts)
         );
+        assert_eq!(
+            "gemini_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::CloudTts)
+        );
+    }
+
+    #[test]
+    fn test_factory_recognizes_gemini_tts_alias() {
+        // gemini_tts routes through the cloud_tts branch; missing service
+        // account surfaces the cloud_tts error, proving the alias is wired in
+        // (not the "Unknown TTS provider" fallthrough).
+        let config = TtsProviderConfig {
+            name: "gemini_tts".to_string(),
+            model: Some("gemini-2.5-flash-tts".to_string()),
+            voice: Some("Kore".to_string()),
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: Some("Say it warmly.".to_string()),
+        };
+        let err = match create_single_tts(&config) {
+            Ok(_) => panic!("expected error without service account key"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            err.contains("service_account_key"),
+            "unexpected error: {err}"
+        );
+        assert!(!err.contains("Unknown TTS provider"));
     }
 
     #[test]
@@ -374,6 +414,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         }];
 
         let result = create_tts_from_config(&providers);
@@ -399,6 +440,7 @@ mod tests {
                 speed: None,
                 stability: None,
                 style: None,
+                style_prompt: None,
             },
             TtsProviderConfig {
                 name: "macos".to_string(),
@@ -413,6 +455,7 @@ mod tests {
                 speed: None,
                 stability: None,
                 style: None,
+                style_prompt: None,
             },
         ];
 
@@ -440,6 +483,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         }];
 
         // CLI voice override wins over config voice; engine sourced from config.

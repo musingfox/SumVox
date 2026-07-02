@@ -5,6 +5,11 @@ All notable changes to SumVox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Gemini-TTS voices via `cloud_tts`**: The `cloud_tts` provider (new `gemini_tts` alias) now supports Google's expressive Gemini-TTS models. Set `model` (e.g. `gemini-2.5-flash-tts`) to switch to bare voice names (`Kore`, `Charon`, ...) with an optional `style_prompt` for tone control. Uses the same synthesis endpoint; input is chunked at 4000 bytes and cost is estimated per audio token (token billing, no free tier, ~4x Standard).
+
 ## [1.7.1] - 2026-06-18
 
 ### Fixed

@@ -280,6 +280,11 @@ pub struct TtsProviderConfig {
     /// Lower = flatter pitch/less expressive, 0.0 disables style.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<f32>,
+
+    /// Style instruction prompt (for Gemini-TTS via cloud_tts).
+    /// Free-form direction, e.g. "Say the following in a cheerful tone."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_prompt: Option<String>,
 }
 
 impl TtsProviderConfig {
@@ -375,6 +380,7 @@ impl Default for TtsConfig {
                     speed: None,
                     stability: None,
                     style: None,
+                    style_prompt: None,
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
@@ -389,6 +395,7 @@ impl Default for TtsConfig {
                     speed: None,
                     stability: None,
                     style: None,
+                    style_prompt: None,
                 },
             ],
         }
@@ -928,6 +935,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
         assert!(macos_provider.is_configured());
     }
@@ -1228,6 +1236,7 @@ tts:
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
 
         let content = config.get_service_account_key();
@@ -1250,6 +1259,7 @@ tts:
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
 
         assert_eq!(config.get_service_account_key(), None);

@@ -827,6 +827,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
 
         let volume_override = Some(60u32);
@@ -856,6 +857,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
 
         let volume_override: Option<u32> = None;
@@ -885,6 +887,7 @@ mod tests {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         };
 
         let volume_override = Some(80u32);

@@ -280,6 +280,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         },
         TtsProviderConfig {
             name: "google".to_string(),
@@ -294,6 +295,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
             speed: None,
             stability: None,
             style: None,
+            style_prompt: None,
         },
     ];
 
