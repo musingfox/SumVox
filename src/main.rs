@@ -480,6 +480,9 @@ async fn generate_summary(
 /// Speak text using TTS
 async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) -> Result<()> {
     let tts_engine = tts_opts.engine.parse().unwrap_or(TtsEngine::Auto);
+    // The raw engine name disambiguates entries that share one TtsEngine
+    // (cloud_tts vs gemini_tts); resolve_tts_provider matches it exactly first.
+    let engine_name = tts_opts.engine.to_lowercase();
 
     // Create TTS provider: CLI override or config fallback chain
     let provider: Box<dyn TtsProvider> = match tts_engine {
@@ -506,7 +509,13 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
         )?,
         TtsEngine::CloudTts => resolve_tts_provider(
             &config.tts.providers,
-            &["cloud_tts", "gcp_tts", "google_cloud"],
+            &[
+                engine_name.as_str(),
+                "cloud_tts",
+                "gcp_tts",
+                "google_cloud",
+                "gemini_tts",
+            ],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,

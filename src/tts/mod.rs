@@ -275,9 +275,17 @@ pub fn resolve_tts_provider(
     rate: u32,
     volume: Option<u32>,
 ) -> Result<Box<dyn TtsProvider>> {
+    // Prefer the entry whose name exactly matches what the user asked for
+    // (aliases[0]); aliases can map several names to one engine (e.g. cloud_tts
+    // and gemini_tts), and config order must not override an explicit choice.
     let base = providers
         .iter()
-        .find(|p| aliases.contains(&p.name.to_lowercase().as_str()))
+        .find(|p| p.name.to_lowercase() == aliases[0])
+        .or_else(|| {
+            providers
+                .iter()
+                .find(|p| aliases.contains(&p.name.to_lowercase().as_str()))
+        })
         .ok_or_else(|| {
             VoiceError::Config(format!("{} provider not found in config", aliases[0]))
         })?;
@@ -375,6 +383,51 @@ mod tests {
             "unexpected error: {err}"
         );
         assert!(!err.contains("Unknown TTS provider"));
+    }
+
+    #[test]
+    fn test_resolve_prefers_exact_name_over_alias_order() {
+        // cloud_tts and gemini_tts share TtsEngine::CloudTts. With a cloud_tts
+        // entry listed FIRST in config, resolving with aliases[0] = "gemini_tts"
+        // must still pick the gemini_tts entry, not the first alias match.
+        let base = TtsProviderConfig {
+            name: "cloud_tts".to_string(),
+            model: None,
+            // No voice: selecting this entry fails with "voice is required",
+            // which discriminates it from the gemini_tts entry below.
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            // /dev/null reads as empty content, passing the sa-key lookup.
+            service_account_key: Some("/dev/null".to_string()),
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        };
+        let gemini = TtsProviderConfig {
+            name: "gemini_tts".to_string(),
+            model: Some("gemini-2.5-flash-tts".to_string()),
+            voice: Some("Kore".to_string()),
+            ..base.clone()
+        };
+        let providers = vec![base, gemini];
+
+        let resolved = resolve_tts_provider(
+            &providers,
+            &["gemini_tts", "cloud_tts", "gcp_tts", "google_cloud"],
+            None,
+            200,
+            None,
+        );
+        assert!(
+            resolved.is_ok(),
+            "expected gemini_tts entry, got: {:?}",
+            resolved.err()
+        );
     }
 
     #[test]
