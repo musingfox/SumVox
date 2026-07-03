@@ -542,6 +542,13 @@ async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) ->
             tts_opts.rate,
             tts_opts.volume,
         )?,
+        TtsEngine::OpenAi => resolve_tts_provider(
+            &config.tts.providers,
+            &["openai", "openai_tts"],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
     };
 
     if !provider.is_available() {

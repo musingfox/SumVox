@@ -298,6 +298,7 @@ impl TtsProviderConfig {
                 self.get_api_key().is_some()
             }
             "xai" | "xai_tts" | "grok" => self.get_xai_api_key().is_some(),
+            "openai" | "openai_tts" => self.get_openai_api_key().is_some(),
             "elevenlabs" | "eleven_labs" | "11labs" => self.get_elevenlabs_api_key().is_some(),
             _ => false,
         }
@@ -341,6 +342,19 @@ impl TtsProviderConfig {
         }
 
         std::env::var("XAI_API_KEY").ok().filter(|k| !k.is_empty())
+    }
+
+    /// Get OpenAI API key from config or environment
+    pub fn get_openai_api_key(&self) -> Option<String> {
+        if let Some(ref key) = self.api_key {
+            if !key.is_empty() && !key.starts_with("${") {
+                return Some(key.clone());
+            }
+        }
+
+        std::env::var("OPENAI_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
     }
 
     /// Get service account key file content
@@ -938,6 +952,44 @@ mod tests {
             style_prompt: None,
         };
         assert!(macos_provider.is_configured());
+    }
+
+    fn openai_tts_provider(api_key: Option<String>) -> TtsProviderConfig {
+        TtsProviderConfig {
+            name: "openai".to_string(),
+            model: None,
+            voice: None,
+            api_key,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        }
+    }
+
+    #[test]
+    fn test_get_openai_api_key_from_config() {
+        let provider = openai_tts_provider(Some("sk-test".to_string()));
+        assert_eq!(provider.get_openai_api_key(), Some("sk-test".to_string()));
+    }
+
+    #[test]
+    fn test_get_openai_api_key_placeholder_env_unset() {
+        std::env::remove_var("OPENAI_API_KEY");
+        let provider = openai_tts_provider(Some("${OPENAI_API_KEY}".to_string()));
+        assert_eq!(provider.get_openai_api_key(), None);
+    }
+
+    #[test]
+    fn test_openai_is_configured_without_key() {
+        std::env::remove_var("OPENAI_API_KEY");
+        let provider = openai_tts_provider(None);
+        assert!(!provider.is_configured());
     }
 
     #[test]

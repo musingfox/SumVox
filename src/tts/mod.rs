@@ -6,6 +6,7 @@ pub mod cloud_tts_auth;
 pub mod elevenlabs;
 pub mod google;
 pub mod macos;
+pub mod openai;
 pub mod xai;
 
 use async_trait::async_trait;
@@ -62,6 +63,7 @@ pub enum TtsEngine {
     CloudTts,
     Xai,
     ElevenLabs,
+    OpenAi,
     AudioFile,
     Auto,
 }
@@ -76,6 +78,7 @@ impl FromStr for TtsEngine {
             "cloud_tts" | "gcp_tts" | "google_cloud" | "gemini_tts" => Ok(TtsEngine::CloudTts),
             "xai" | "xai_tts" | "grok" => Ok(TtsEngine::Xai),
             "elevenlabs" | "eleven_labs" | "11labs" => Ok(TtsEngine::ElevenLabs),
+            "openai" | "openai_tts" => Ok(TtsEngine::OpenAi),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
@@ -91,6 +94,7 @@ impl std::fmt::Display for TtsEngine {
             TtsEngine::CloudTts => write!(f, "cloud_tts"),
             TtsEngine::Xai => write!(f, "xai"),
             TtsEngine::ElevenLabs => write!(f, "elevenlabs"),
+            TtsEngine::OpenAi => write!(f, "openai"),
             TtsEngine::AudioFile => write!(f, "audio_file"),
             TtsEngine::Auto => write!(f, "auto"),
         }
@@ -102,6 +106,7 @@ pub use cloud_tts::CloudTtsProvider;
 pub use elevenlabs::ElevenLabsProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
+pub use openai::OpenAiTtsProvider;
 pub use xai::XaiTtsProvider;
 
 /// Create TTS provider from config array with automatic fallback
@@ -241,6 +246,36 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
             let style = config.style;
             Ok(Box::new(ElevenLabsProvider::new(
                 api_key, voice, model, speed, stability, style, volume,
+            )))
+        }
+        "openai" | "openai_tts" => {
+            let api_key = config.get_openai_api_key().ok_or_else(|| {
+                VoiceError::Config(
+                    "OpenAI API key not found. Set in config or env var OPENAI_API_KEY".into(),
+                )
+            })?;
+
+            // Model and voice are required — no hardcoded defaults.
+            let model = config.model.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "OpenAI TTS model is required. Specify in config, e.g., 'gpt-4o-mini-tts'"
+                        .into(),
+                )
+            })?;
+            let voice = config.voice.clone().ok_or_else(|| {
+                VoiceError::Config(
+                    "OpenAI TTS voice is required. Specify in config, e.g., 'nova'".into(),
+                )
+            })?;
+            let instructions = config.style_prompt.clone();
+            let speed = config.speed;
+            Ok(Box::new(OpenAiTtsProvider::new(
+                api_key,
+                model,
+                voice,
+                instructions,
+                speed,
+                volume,
             )))
         }
         "audio_file" | "audio" | "file" => {
@@ -427,6 +462,73 @@ mod tests {
             resolved.is_ok(),
             "expected gemini_tts entry, got: {:?}",
             resolved.err()
+        );
+    }
+
+    #[test]
+    fn test_openai_engine_from_str_and_display() {
+        assert_eq!("openai".parse::<TtsEngine>().ok(), Some(TtsEngine::OpenAi));
+        assert_eq!(
+            "openai_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::OpenAi)
+        );
+        assert_eq!(TtsEngine::OpenAi.to_string(), "openai");
+    }
+
+    fn openai_config(model: Option<&str>, voice: Option<&str>) -> TtsProviderConfig {
+        TtsProviderConfig {
+            name: "openai".to_string(),
+            model: model.map(str::to_string),
+            voice: voice.map(str::to_string),
+            api_key: Some("test-api-key".to_string()),
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        }
+    }
+
+    #[test]
+    fn test_openai_requires_voice() {
+        let err = create_single_tts(&openai_config(Some("gpt-4o-mini-tts"), None))
+            .err()
+            .expect("expected error without voice")
+            .to_string();
+        assert!(err.contains("voice is required"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_openai_requires_model() {
+        let err = create_single_tts(&openai_config(None, Some("nova")))
+            .err()
+            .expect("expected error without model")
+            .to_string();
+        assert!(err.contains("model is required"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_openai_fully_specified_config() {
+        let provider = create_single_tts(&openai_config(Some("gpt-4o-mini-tts"), Some("nova")))
+            .expect("fully specified openai entry should build");
+        assert_eq!(provider.name(), "openai");
+        assert!(provider.is_available());
+    }
+
+    #[test]
+    fn test_resolve_openai_errors_when_absent() {
+        let providers: Vec<TtsProviderConfig> = vec![];
+        let err = resolve_tts_provider(&providers, &["openai", "openai_tts"], None, 200, None)
+            .err()
+            .expect("expected error with empty config")
+            .to_string();
+        assert!(
+            err.contains("openai provider not found in config"),
+            "unexpected error: {err}"
         );
     }
 
