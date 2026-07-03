@@ -15,6 +15,7 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
   - Google Gemini (recommended, optimized)
   - Anthropic Claude, OpenAI GPT, xAI Grok, Ollama
 - 🔊 **Multi-TTS Engines**:
+  - OpenAI TTS (gpt-4o-mini-tts, steerable style prompts, adjustable speed)
   - ElevenLabs TTS (premium natural voices, voice tuning, **volume control supported**)
   - xAI TTS (natural speech, 5 voices, **volume control supported**)
   - Google TTS (Gemini-powered, high quality, **volume control supported**)
@@ -239,6 +240,7 @@ hooks:
 - `macos` = Use only macOS TTS
 - `google` = Use only Google TTS (Gemini)
 - `xai` = Use only xAI TTS
+- `openai` = Use only OpenAI TTS
 - `cloud_tts` = Use only Google Cloud TTS
 - `elevenlabs` = Use only ElevenLabs TTS
 - `auto` = Try all TTS providers in order (recommended for summaries)
@@ -480,6 +482,7 @@ sumvox say "Hello world"
 sumvox say "Hello" --tts macos
 sumvox say "Hello" --tts google --voice Aoede
 sumvox say "Hello" --tts xai --voice rex
+sumvox say "Hello" --tts openai --voice nova
 sumvox say "Hello" --tts elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
 
 # Adjust speech rate (macOS only, 90-300)
@@ -552,6 +555,7 @@ RUST_LOG=trace sumvox
 |----------|--------|------------------|-------|---------|------|----------------|
 | **macOS say** | System voices | ❌ | Instant | Good | Free | ❌ Not supported |
 | **xAI TTS** | 5 voices | ✅ | Fast | Excellent | $4.20/1M chars | ✅ Supported (0-100) |
+| **OpenAI TTS** | 10 voices | ✅ | Fast | Excellent | ~$0.015/min | ✅ Supported (0-100) |
 | **ElevenLabs TTS** | Library + Voice Design | ✅ | Fast | Premium | $0.06-0.12/1K chars | ✅ Supported (0-100) |
 | **Google TTS** | 6+ voices | ✅ | Fast | Excellent | ~$0.016/1K chars | ✅ Supported (0-100) |
 | **Google Cloud TTS** | 100+ voices | ✅ (Service Account) | Fast | Professional | $4-16/1M chars | ✅ Supported (0-100) |
@@ -567,6 +571,12 @@ RUST_LOG=trace sumvox
 - `eve` (default), `ara`, `rex`, `sal`, `leo`
 - Automatic language detection or specify with `language_code`
 - Get API key: https://console.x.ai
+- ✅ **Volume control supported** - adjust playback volume (0-100)
+
+**OpenAI TTS Voices:**
+- `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`
+- Style steering via `style_prompt` (e.g. accent, pace, tone) and `speed` (0.25-4.0)
+- Get API key: https://platform.openai.com
 - ✅ **Volume control supported** - adjust playback volume (0-100)
 
 **ElevenLabs TTS Voices:**
@@ -608,8 +618,8 @@ summarization:
 hooks:
   claude_code:
     notification_filter: [...]  # Which notification types to speak
-    notification_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "elevenlabs" | "auto"
-    stop_tts_provider: "macos" | "google" | "xai" | "cloud_tts" | "elevenlabs" | "auto"
+    notification_tts_provider: "macos" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
+    stop_tts_provider: "macos" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
 ```
 
 ### Environment Variables
@@ -618,6 +628,7 @@ hooks:
 |----------|-------------|---------|
 | `SUMVOX_DISABLE` | Temporarily disable SumVox (any value) | `SUMVOX_DISABLE=1 claude` |
 | `XAI_API_KEY` | xAI API key for Grok LLM and xAI TTS (alternative to config) | `export XAI_API_KEY=xai-...` |
+| `OPENAI_API_KEY` | OpenAI API key for GPT LLM and OpenAI TTS (alternative to config) | `export OPENAI_API_KEY=sk-...` |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS API key (alternative to config) | `export ELEVENLABS_API_KEY=...` |
 | `RUST_LOG` | Set log level for debugging | `RUST_LOG=debug sumvox say "test"` |
 

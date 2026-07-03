@@ -114,6 +114,21 @@ rate = 200      # Speech rate (90-300, default: 200)
 # api_key = "${ELEVENLABS_API_KEY}"
 # volume = 100  # ✅ SUPPORTED - Volume control via afplay (0-100, default: 100)
 
+# OpenAI TTS (gpt-4o-mini-tts, steerable style via instructions, requires API key)
+# Pricing: ~$0.015 per minute of audio (gpt-4o-mini-tts)
+# Voices: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer
+# Get API key: https://platform.openai.com
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "openai"
+# model = "gpt-4o-mini-tts"
+# voice = "nova"  # Options: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer
+# speed = 1.2     # Playback speed (0.25-4.0, default: 1.0)
+# volume = 100    # Playback volume (0-100)
+# Output format is fixed to MP3 (provider constant, not configurable)
+# style_prompt = "你是工程師的語音通知助理。用台灣口音的中文,語速明顯偏快、節奏俐落,像忙碌同事快速回報進度,乾脆有精神,不拖尾音。"
+# api_key = "${OPENAI_API_KEY}"
+
 # Google Cloud TTS (Professional-grade, requires service account)
 # Pricing:
 #   Standard voices: $4 per 1M characters (first 4M/month free)
