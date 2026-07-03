@@ -7,6 +7,7 @@ mod config;
 mod error;
 mod hooks;
 mod llm;
+mod notify_log;
 mod provider_factory;
 mod queue;
 mod transcript;

@@ -494,6 +494,13 @@ async fn generate_summary(
 
 /// Speak text using TTS
 async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) -> Result<()> {
+    // Record every agent voice report (even when muted) for the menu bar app.
+    crate::notify_log::record(text);
+    if crate::notify_log::is_muted() {
+        tracing::info!("Voice muted via menu bar app, skipping TTS");
+        return Ok(());
+    }
+
     let tts_engine = tts_opts.engine.parse().unwrap_or(TtsEngine::Auto);
 
     // Create TTS provider: CLI override or config fallback chain

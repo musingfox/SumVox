@@ -44,6 +44,11 @@ lint:
 # Run all checks (fmt, lint, test)
 check: fmt-check lint test
 
+# Build the macOS menu bar app (mute toggle + notification history)
+menubar:
+    swiftc -O menubar/SumVoxMenu.swift -o target/release/sumvox-menubar
+    @echo "Run in background: target/release/sumvox-menubar &"
+
 # Clean build artifacts
 clean:
     cargo clean
