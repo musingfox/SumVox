@@ -18,12 +18,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = NSMenu()
 
+    // Toast state
+    var fileSource: DispatchSourceFileSystemObject?
+    var dirSource: DispatchSourceFileSystemObject?
+    var toasts: [NSPanel] = []
+    var lastShownText = ""
+    let toastW: CGFloat = 360
+    let toastH: CGFloat = 72
+
     var muted: Bool { FileManager.default.fileExists(atPath: muteFile.path) }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         menu.delegate = self
         statusItem.menu = menu
         updateIcon()
+        startWatching()
     }
 
     func updateIcon() {
@@ -87,6 +96,101 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func openConfig() {
         NSWorkspace.shared.open(configFile)
+    }
+
+    // MARK: - Toast on new notification
+    //
+    // history.log is truncate-written in place (same inode) by notify_log.rs, so a
+    // vnode source on the file catches every write. Before the file's first write we
+    // watch the parent dir for its creation, then switch to watching the file.
+    // ponytail: assumes history.log is never unlinked+recreated; if it is (manual
+    // delete), toasts pause until relaunch. Add re-arm on .delete if that ever matters.
+
+    func startWatching() {
+        FileManager.default.fileExists(atPath: historyFile.path) ? armFile() : armDir()
+    }
+
+    func armDir() {
+        let fd = open(configDir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        src.setEventHandler { [weak self] in
+            guard let self, FileManager.default.fileExists(atPath: historyFile.path) else { return }
+            src.cancel()
+            self.armFile()
+            self.showLatest()
+        }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        dirSource = src
+    }
+
+    func armFile() {
+        let fd = open(historyFile.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        src.setEventHandler { [weak self] in self?.showLatest() }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        fileSource = src
+    }
+
+    // Read the newest history line and toast it, skipping repeated write events for the same entry.
+    func showLatest() {
+        guard let raw = try? String(contentsOf: historyFile, encoding: .utf8),
+              let line = raw.split(separator: "\n").last else { return }
+        let parts = line.split(separator: "\t", maxSplits: 1)
+        let text = parts.count > 1 ? String(parts[1]) : String(line)
+        guard text != lastShownText else { return }
+        lastShownText = text
+        showToast(text)
+    }
+
+    func showToast(_ text: String) {
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: toastW, height: toastH),
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.level = .floating
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.backgroundColor = .clear
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: toastW, height: toastH))
+        card.material = .hudWindow
+        card.state = .active
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 14
+        card.layer?.masksToBounds = true
+
+        let label = NSTextField(labelWithString: "🔊  \(text)")
+        label.frame = NSRect(x: 16, y: 8, width: toastW - 32, height: toastH - 16)
+        label.maximumNumberOfLines = 2
+        label.lineBreakMode = .byTruncatingTail
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .labelColor
+        card.addSubview(label)
+        panel.contentView = card
+
+        toasts.append(panel)
+        restack()
+        panel.orderFrontRegardless()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            panel.orderOut(nil)
+            self?.toasts.removeAll { $0 == panel }
+            self?.restack()
+        }
+    }
+
+    // Top-right of the active screen, stacked downward under the menu bar.
+    func restack() {
+        guard let vf = NSScreen.main?.visibleFrame else { return }
+        for (i, p) in toasts.enumerated() {
+            p.setFrameOrigin(NSPoint(x: vf.maxX - toastW - 16,
+                                     y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8)))
+        }
     }
 }
 
