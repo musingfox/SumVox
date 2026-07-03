@@ -174,22 +174,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.contentView = card
 
         toasts.append(panel)
-        restack()
-        panel.orderFrontRegardless()
+        // Reposition survivors, but skip the entering panel — the entry
+        // animation below owns its motion to the final origin.
+        restack(excluding: panel)
+
+        // alphaValue = 0 must be set BEFORE orderFrontRegardless, else the
+        // first frame flashes opaque.
+        panel.alphaValue = 0
+        let size = NSSize(width: toastW, height: toastH)
+        if let vf = NSScreen.main?.visibleFrame {
+            let i = toasts.count - 1
+            let finalOrigin = NSPoint(x: vf.maxX - toastW - 16,
+                                      y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8))
+            // Start offset 40pt to the right of the final stacked position.
+            panel.setFrame(NSRect(origin: NSPoint(x: finalOrigin.x + 40, y: finalOrigin.y),
+                                  size: size), display: false)
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().setFrame(NSRect(origin: finalOrigin, size: size), display: true)
+                panel.animator().alphaValue = 1
+            }
+        } else {
+            // No screen — still show the panel, just skip the slide/fade.
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-            panel.orderOut(nil)
-            self?.toasts.removeAll { $0 == panel }
-            self?.restack()
+            guard let self else { return }
+            // Remove FIRST so restack never repositions a dying panel; a
+            // double-fire removal is a harmless no-op.
+            self.toasts.removeAll { $0 == panel }
+            self.restack()
+            let frame = panel.frame
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().setFrame(NSRect(origin: NSPoint(x: frame.origin.x + 40, y: frame.origin.y),
+                                                 size: frame.size), display: true)
+                panel.animator().alphaValue = 0
+            }, completionHandler: {
+                panel.orderOut(nil)
+            })
         }
     }
 
     // Top-right of the active screen, stacked downward under the menu bar.
-    func restack() {
+    // `excluding` skips a panel whose motion is owned by the entry animation.
+    func restack(excluding: NSPanel? = nil) {
         guard let vf = NSScreen.main?.visibleFrame else { return }
-        for (i, p) in toasts.enumerated() {
-            p.setFrameOrigin(NSPoint(x: vf.maxX - toastW - 16,
-                                     y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8)))
+        let size = NSSize(width: toastW, height: toastH)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            for (i, p) in toasts.enumerated() {
+                if p == excluding { continue }
+                let origin = NSPoint(x: vf.maxX - toastW - 16,
+                                     y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8))
+                p.animator().setFrame(NSRect(origin: origin, size: size), display: true)
+            }
         }
     }
 }
