@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-04
+
 ### Added
+- **OpenAI TTS provider**: New `openai` provider (alias `openai_tts`) using `gpt-4o-mini-tts` via `POST /v1/audio/speech`. Configure `voice` (e.g. `nova`), `speed` (0.25–4.0), and a `style_prompt` passed as `instructions` for tone/accent control. API key via `api_key` field or `OPENAI_API_KEY` env. Plays MP3 output through `afplay`; input is truncated on a character boundary at the 4096-character API limit (correct for multi-byte languages like Chinese).
+- **macOS menu bar app** (`menubar/SumVoxMenu.swift`, built with `just menubar`): a lightweight `.accessory` status-bar companion to control voice and review notifications, with zero polling — disk is read only when the menu opens or a notification lands.
+  - **Mute toggle**: flips a `~/.config/sumvox/muted` flag; the Stop hook skips TTS while muted but still records history.
+  - **Notification history**: every agent voice report is logged to `~/.config/sumvox/history.log` (last 50 kept); the menu lists recent entries with click-to-copy.
+  - **Floating toast**: new notifications pop a HUD panel in the top-right (event-driven `DispatchSource` watch), auto-dismissing after 4s and stacking when several arrive — shown even when muted, so nothing is missed.
+  - **Enter/exit animation**: toasts slide in from the right and fade in (0.22s ease-out), slide out and fade on dismiss (0.18s ease-in); surviving toasts reflow smoothly.
 - **Gemini-TTS voices via `cloud_tts`**: The `cloud_tts` provider (new `gemini_tts` alias) now supports Google's expressive Gemini-TTS models. Set `model` (e.g. `gemini-2.5-flash-tts`) to switch to bare voice names (`Kore`, `Charon`, ...) with an optional `style_prompt` for tone control. Uses the same synthesis endpoint; input is chunked at 4000 bytes and cost is estimated per audio token (token billing, no free tier, ~4x Standard).
+
+### Fixed
+- **`--tts gemini_tts` resolution**: the `gemini_tts` selector now resolves to its own config entry instead of colliding with `cloud_tts`.
+- **Audio-tag stripping**: `[tag]`-style audio tags are stripped before non-`eleven_v3` providers, so engines that don't understand them no longer read the markup aloud.
+- **TTS cost estimates**: updated xAI and ElevenLabs cost estimates to current pricing.
 
 ## [1.7.1] - 2026-06-18
 
