@@ -5,6 +5,11 @@
 // Shared contract with the sumvox binary (src/notify_log.rs):
 //   mute flag   = ~/.config/sumvox/muted (existence)
 //   history     = ~/.config/sumvox/history.log, one entry per line: "RFC3339\ttext"
+//
+// Talking avatar (Tier 1): each toast is a character + speech bubble. Drop two
+// PNGs at ~/.config/sumvox/avatar/{closed,open}.png (mouth shut / open) and the
+// toast shows them, flapping the mouth while the bubble types out. No art → a
+// text face is used instead.
 
 import AppKit
 
@@ -13,6 +18,7 @@ let configDir = FileManager.default.homeDirectoryForCurrentUser
 let muteFile = configDir.appendingPathComponent("muted")
 let historyFile = configDir.appendingPathComponent("history.log")
 let configFile = configDir.appendingPathComponent("config.toml")
+let avatarDir = configDir.appendingPathComponent("avatar")
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -23,8 +29,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var dirSource: DispatchSourceFileSystemObject?
     var toasts: [NSPanel] = []
     var lastShownText = ""
-    let toastW: CGFloat = 360
-    let toastH: CGFloat = 72
+    let toastW: CGFloat = 380
+
+    // Avatar frames, loaded once. Either nil → text-face fallback (both required).
+    static let mouthClosed = NSImage(contentsOf: avatarDir.appendingPathComponent("closed.png"))
+    static let mouthOpen = NSImage(contentsOf: avatarDir.appendingPathComponent("open.png"))
 
     var muted: Bool { FileManager.default.fileExists(atPath: muteFile.path) }
 
@@ -147,7 +156,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func showToast(_ text: String) {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: toastW, height: toastH),
+        // Size the card to the text so long messages aren't clipped. Height is
+        // capped (past it, text truncates) so a giant summary can't fill the
+        // screen. restack + the entry animation read each panel's own height,
+        // so mixed-size toasts stack cleanly. ponytail: 220pt cap, raise if
+        // summaries routinely need more room.
+        let bubbleX: CGFloat = 88
+        let bubbleW = toastW - bubbleX - 12
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        // Measure wrapped text height with TextKit — fittingSize/boundingRect give
+        // single-line results outside a view hierarchy; this is reliable headless.
+        let ts = NSTextStorage(string: text, attributes: [.font: font])
+        let tc = NSTextContainer(size: NSSize(width: bubbleW, height: .greatestFiniteMagnitude))
+        tc.lineFragmentPadding = 0
+        let lm = NSLayoutManager()
+        lm.addTextContainer(tc)
+        ts.addLayoutManager(lm)
+        lm.ensureLayout(for: tc)
+        let h = min(max(ceil(lm.usedRect(for: tc).height) + 24, 88), 220)
+
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: toastW, height: h),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
         panel.level = .floating
@@ -157,21 +185,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: toastW, height: toastH))
+        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: toastW, height: h))
         card.material = .hudWindow
         card.state = .active
         card.wantsLayer = true
         card.layer?.cornerRadius = 14
         card.layer?.masksToBounds = true
 
-        let label = NSTextField(labelWithString: "🔊  \(text)")
-        label.frame = NSRect(x: 16, y: 8, width: toastW - 32, height: toastH - 16)
-        label.maximumNumberOfLines = 2
-        label.lineBreakMode = .byTruncatingTail
-        label.font = .systemFont(ofSize: 13, weight: .medium)
+        // Character on the left. `flap(true)` shows the open mouth, `flap(false)` shut.
+        let avatarFrame = NSRect(x: 12, y: (h - 64) / 2, width: 64, height: 64)
+        let flap: (Bool) -> Void
+        if let closed = Self.mouthClosed, let open = Self.mouthOpen {
+            let iv = NSImageView(frame: avatarFrame)
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.image = closed
+            card.addSubview(iv)
+            flap = { iv.image = $0 ? open : closed }
+        } else {
+            let face = NSTextField(labelWithString: "(・ω・)")
+            face.frame = avatarFrame
+            face.alignment = .center
+            face.font = .systemFont(ofSize: 22)
+            card.addSubview(face)
+            flap = { face.stringValue = $0 ? "(・o・)" : "(・ω・)" }
+        }
+
+        let label = NSTextField(wrappingLabelWithString: "")
+        label.frame = NSRect(x: bubbleX, y: 12, width: bubbleW, height: h - 24)
+        label.maximumNumberOfLines = 0   // wrappingLabel already word-wraps; don't
+                                         // override lineBreakMode or it goes single-line.
+        label.font = font
         label.textColor = .labelColor
+        label.isSelectable = false
         card.addSubview(label)
         panel.contentView = card
+
+        // Typewriter reveal drives the mouth. ponytail: flap follows the text
+        // stream, not real TTS audio (Swift has no play signal yet) — wire to a
+        // "speaking" file from the sumvox binary later if the two drift. Reveal
+        // cadence is capped so even long text finishes inside the 4s dismiss.
+        let chars = Array(text)
+        var shown = 0
+        let interval = min(0.045, 2.8 / Double(max(chars.count, 1)))
+        // .common mode so the reveal keeps animating while the status-item menu
+        // is open (menu tracking runs the run loop in .eventTracking).
+        let timer = Timer(timeInterval: interval, repeats: true) { t in
+            shown += 1
+            label.stringValue = String(chars.prefix(shown))
+            flap(shown % 2 == 0)
+            if shown >= chars.count { t.invalidate(); flap(false) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
 
         toasts.append(panel)
         // Reposition survivors, but skip the entering panel — the entry
@@ -181,11 +245,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // alphaValue = 0 must be set BEFORE orderFrontRegardless, else the
         // first frame flashes opaque.
         panel.alphaValue = 0
-        let size = NSSize(width: toastW, height: toastH)
+        let size = NSSize(width: toastW, height: h)
         if let vf = NSScreen.main?.visibleFrame {
-            let i = toasts.count - 1
-            let finalOrigin = NSPoint(x: vf.maxX - toastW - 16,
-                                      y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8))
+            // New panel sits on top: bottom margin + heights of everyone below it.
+            var finalY = vf.minY + 16
+            for p in toasts where p != panel { finalY += p.frame.height + 8 }
+            let finalOrigin = NSPoint(x: vf.maxX - toastW - 16, y: finalY)
             // Start offset 40pt to the right of the final stacked position.
             panel.setFrame(NSRect(origin: NSPoint(x: finalOrigin.x + 40, y: finalOrigin.y),
                                   size: size), display: false)
@@ -202,8 +267,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             panel.orderFrontRegardless()
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+        // Linger to match reading time: base + ~0.12s/char, clamped 4–12s.
+        let dwell = min(max(3.0 + Double(chars.count) * 0.12, 4.0), 12.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell) { [weak self] in
             guard let self else { return }
+            // Stop the reveal in case a slow run loop left it running past dwell,
+            // so it can't mutate a hidden panel or hold the view chain alive.
+            timer.invalidate()
             // Remove FIRST so restack never repositions a dying panel; a
             // double-fire removal is a harmless no-op.
             self.toasts.removeAll { $0 == panel }
@@ -221,18 +291,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // Top-right of the active screen, stacked downward under the menu bar.
+    // Bottom-right of the active screen, stacked upward from the bottom margin.
     // `excluding` skips a panel whose motion is owned by the entry animation.
     func restack(excluding: NSPanel? = nil) {
         guard let vf = NSScreen.main?.visibleFrame else { return }
-        let size = NSSize(width: toastW, height: toastH)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
-            for (i, p) in toasts.enumerated() {
-                if p == excluding { continue }
-                let origin = NSPoint(x: vf.maxX - toastW - 16,
-                                     y: vf.maxY - toastH - 16 - CGFloat(i) * (toastH + 8))
-                p.animator().setFrame(NSRect(origin: origin, size: size), display: true)
+            var y = vf.minY + 16
+            for p in toasts {
+                let sz = p.frame.size
+                if p != excluding {
+                    let origin = NSPoint(x: vf.maxX - sz.width - 16, y: y)
+                    p.animator().setFrame(NSRect(origin: origin, size: sz), display: true)
+                }
+                y += sz.height + 8
             }
         }
     }
