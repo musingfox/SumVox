@@ -63,6 +63,24 @@ final class AvatarRootView: NSView {
     }
 }
 
+func makeGlassView(frame: NSRect, cornerRadius: CGFloat) -> NSView {
+    let view: NSView
+    if #available(macOS 26.0, *) {
+        view = NSGlassEffectView(frame: frame)
+    } else {
+        let effect = NSVisualEffectView(frame: frame)
+        effect.material = .popover
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        view = effect
+    }
+    view.wantsLayer = true
+    view.layer?.cornerRadius = cornerRadius
+    view.layer?.masksToBounds = true
+    return view
+}
+
+
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -76,10 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let avatarOnlyW: CGFloat = 96
     let avatarPanelH: CGFloat = 96
     var avatarPanel: NSPanel?
-    var bubbleView: NSVisualEffectView?
+    var bubbleView: NSView?
     var bubbleLabel: NSTextField?
     var avatarRootView: NSView?
-    var avatarShellView: NSVisualEffectView?
+    var avatarShellView: NSView?
     var avatarAnchorRightX: CGFloat?
     var avatarAnchorBottomY: CGFloat?
     var speakingTimer: Timer?
@@ -246,13 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor.clear.cgColor
 
-        let avatarShell = NSVisualEffectView(frame: NSRect(x: 8, y: 8, width: 80, height: 80))
-        avatarShell.material = .hudWindow
-        avatarShell.state = .active
-        avatarShell.wantsLayer = true
-        avatarShell.layer?.cornerRadius = 20
-        avatarShell.layer?.masksToBounds = true
-        avatarShell.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.22).cgColor
+        let avatarShell = makeGlassView(frame: NSRect(x: 8, y: 8, width: 80, height: 80),
+                                        cornerRadius: 24)
         root.addSubview(avatarShell)
         if let closed = Self.mouthClosed, let open = Self.mouthOpen {
             let iv = NSImageView(frame: NSRect(x: 8, y: 8, width: 64, height: 64))
@@ -269,12 +282,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             flap = { face.stringValue = $0 ? "(・o・)" : "(・ω・)" }
         }
 
-        let bubble = NSVisualEffectView(frame: NSRect(x: 12, y: 12, width: toastW - avatarOnlyW - 12, height: 72))
-        bubble.material = .hudWindow
-        bubble.state = .active
-        bubble.wantsLayer = true
-        bubble.layer?.cornerRadius = 14
-        bubble.layer?.masksToBounds = true
+        let bubble = makeGlassView(frame: NSRect(x: 12, y: 12, width: toastW - avatarOnlyW - 12, height: 72),
+                                   cornerRadius: 18)
         bubble.isHidden = true
 
         let label = NSTextField(wrappingLabelWithString: "")
