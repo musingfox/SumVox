@@ -98,8 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var bubbleLabel: NSTextField?
     var avatarRootView: NSView?
     var avatarShellView: NSView?
-    var avatarAnchorRightX: CGFloat?
-    var avatarAnchorBottomY: CGFloat?
+    var avatarAnchorX: CGFloat?
+    var avatarAnchorY: CGFloat?
     var speakingTimer: Timer?
     var hideBubbleWorkItem: DispatchWorkItem?
     var speechToken = 0
@@ -236,6 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showToast(text)
     }
 
+
     func ensureAvatarPanel() {
         guard avatarPanel == nil else {
             positionAvatarPanel()
@@ -257,8 +258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let root = AvatarRootView(frame: NSRect(x: 0, y: 0, width: avatarOnlyW, height: avatarPanelH))
         root.onClick = { [weak self] in self?.popAvatarMenu() }
         root.onDrag = { [weak self] frame in
-            self?.avatarAnchorRightX = frame.maxX
-            self?.avatarAnchorBottomY = frame.minY
+            guard let self else { return }
+            let shellX = self.avatarShellView?.frame.minX ?? 8
+            let shellY = self.avatarShellView?.frame.minY ?? 8
+            self.avatarAnchorX = frame.minX + shellX + 40
+            self.avatarAnchorY = frame.minY + shellY + 40
         }
         root.autoresizingMask = [.width, .height]
         root.wantsLayer = true
@@ -310,22 +314,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let panel = avatarPanel else { return }
         let panelW = width ?? panel.frame.width
         let panelH = height ?? panel.frame.height
-        let anchorPoint = NSPoint(x: avatarAnchorRightX ?? NSEvent.mouseLocation.x,
-                                  y: avatarAnchorBottomY ?? NSEvent.mouseLocation.y)
+        let anchorPoint = NSPoint(x: avatarAnchorX ?? NSEvent.mouseLocation.x,
+                                  y: avatarAnchorY ?? NSEvent.mouseLocation.y)
         let screen = NSScreen.screens.first { $0.visibleFrame.contains(anchorPoint) }
             ?? NSScreen.main
             ?? NSScreen.screens.first
         guard let vf = screen?.visibleFrame else { return }
-        let defaultOrigin = NSPoint(x: vf.maxX - panelW - 16, y: vf.minY + 16)
-        let proposedOrigin = NSPoint(x: (avatarAnchorRightX ?? defaultOrigin.x + panelW) - panelW,
-                                     y: avatarAnchorBottomY ?? defaultOrigin.y)
+        let shellX: CGFloat = 8
+        let shellY: CGFloat = 8
+        let defaultAnchorX = vf.maxX - 64
+        let defaultAnchorY = vf.minY + 48
+        let proposedOrigin = NSPoint(x: (avatarAnchorX ?? defaultAnchorX) - shellX - 40,
+                                     y: (avatarAnchorY ?? defaultAnchorY) - shellY - 40)
         let clampedOrigin = NSPoint(x: min(max(proposedOrigin.x, vf.minX), vf.maxX - panelW),
                                     y: min(max(proposedOrigin.y, vf.minY), vf.maxY - panelH))
         panel.setFrame(NSRect(origin: clampedOrigin, size: NSSize(width: panelW, height: panelH)), display: true)
-        avatarAnchorRightX = panel.frame.maxX
-        avatarAnchorBottomY = panel.frame.minY
+        avatarAnchorX = panel.frame.minX + shellX + 40
+        avatarAnchorY = panel.frame.minY + shellY + 40
         avatarRootView?.frame = NSRect(x: 0, y: 0, width: panelW, height: panelH)
-        avatarShellView?.frame = NSRect(x: panelW - 88, y: 8, width: 80, height: 80)
+        avatarShellView?.frame = NSRect(x: shellX, y: shellY, width: 80, height: 80)
     }
 
     func showToast(_ text: String) {
@@ -352,16 +359,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let bubbleH = min(max(ceil(lm.usedRect(for: tc).height) + 24, 56), 188)
 
         let gap: CGFloat = 8
-        let panelW = bubbleW + 24
-        let panelH = avatarPanelH + gap + bubbleH
-        let bubbleX = panelW - bubbleW - 12
-        bubble.frame = NSRect(x: bubbleX, y: avatarPanelH + gap, width: bubbleW, height: bubbleH)
+        let anchorPoint = NSPoint(x: avatarAnchorX ?? NSEvent.mouseLocation.x,
+                                  y: avatarAnchorY ?? NSEvent.mouseLocation.y)
+        let screen = NSScreen.screens.first { $0.visibleFrame.contains(anchorPoint) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: bubbleW + avatarOnlyW + 24, height: avatarPanelH + gap + bubbleH)
+        let avatarCenterX = avatarAnchorX ?? (vf.maxX - 64)
+        let avatarCenterY = avatarAnchorY ?? (vf.minY + 48)
+        let avatarRect = NSRect(x: avatarCenterX - 40, y: avatarCenterY - 40, width: 80, height: 80)
+        let bubbleOnLeft = avatarCenterX > vf.midX
+        let bubbleAbove = avatarCenterY <= vf.midY
+        var bubbleRect = NSRect(
+            x: bubbleOnLeft ? (avatarRect.minX - 12 - bubbleW) : (avatarRect.maxX + 12),
+            y: bubbleAbove ? (avatarRect.maxY + gap) : (avatarRect.minY - gap - bubbleH),
+            width: bubbleW,
+            height: bubbleH
+        )
+        bubbleRect.origin.x = min(max(bubbleRect.origin.x, vf.minX + 12), vf.maxX - bubbleW - 12)
+        bubbleRect.origin.y = min(max(bubbleRect.origin.y, vf.minY + 12), vf.maxY - bubbleH - 12)
+        let panelRect = avatarRect.union(bubbleRect).insetBy(dx: -8, dy: -8)
+        let panelW = panelRect.width
+        let panelH = panelRect.height
+        let bubbleX = bubbleRect.minX - panelRect.minX
+        let bubbleY = bubbleRect.minY - panelRect.minY
+        let avatarX = avatarRect.minX - panelRect.minX
+        let avatarY = avatarRect.minY - panelRect.minY
+        bubble.frame = NSRect(x: bubbleX, y: bubbleY, width: bubbleW, height: bubbleH)
         label.frame = NSRect(x: 12, y: 12, width: bubbleW - 24, height: bubbleH - 24)
         label.stringValue = ""
         bubble.alphaValue = 1
         bubble.isHidden = false
+        avatarShellView?.frame = NSRect(x: avatarX, y: avatarY, width: 80, height: 80)
+        avatarRootView?.frame = NSRect(x: 0, y: 0, width: panelW, height: panelH)
+        avatarPanel?.setFrame(panelRect, display: true)
+        avatarAnchorX = avatarCenterX
+        avatarAnchorY = avatarCenterY
         avatarPanel?.orderFrontRegardless()
-        positionAvatarPanel(width: panelW, height: panelH)
 
         let chars = Array(text)
         var shown = 0
