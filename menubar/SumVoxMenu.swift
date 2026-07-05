@@ -19,17 +19,73 @@ let muteFile = configDir.appendingPathComponent("muted")
 let historyFile = configDir.appendingPathComponent("history.log")
 let configFile = configDir.appendingPathComponent("config.toml")
 let avatarDir = configDir.appendingPathComponent("avatar")
+final class AvatarRootView: NSView {
+    var onClick: (() -> Void)?
+    var onDrag: ((NSRect) -> Void)?
+
+    private var mouseDownScreenPoint: NSPoint?
+    private var mouseDownOrigin: NSPoint?
+    private var didDrag = false
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        mouseDownScreenPoint = NSEvent.mouseLocation
+        mouseDownOrigin = window.frame.origin
+        didDrag = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window,
+              let mouseDownScreenPoint,
+              let mouseDownOrigin else { return }
+        let current = NSEvent.mouseLocation
+        let dx = current.x - mouseDownScreenPoint.x
+        let dy = current.y - mouseDownScreenPoint.y
+        if abs(dx) > 2 || abs(dy) > 2 { didDrag = true }
+        let origin = NSPoint(x: mouseDownOrigin.x + dx, y: mouseDownOrigin.y + dy)
+        window.setFrameOrigin(origin)
+        onDrag?(window.frame)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !didDrag { onClick?() }
+        mouseDownScreenPoint = nil
+        mouseDownOrigin = nil
+        didDrag = false
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isHidden ? nil : self
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+}
+
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = NSMenu()
 
-    // Toast state
+    // Avatar state
     var fileSource: DispatchSourceFileSystemObject?
     var dirSource: DispatchSourceFileSystemObject?
-    var toasts: [NSPanel] = []
     var lastShownText = ""
     let toastW: CGFloat = 380
+    let avatarOnlyW: CGFloat = 96
+    let avatarPanelH: CGFloat = 96
+    var avatarPanel: NSPanel?
+    var bubbleView: NSVisualEffectView?
+    var bubbleLabel: NSTextField?
+    var avatarRootView: NSView?
+    var avatarShellView: NSVisualEffectView?
+    var avatarAnchorRightX: CGFloat?
+    var avatarAnchorBottomY: CGFloat?
+    var speakingTimer: Timer?
+    var hideBubbleWorkItem: DispatchWorkItem?
+    var speechToken = 0
+    var flap: ((Bool) -> Void)?
 
     // Avatar frames, loaded once. Either nil → text-face fallback (both required).
     static let mouthClosed = NSImage(contentsOf: avatarDir.appendingPathComponent("closed.png"))
@@ -41,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         updateIcon()
+        ensureAvatarPanel()
         startWatching()
     }
 
@@ -107,6 +164,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(configFile)
     }
 
+    func popAvatarMenu() {
+        menuWillOpen(menu)
+        let anchorX = avatarRootView?.bounds.width ?? avatarOnlyW
+        menu.popUp(positioning: nil, at: NSPoint(x: anchorX, y: avatarPanelH), in: avatarRootView)
+    }
+
     // MARK: - Toast on new notification
     //
     // history.log is truncate-written in place (same inode) by notify_log.rs, so a
@@ -155,158 +218,178 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showToast(text)
     }
 
-    func showToast(_ text: String) {
-        // Size the card to the text so long messages aren't clipped. Height is
-        // capped (past it, text truncates) so a giant summary can't fill the
-        // screen. restack + the entry animation read each panel's own height,
-        // so mixed-size toasts stack cleanly. ponytail: 220pt cap, raise if
-        // summaries routinely need more room.
-        let bubbleX: CGFloat = 88
-        let bubbleW = toastW - bubbleX - 12
-        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        // Measure wrapped text height with TextKit — fittingSize/boundingRect give
-        // single-line results outside a view hierarchy; this is reliable headless.
-        let ts = NSTextStorage(string: text, attributes: [.font: font])
-        let tc = NSTextContainer(size: NSSize(width: bubbleW, height: .greatestFiniteMagnitude))
-        tc.lineFragmentPadding = 0
-        let lm = NSLayoutManager()
-        lm.addTextContainer(tc)
-        ts.addLayoutManager(lm)
-        lm.ensureLayout(for: tc)
-        let h = min(max(ceil(lm.usedRect(for: tc).height) + 24, 88), 220)
+    func ensureAvatarPanel() {
+        guard avatarPanel == nil else {
+            positionAvatarPanel()
+            return
+        }
 
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: toastW, height: h),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: avatarOnlyW, height: avatarPanelH),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
+        panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.ignoresMouseEvents = true
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: toastW, height: h))
-        card.material = .hudWindow
-        card.state = .active
-        card.wantsLayer = true
-        card.layer?.cornerRadius = 14
-        card.layer?.masksToBounds = true
+        let root = AvatarRootView(frame: NSRect(x: 0, y: 0, width: avatarOnlyW, height: avatarPanelH))
+        root.onClick = { [weak self] in self?.popAvatarMenu() }
+        root.onDrag = { [weak self] frame in
+            self?.avatarAnchorRightX = frame.maxX
+            self?.avatarAnchorBottomY = frame.minY
+        }
+        root.autoresizingMask = [.width, .height]
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor.clear.cgColor
 
-        // Character on the left. `flap(true)` shows the open mouth, `flap(false)` shut.
-        let avatarFrame = NSRect(x: 12, y: (h - 64) / 2, width: 64, height: 64)
-        let flap: (Bool) -> Void
+        let avatarShell = NSVisualEffectView(frame: NSRect(x: 8, y: 8, width: 80, height: 80))
+        avatarShell.material = .hudWindow
+        avatarShell.state = .active
+        avatarShell.wantsLayer = true
+        avatarShell.layer?.cornerRadius = 20
+        avatarShell.layer?.masksToBounds = true
+        avatarShell.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.22).cgColor
+        root.addSubview(avatarShell)
         if let closed = Self.mouthClosed, let open = Self.mouthOpen {
-            let iv = NSImageView(frame: avatarFrame)
+            let iv = NSImageView(frame: NSRect(x: 8, y: 8, width: 64, height: 64))
             iv.imageScaling = .scaleProportionallyUpOrDown
             iv.image = closed
-            card.addSubview(iv)
+            avatarShell.addSubview(iv)
             flap = { iv.image = $0 ? open : closed }
         } else {
             let face = NSTextField(labelWithString: "(・ω・)")
-            face.frame = avatarFrame
+            face.frame = NSRect(x: 8, y: 8, width: 64, height: 64)
             face.alignment = .center
             face.font = .systemFont(ofSize: 22)
-            card.addSubview(face)
+            avatarShell.addSubview(face)
             flap = { face.stringValue = $0 ? "(・o・)" : "(・ω・)" }
         }
 
+        let bubble = NSVisualEffectView(frame: NSRect(x: 12, y: 12, width: toastW - avatarOnlyW - 12, height: 72))
+        bubble.material = .hudWindow
+        bubble.state = .active
+        bubble.wantsLayer = true
+        bubble.layer?.cornerRadius = 14
+        bubble.layer?.masksToBounds = true
+        bubble.isHidden = true
+
         let label = NSTextField(wrappingLabelWithString: "")
-        label.frame = NSRect(x: bubbleX, y: 12, width: bubbleW, height: h - 24)
-        label.maximumNumberOfLines = 0   // wrappingLabel already word-wraps; don't
-                                         // override lineBreakMode or it goes single-line.
-        label.font = font
+        label.frame = NSRect(x: 12, y: 12, width: bubble.frame.width - 24, height: bubble.frame.height - 24)
+        label.maximumNumberOfLines = 0
+        label.font = .systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
         label.isSelectable = false
-        card.addSubview(label)
-        panel.contentView = card
+        bubble.addSubview(label)
 
-        // Typewriter reveal drives the mouth. ponytail: flap follows the text
-        // stream, not real TTS audio (Swift has no play signal yet) — wire to a
-        // "speaking" file from the sumvox binary later if the two drift. Reveal
-        // cadence is capped so even long text finishes inside the 4s dismiss.
+        root.addSubview(bubble)
+        panel.contentView = root
+
+        avatarPanel = panel
+        avatarRootView = root
+        avatarShellView = avatarShell
+        bubbleView = bubble
+        bubbleLabel = label
+        positionAvatarPanel(width: avatarOnlyW, height: avatarPanelH)
+        panel.orderFrontRegardless()
+    }
+
+    func positionAvatarPanel(width: CGFloat? = nil, height: CGFloat? = nil) {
+        guard let panel = avatarPanel else { return }
+        let panelW = width ?? panel.frame.width
+        let panelH = height ?? panel.frame.height
+        let anchorPoint = NSPoint(x: avatarAnchorRightX ?? NSEvent.mouseLocation.x,
+                                  y: avatarAnchorBottomY ?? NSEvent.mouseLocation.y)
+        let screen = NSScreen.screens.first { $0.visibleFrame.contains(anchorPoint) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let vf = screen?.visibleFrame else { return }
+        let defaultOrigin = NSPoint(x: vf.maxX - panelW - 16, y: vf.minY + 16)
+        let proposedOrigin = NSPoint(x: (avatarAnchorRightX ?? defaultOrigin.x + panelW) - panelW,
+                                     y: avatarAnchorBottomY ?? defaultOrigin.y)
+        let clampedOrigin = NSPoint(x: min(max(proposedOrigin.x, vf.minX), vf.maxX - panelW),
+                                    y: min(max(proposedOrigin.y, vf.minY), vf.maxY - panelH))
+        panel.setFrame(NSRect(origin: clampedOrigin, size: NSSize(width: panelW, height: panelH)), display: true)
+        avatarAnchorRightX = panel.frame.maxX
+        avatarAnchorBottomY = panel.frame.minY
+        avatarRootView?.frame = NSRect(x: 0, y: 0, width: panelW, height: panelH)
+        avatarShellView?.frame = NSRect(x: panelW - 88, y: 8, width: 80, height: 80)
+    }
+
+    func showToast(_ text: String) {
+        ensureAvatarPanel()
+        guard let bubble = bubbleView, let label = bubbleLabel else { return }
+
+        speechToken += 1
+        let token = speechToken
+        speakingTimer?.invalidate()
+        speakingTimer = nil
+        hideBubbleWorkItem?.cancel()
+        hideBubbleWorkItem = nil
+        flap?(false)
+
+        let bubbleW = toastW - avatarOnlyW - 12
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let ts = NSTextStorage(string: text, attributes: [.font: font])
+        let tc = NSTextContainer(size: NSSize(width: bubbleW - 24, height: .greatestFiniteMagnitude))
+        tc.lineFragmentPadding = 0
+        let lm = NSLayoutManager()
+        lm.addTextContainer(tc)
+        ts.addLayoutManager(lm)
+        lm.ensureLayout(for: tc)
+        let bubbleH = min(max(ceil(lm.usedRect(for: tc).height) + 24, 56), 188)
+
+        let gap: CGFloat = 8
+        let panelW = bubbleW + 24
+        let panelH = avatarPanelH + gap + bubbleH
+        let bubbleX = panelW - bubbleW - 12
+        bubble.frame = NSRect(x: bubbleX, y: avatarPanelH + gap, width: bubbleW, height: bubbleH)
+        label.frame = NSRect(x: 12, y: 12, width: bubbleW - 24, height: bubbleH - 24)
+        label.stringValue = ""
+        bubble.alphaValue = 1
+        bubble.isHidden = false
+        avatarPanel?.orderFrontRegardless()
+        positionAvatarPanel(width: panelW, height: panelH)
+
         let chars = Array(text)
         var shown = 0
         let interval = min(0.045, 2.8 / Double(max(chars.count, 1)))
-        // .common mode so the reveal keeps animating while the status-item menu
-        // is open (menu tracking runs the run loop in .eventTracking).
-        let timer = Timer(timeInterval: interval, repeats: true) { t in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            guard token == self.speechToken else { t.invalidate(); return }
             shown += 1
             label.stringValue = String(chars.prefix(shown))
-            flap(shown % 2 == 0)
-            if shown >= chars.count { t.invalidate(); flap(false) }
+            self.flap?(shown % 2 == 0)
+            if shown >= chars.count {
+                t.invalidate()
+                self.flap?(false)
+                self.speakingTimer = nil
+            }
         }
+        speakingTimer = timer
         RunLoop.main.add(timer, forMode: .common)
 
-        toasts.append(panel)
-        // Reposition survivors, but skip the entering panel — the entry
-        // animation below owns its motion to the final origin.
-        restack(excluding: panel)
-
-        // alphaValue = 0 must be set BEFORE orderFrontRegardless, else the
-        // first frame flashes opaque.
-        panel.alphaValue = 0
-        let size = NSSize(width: toastW, height: h)
-        if let vf = NSScreen.main?.visibleFrame {
-            // New panel sits on top: bottom margin + heights of everyone below it.
-            var finalY = vf.minY + 16
-            for p in toasts where p != panel { finalY += p.frame.height + 8 }
-            let finalOrigin = NSPoint(x: vf.maxX - toastW - 16, y: finalY)
-            // Start offset 40pt to the right of the final stacked position.
-            panel.setFrame(NSRect(origin: NSPoint(x: finalOrigin.x + 40, y: finalOrigin.y),
-                                  size: size), display: false)
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.22
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrame(NSRect(origin: finalOrigin, size: size), display: true)
-                panel.animator().alphaValue = 1
-            }
-        } else {
-            // No screen — still show the panel, just skip the slide/fade.
-            panel.alphaValue = 1
-            panel.orderFrontRegardless()
-        }
-
-        // Linger to match reading time: base + ~0.12s/char, clamped 4–12s.
         let dwell = min(max(3.0 + Double(chars.count) * 0.12, 4.0), 12.0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + dwell) { [weak self] in
-            guard let self else { return }
-            // Stop the reveal in case a slow run loop left it running past dwell,
-            // so it can't mutate a hidden panel or hold the view chain alive.
-            timer.invalidate()
-            // Remove FIRST so restack never repositions a dying panel; a
-            // double-fire removal is a harmless no-op.
-            self.toasts.removeAll { $0 == panel }
-            self.restack()
-            let frame = panel.frame
+        let hideBubble = DispatchWorkItem { [weak self] in
+            guard let self, token == self.speechToken else { return }
+            self.speakingTimer?.invalidate()
+            self.speakingTimer = nil
+            self.flap?(false)
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                panel.animator().setFrame(NSRect(origin: NSPoint(x: frame.origin.x + 40, y: frame.origin.y),
-                                                 size: frame.size), display: true)
-                panel.animator().alphaValue = 0
-            }, completionHandler: {
-                panel.orderOut(nil)
+                bubble.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard let self, token == self.speechToken else { return }
+                bubble.isHidden = true
+                bubble.alphaValue = 1
+                self.positionAvatarPanel(width: self.avatarOnlyW, height: self.avatarPanelH)
             })
         }
-    }
-
-    // Bottom-right of the active screen, stacked upward from the bottom margin.
-    // `excluding` skips a panel whose motion is owned by the entry animation.
-    func restack(excluding: NSPanel? = nil) {
-        guard let vf = NSScreen.main?.visibleFrame else { return }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            var y = vf.minY + 16
-            for p in toasts {
-                let sz = p.frame.size
-                if p != excluding {
-                    let origin = NSPoint(x: vf.maxX - sz.width - 16, y: y)
-                    p.animator().setFrame(NSRect(origin: origin, size: sz), display: true)
-                }
-                y += sz.height + 8
-            }
-        }
+        hideBubbleWorkItem = hideBubble
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell, execute: hideBubble)
     }
 }
 
