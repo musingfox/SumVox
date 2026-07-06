@@ -5,18 +5,22 @@
 // Shared contract with the sumvox binary (src/notify_log.rs):
 //   mute flag   = ~/.config/sumvox/muted (existence)
 //   history     = ~/.config/sumvox/history.log, one entry per line: "RFC3339\ttext"
+//   now_playing = ~/.config/sumvox/now_playing, path of the audio file playing now
 //
 // Talking avatar (Tier 1): each toast is a character + speech bubble. Drop two
 // PNGs at ~/.config/sumvox/avatar/{closed,open}.png (mouth shut / open) and the
 // toast shows them, flapping the mouth while the bubble types out. No art → a
-// text face is used instead.
+// text face is used instead. When now_playing points at real audio, the mouth
+// is driven by that file's amplitude envelope instead of the typewriter.
 
 import AppKit
+import AVFoundation
 
 let configDir = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".config/sumvox")
 let muteFile = configDir.appendingPathComponent("muted")
 let historyFile = configDir.appendingPathComponent("history.log")
+let nowPlayingFile = configDir.appendingPathComponent("now_playing")
 let configFile = configDir.appendingPathComponent("config.toml")
 let avatarDir = configDir.appendingPathComponent("avatar")
 final class AvatarRootView: NSView {
@@ -89,6 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Avatar state
     var fileSource: DispatchSourceFileSystemObject?
     var dirSource: DispatchSourceFileSystemObject?
+    var nowPlayingSource: DispatchSourceFileSystemObject?
+    var nowPlayingDirSource: DispatchSourceFileSystemObject?
+    var envelopeTimer: Timer?
+    var envelopeActive = false
     var lastShownText = ""
     let toastW: CGFloat = 380
     let avatarOnlyW: CGFloat = 96
@@ -117,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
         ensureAvatarPanel()
         startWatching()
+        watchNowPlaying()
     }
 
     func updateIcon() {
@@ -236,6 +245,105 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showToast(text)
     }
 
+    // MARK: - Amplitude-driven mouth
+    //
+    // now_playing is truncate-written by run_afplay just before it spawns afplay,
+    // so a write event on it means "real audio is starting now". We decode that
+    // file, build an RMS envelope, and flap the mouth by thresholding it over the
+    // clip's real duration. Same arm-dir-then-file pattern as history.log.
+    // ponytail: parallel watcher instead of generalizing armFile/armDir — an
+    // 8-line proven pattern, not worth risking the working history toast to share.
+
+    func watchNowPlaying() {
+        FileManager.default.fileExists(atPath: nowPlayingFile.path) ? armNowPlaying() : armNowPlayingDir()
+    }
+
+    func armNowPlayingDir() {
+        let fd = open(configDir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        src.setEventHandler { [weak self] in
+            guard let self, FileManager.default.fileExists(atPath: nowPlayingFile.path) else { return }
+            src.cancel()
+            self.armNowPlaying()
+            self.onNowPlaying()
+        }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        nowPlayingDirSource = src
+    }
+
+    func armNowPlaying() {
+        let fd = open(nowPlayingFile.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        src.setEventHandler { [weak self] in self?.onNowPlaying() }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        nowPlayingSource = src
+    }
+
+    func onNowPlaying() {
+        guard let raw = try? String(contentsOf: nowPlayingFile, encoding: .utf8) else { return }
+        let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        // Decode off the main thread; a summary clip can be a few seconds of PCM.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let env = self?.loadEnvelope(url) else { return }
+            DispatchQueue.main.async { self?.animateMouth(env.samples, frameDur: env.frameDur) }
+        }
+    }
+
+    // Downsample the clip to one RMS value per ~40ms bucket. Channel 0 only —
+    // a mono envelope is all a two-frame mouth needs.
+    func loadEnvelope(_ url: URL) -> (samples: [Float], frameDur: Double)? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let format = file.processingFormat
+        let total = AVAudioFrameCount(file.length)
+        guard total > 0, format.sampleRate > 0,
+              let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total),
+              (try? file.read(into: buf)) != nil,
+              let chan = buf.floatChannelData else { return nil }
+        let data = chan[0]
+        let n = Int(buf.frameLength)
+        let frameDur = 0.04
+        let bucket = max(1, Int(format.sampleRate * frameDur))
+        var env: [Float] = []
+        env.reserveCapacity(n / bucket + 1)
+        var i = 0
+        while i < n {
+            let end = min(i + bucket, n)
+            var sum: Float = 0
+            for j in i..<end { let s = data[j]; sum += s * s }
+            env.append((sum / Float(end - i)).squareRoot())
+            i = end
+        }
+        return (env, frameDur)
+    }
+
+    func animateMouth(_ env: [Float], frameDur: Double) {
+        envelopeTimer?.invalidate()
+        guard let peak = env.max(), peak > 0 else { flap?(false); return }
+        let thresh = peak * 0.18   // quiet gaps between words → mouth closed
+        envelopeActive = true
+        var k = 0
+        let timer = Timer(timeInterval: frameDur, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            if k >= env.count {
+                t.invalidate()
+                self.envelopeActive = false
+                self.envelopeTimer = nil
+                self.flap?(false)
+                return
+            }
+            self.flap?(env[k] > thresh)
+            k += 1
+        }
+        envelopeTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
 
     func ensureAvatarPanel() {
         guard avatarPanel == nil else {
@@ -343,6 +451,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let token = speechToken
         speakingTimer?.invalidate()
         speakingTimer = nil
+        envelopeTimer?.invalidate()
+        envelopeTimer = nil
+        envelopeActive = false
         hideBubbleWorkItem?.cancel()
         hideBubbleWorkItem = nil
         flap?(false)
@@ -405,10 +516,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard token == self.speechToken else { t.invalidate(); return }
             shown += 1
             label.stringValue = String(chars.prefix(shown))
-            self.flap?(shown % 2 == 0)
+            // Real audio owns the mouth when playing; typewriter flap is the
+            // fallback (macOS `say`, no audio file, or audio not yet started).
+            if !self.envelopeActive { self.flap?(shown % 2 == 0) }
             if shown >= chars.count {
                 t.invalidate()
-                self.flap?(false)
+                if !self.envelopeActive { self.flap?(false) }
                 self.speakingTimer = nil
             }
         }

@@ -1,9 +1,12 @@
 // Mute flag + voice notification history shared with the menu bar app.
 // Contract: mute = existence of ~/.config/sumvox/muted;
-// history = last 50 lines of ~/.config/sumvox/history.log ("RFC3339\ttext").
+// history = last 50 lines of ~/.config/sumvox/history.log ("RFC3339\ttext");
+// now_playing = ~/.config/sumvox/now_playing, path of the audio file being
+// played right now, so the menu bar avatar can drive its mouth from the real
+// amplitude envelope.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::SumvoxConfig;
 
@@ -45,6 +48,15 @@ pub fn record(text: &str) {
     out.push_str(&line);
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(&path, out);
+}
+
+/// Record the audio file about to be played, so the menu bar avatar can decode
+/// it and flap its mouth in time with the real amplitude. Best-effort;
+/// overwritten on every playback, never blocks the audio path.
+pub fn set_now_playing(path: &Path) {
+    let Some(dir) = config_dir() else { return };
+    let _ = fs::create_dir_all(&dir);
+    let _ = fs::write(dir.join("now_playing"), path.to_string_lossy().as_bytes());
 }
 
 #[cfg(test)]

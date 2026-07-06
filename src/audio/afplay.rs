@@ -23,6 +23,9 @@ pub fn run_afplay(file_path: &Path, volume: u32) -> Result<()> {
     // afplay -v takes a float: 0.0 = silent, 1.0 = full volume. Clamp to 100 so
     // a mis-configured volume can't amplify past 1.0 and over-drive the output.
     let afplay_volume = volume.min(100) as f32 / 100.0;
+    // Tell the menu bar avatar which file is playing so it can flap its mouth
+    // from the real amplitude. Single choke point: every provider plays here.
+    crate::notify_log::set_now_playing(file_path);
     let status = Command::new("afplay")
         .arg("-v")
         .arg(format!("{:.2}", afplay_volume))
