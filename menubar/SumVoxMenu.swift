@@ -7,14 +7,14 @@
 //   history     = ~/.config/sumvox/history.log, one entry per line: "RFC3339\ttext"
 //   now_playing = ~/.config/sumvox/now_playing, path of the audio file playing now
 //
-// Talking avatar (Tier 1): each toast is a character + speech bubble. Drop two
-// PNGs at ~/.config/sumvox/avatar/{closed,open}.png (mouth shut / open) and the
-// toast shows them, flapping the mouth while the bubble types out. No art → a
-// text face is used instead. When now_playing points at real audio, the mouth
-// is driven by that file's amplitude envelope instead of the typewriter.
+// Talking avatar: a vector blob (Catmull-Rom path + radial gradient) inside the
+// glass shell. Driven continuously by setLevel(0..1) — idle breathes with slow
+// drifting lobes, speaking is driven by the now_playing audio's RMS envelope;
+// the typewriter path synthesizes a level when there is no real audio file.
 
 import AppKit
 import AVFoundation
+import QuartzCore
 
 let configDir = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".config/sumvox")
@@ -22,7 +22,11 @@ let muteFile = configDir.appendingPathComponent("muted")
 let historyFile = configDir.appendingPathComponent("history.log")
 let nowPlayingFile = configDir.appendingPathComponent("now_playing")
 let configFile = configDir.appendingPathComponent("config.toml")
-let avatarDir = configDir.appendingPathComponent("avatar")
+
+// Orb palette — emerald→cyan (SumVox cool tone).
+let orbColorFrom = NSColor(srgbRed: 52/255, green: 211/255, blue: 153/255, alpha: 1)  // #34d399
+let orbColorTo = NSColor(srgbRed: 34/255, green: 211/255, blue: 238/255, alpha: 1)    // #22d3ee
+
 final class AvatarRootView: NSView {
     var onClick: (() -> Void)?
     var onDrag: ((NSRect) -> Void)?
@@ -84,7 +88,187 @@ func makeGlassView(frame: NSRect, cornerRadius: CGFloat) -> NSView {
     return view
 }
 
+// Vector Orb — a smooth, deformable blob drawn as a Catmull-Rom path filled
+// with a radial gradient. Original visual language (not voiceorbs): idle = a
+// soft organic blob breathing + drifting low-frequency lobes; speaking = the
+// envelope level swells it and drives multi-harmonic radial wobble. Drawn
+// each frame into an 80×80 CoreGraphics bitmap -> CALayer.contents. Pure
+// vector curves + gradient, zero dependencies, ~60fps.
+final class VectorOrbView: NSView {
+    private let size = 80
+    private let center = CGPoint(x: 40, y: 40)
+    private let baseR: CGFloat = 27
+    private let segments = 48
 
+    private var ctx: CGContext?
+    private var timer: Timer?
+    private var last: Double = 0
+
+    // Gradient color stops (sRGB floats), built once from the orb palette.
+    private var grad: CGGradient?
+
+    private var breathePhase: Float = 0
+    private var idlePhase: Float = 0
+    private var wobbleA: Float = 0
+    private var wobbleB: Float = 0
+    private var lvlSmooth: Float = 0
+    private var lvlTarget: Float = 0
+    private var active = false   // true = alerted/speaking (full brightness + 60fps)
+    private var tickCount = 0     // for idle frame-skip
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        let layer = CALayer()
+        layer.frame = bounds
+        layer.contentsGravity = .resize
+        layer.opacity = 0.5   // idle: dim
+        self.layer = layer
+        self.wantsLayer = true
+        buildGradient()
+        let cs = CGColorSpaceCreateDeviceRGB()
+        ctx = CGContext(data: nil, width: size, height: size,
+                        bitsPerComponent: 8, bytesPerRow: size * 4,
+                        space: cs,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        render(dt: 0)
+        let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
+
+    deinit { timer?.invalidate() }
+
+    func setLevel(_ v: Float) { lvlTarget = max(0, min(1, v)) }
+
+    // Toggle alerted/speaking mode: full brightness + 60fps when on, dim + 20fps
+    // when off. Idempotent. The brightness step itself is the "new message" cue.
+    func setActive(_ on: Bool) {
+        guard on != active else { return }
+        active = on
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(on ? 0.25 : 0.4)
+        layer?.opacity = on ? 1.0 : 0.5
+        CATransaction.commit()
+    }
+
+    private func tick() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let dt = last == 0 ? 1.0 / 60.0 : min(now - last, 0.1)
+        last = now
+        render(dt: Float(dt))
+    }
+
+    private func buildGradient() {
+        let (fr, fg, fb) = rgb(orbColorFrom)   // emerald
+        let (tr, tg, tb) = rgb(orbColorTo)     // cyan
+        // Center = bright emerald, mid = cyan, rim = dark cyan. Light from
+        // upper-left via an offset highlight drawn separately.
+        let ctr = (fr * 0.6 + 1 * 0.4, fg * 0.6 + 1 * 0.4, fb * 0.6 + 1 * 0.4)
+        let mid = (tr, tg, tb)
+        let rim = (tr * 0.45, tg * 0.45, tb * 0.45)
+        let colors = [
+            CGColor(srgbRed: ctr.0, green: ctr.1, blue: ctr.2, alpha: 1),
+            CGColor(srgbRed: mid.0, green: mid.1, blue: mid.2, alpha: 1),
+            CGColor(srgbRed: rim.0, green: rim.1, blue: rim.2, alpha: 1),
+        ]
+        grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                          colors: colors as CFArray,
+                          locations: [0, 0.55, 1])
+    }
+
+    private func rgb(_ c: NSColor) -> (CGFloat, CGFloat, CGFloat) {
+        (CGFloat(c.redComponent), CGFloat(c.greenComponent), CGFloat(c.blueComponent))
+    }
+
+    // Sample the blob radius at angle θ (radians), with center as origin.
+    private func radius(_ theta: Float, lvl: Float) -> Float {
+        let breathe = 1 + 0.04 * sin(breathePhase)
+        let swell = 1 + 0.15 * lvl
+        // idle: slow drifting lobes (alive but calm); speaking: level-driven wobble.
+        let idle = 0.05 * sin(2 * theta + idlePhase)
+            + 0.03 * sin(3 * theta + idlePhase * 0.7)
+        let driven = 0.12 * lvl * sin(3 * theta + wobbleA)
+            + 0.06 * sin(5 * theta - wobbleB)
+        return Float(baseR) * breathe * swell * (1 + idle + driven)
+    }
+
+    // Build a smooth closed Catmull-Rom path through the sampled rim points.
+    private func blobPath(lvl: Float) -> CGPath {
+        let path = CGMutablePath()
+        let n = segments
+        var pts = [CGPoint](repeating: .zero, count: n)
+        let cx = Float(center.x), cy = Float(center.y)
+        for i in 0..<n {
+            let theta = Float(i) / Float(n) * 2 * Float.pi
+            let r = radius(theta, lvl: lvl)
+            pts[i] = CGPoint(x: CGFloat(cx + r * cos(theta)),
+                             y: CGFloat(cy + r * sin(theta)))
+        }
+        // Catmull-Rom -> cubic bezier, closed.
+        for i in 0..<n {
+            let p0 = pts[(i - 1 + n) % n]
+            let p1 = pts[i]
+            let p2 = pts[(i + 1) % n]
+            let p3 = pts[(i + 2) % n]
+            let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6,
+                             y: p1.y + (p2.y - p0.y) / 6)
+            let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6,
+                             y: p2.y - (p3.y - p1.y) / 6)
+            if i == 0 {
+                path.move(to: p1)
+            }
+            path.addCurve(to: p2, control1: c1, control2: c2)
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private func render(dt: Float) {
+        guard let ctx = ctx, let layer = self.layer, let grad = grad else { return }
+        let dtm = dt
+        // Phases advance every tick so motion stays real-time even when we skip
+        // redraws — idle just renders fewer snapshots (20fps), not slower motion.
+        lvlSmooth += (lvlTarget - lvlSmooth) * (1 - Float(exp(-Double(12 * dtm))))
+        breathePhase += 1.1 * dtm
+        idlePhase += 0.7 * dtm
+        wobbleA += 2.2 * dtm
+        wobbleB += 1.4 * dtm
+
+        // idle: redraw every 3rd tick (~20fps); active: every tick (60fps).
+        // The path/gradient/makeImage is the cost, so skipping it is the saving.
+        tickCount += 1
+        let stride = active ? 1 : 3
+        if (tickCount % stride) != 0 { return }
+
+        let lvl = Float(pow(Double(lvlSmooth), 1.4))
+        let rect = CGRect(x: 0, y: 0, width: size, height: size)
+        ctx.clear(rect)
+
+        let path = blobPath(lvl: lvl)
+
+        // Fill: clip to blob, paint radial gradient (light from upper-left).
+        ctx.saveGState()
+        ctx.addPath(path)
+        ctx.clip()
+        let hl = CGPoint(x: center.x - 9, y: center.y + 9)  // upper-left in flipped? layer is bottom-origin; +y is up
+        ctx.drawRadialGradient(grad, startCenter: hl, startRadius: 0,
+                               endCenter: center, endRadius: CGFloat(baseR) * 1.15,
+                               options: [])
+        ctx.restoreGState()
+
+        // Hairline rim.
+        ctx.addPath(path)
+        ctx.setStrokeColor(red: 1, green: 1, blue: 1, alpha: 0.25)
+        ctx.setLineWidth(1)
+        ctx.strokePath()
+
+        if let img = ctx.makeImage() {
+            layer.contents = img
+        }
+    }
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -111,11 +295,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var speakingTimer: Timer?
     var hideBubbleWorkItem: DispatchWorkItem?
     var speechToken = 0
-    var flap: ((Bool) -> Void)?
+    var setLevel: ((Float) -> Void)?
 
-    // Avatar frames, loaded once. Either nil → text-face fallback (both required).
-    static let mouthClosed = NSImage(contentsOf: avatarDir.appendingPathComponent("closed.png"))
-    static let mouthOpen = NSImage(contentsOf: avatarDir.appendingPathComponent("open.png"))
+    // Orb layers (built once in ensureAvatarPanel). nil until the panel exists.
+    var orbView: VectorOrbView?
 
     var muted: Bool { FileManager.default.fileExists(atPath: muteFile.path) }
 
@@ -245,14 +428,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showToast(text)
     }
 
-    // MARK: - Amplitude-driven mouth
+    // MARK: - Amplitude-driven orb
     //
     // now_playing is truncate-written by run_afplay just before it spawns afplay,
     // so a write event on it means "real audio is starting now". We decode that
-    // file, build an RMS envelope, and flap the mouth by thresholding it over the
-    // clip's real duration. Same arm-dir-then-file pattern as history.log.
-    // ponytail: parallel watcher instead of generalizing armFile/armDir — an
-    // 8-line proven pattern, not worth risking the working history toast to share.
+    // file, build an RMS envelope, and drive the orb continuously by env[k]/peak
+    // (0..1) over the clip's real duration. Same arm-dir-then-file pattern as
+    // history.log. ponytail: parallel watcher instead of generalizing
+    // armFile/armDir — an 8-line proven pattern, not worth risking the working
+    // history toast to share.
 
     func watchNowPlaying() {
         FileManager.default.fileExists(atPath: nowPlayingFile.path) ? armNowPlaying() : armNowPlayingDir()
@@ -324,9 +508,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func animateMouth(_ env: [Float], frameDur: Double) {
         envelopeTimer?.invalidate()
-        guard let peak = env.max(), peak > 0 else { flap?(false); return }
-        let thresh = peak * 0.18   // quiet gaps between words → mouth closed
+        guard let peak = env.max(), peak > 0 else { setLevel?(0); return }
         envelopeActive = true
+        refreshActive()   // real audio → brighten + 60fps
         var k = 0
         let timer = Timer(timeInterval: frameDur, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
@@ -334,10 +518,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t.invalidate()
                 self.envelopeActive = false
                 self.envelopeTimer = nil
-                self.flap?(false)
+                self.setLevel?(0)
+                self.refreshActive()   // audio done → maybe dim if no toast
                 return
             }
-            self.flap?(env[k] > thresh)
+            self.setLevel?(env[k] / peak)
             k += 1
         }
         envelopeTimer = timer
@@ -376,23 +561,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor.clear.cgColor
 
-        let avatarShell = makeGlassView(frame: NSRect(x: 8, y: 8, width: 80, height: 80),
-                                        cornerRadius: 24)
+        // Shell is fully transparent — no liquid glass — so only the orb blob
+        // itself is visible. The orb composites directly on the transparent
+        // panel window.
+        let avatarShell = NSView(frame: NSRect(x: 8, y: 8, width: 80, height: 80))
+        avatarShell.wantsLayer = true
+        avatarShell.layer?.backgroundColor = NSColor.clear.cgColor
         root.addSubview(avatarShell)
-        if let closed = Self.mouthClosed, let open = Self.mouthOpen {
-            let iv = NSImageView(frame: NSRect(x: 8, y: 8, width: 64, height: 64))
-            iv.imageScaling = .scaleProportionallyUpOrDown
-            iv.image = closed
-            avatarShell.addSubview(iv)
-            flap = { iv.image = $0 ? open : closed }
-        } else {
-            let face = NSTextField(labelWithString: "(・ω・)")
-            face.frame = NSRect(x: 8, y: 8, width: 64, height: 64)
-            face.alignment = .center
-            face.font = .systemFont(ofSize: 22)
-            avatarShell.addSubview(face)
-            flap = { face.stringValue = $0 ? "(・o・)" : "(・ω・)" }
-        }
+
+        let orb = VectorOrbView(frame: NSRect(x: 0, y: 0, width: 80, height: 80))
+        avatarShell.addSubview(orb)
+        orbView = orb
+        setLevel = { [weak orb] v in orb?.setLevel(v) }
 
         let bubble = makeGlassView(frame: NSRect(x: 12, y: 12, width: toastW - avatarOnlyW - 12, height: 72),
                                    cornerRadius: 18)
@@ -443,6 +623,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         avatarShellView?.frame = NSRect(x: shellX, y: shellY, width: 80, height: 80)
     }
 
+    // Active = a toast is showing or real audio is driving the orb. When idle
+    // (neither), the orb dims and drops to 20fps.
+    func refreshActive() {
+        let on = speakingTimer != nil || envelopeActive || !(bubbleView?.isHidden ?? true)
+        orbView?.setActive(on)
+    }
+
     func showToast(_ text: String) {
         ensureAvatarPanel()
         guard let bubble = bubbleView, let label = bubbleLabel else { return }
@@ -456,7 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         envelopeActive = false
         hideBubbleWorkItem?.cancel()
         hideBubbleWorkItem = nil
-        flap?(false)
+        setLevel?(0)
 
         let bubbleW = toastW - avatarOnlyW - 12
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
@@ -507,6 +694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         avatarAnchorX = avatarCenterX
         avatarAnchorY = avatarCenterY
         avatarPanel?.orderFrontRegardless()
+        refreshActive()   // message arrived → brighten + 60fps as the cue
 
         let chars = Array(text)
         var shown = 0
@@ -516,13 +704,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard token == self.speechToken else { t.invalidate(); return }
             shown += 1
             label.stringValue = String(chars.prefix(shown))
-            // Real audio owns the mouth when playing; typewriter flap is the
-            // fallback (macOS `say`, no audio file, or audio not yet started).
-            if !self.envelopeActive { self.flap?(shown % 2 == 0) }
+            // Real audio owns the orb when playing; typewriter synthesizes a
+            // smooth level as the fallback (macOS `say`, no audio file, or
+            // audio not yet started).
+            if !self.envelopeActive {
+                let lvl = 0.35 + 0.45 * sin(Double(shown) * 1.6)
+                self.setLevel?(Float(max(0, lvl)))
+            }
             if shown >= chars.count {
                 t.invalidate()
-                if !self.envelopeActive { self.flap?(false) }
+                if !self.envelopeActive { self.setLevel?(0) }
                 self.speakingTimer = nil
+                self.refreshActive()   // typing done; stay bright through dwell
             }
         }
         speakingTimer = timer
@@ -533,7 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, token == self.speechToken else { return }
             self.speakingTimer?.invalidate()
             self.speakingTimer = nil
-            self.flap?(false)
+            self.setLevel?(0)
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.18
                 bubble.animator().alphaValue = 0
@@ -542,6 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 bubble.isHidden = true
                 bubble.alphaValue = 1
                 self.positionAvatarPanel(width: self.avatarOnlyW, height: self.avatarPanelH)
+                self.refreshActive()   // dismissed → dim + 20fps idle
             })
         }
         hideBubbleWorkItem = hideBubble

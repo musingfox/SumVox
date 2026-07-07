@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **menu bar app avatar**: replaced the PNG mouth-flap / text-face avatar with a native **Vector Orb** — a smooth, deformable blob drawn as a Catmull-Rom path filled with a radial gradient (original visual language, zero webview/dependencies). The avatar is now driven continuously by a 0..1 level — idle breathes with slow drifting lobes, speaking swells and wobbles the blob driven by the `now_playing` audio's RMS envelope, and the typewriter path synthesizes a smooth level when there is no real audio. Custom `~/.config/sumvox/avatar/{closed,open}.png` art is no longer read; the orb's emerald→cyan palette is built in.
+
 ## [1.8.0] - 2026-07-04
 
 ### Added
