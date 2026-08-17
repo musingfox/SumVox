@@ -287,4 +287,41 @@ mod tests {
         // 200/0 is infinity, which must clamp rather than blow up.
         assert_scale(&args(0), "2.00");
     }
+
+    // Synthesis tests inject `true`/`false` as the "engine": they exercise the
+    // real spawn/stdin/exit-code paths with no engine binary and no audio.
+    #[tokio::test]
+    async fn test_speak_reports_engine_failure() {
+        let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("false");
+        let err = provider
+            .speak("hello")
+            .await
+            .expect_err("a non-zero engine exit must not report success")
+            .to_string();
+        assert!(err.contains("piper synthesis failed"), "unexpected: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_speak_rejects_exit_zero_with_no_audio() {
+        // `true` exits 0 without writing a WAV — that must never reach the
+        // player, or the user gets a "success" with no sound.
+        let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("true");
+        let err = provider
+            .speak("hello")
+            .await
+            .expect_err("exit 0 with no WAV must be an error")
+            .to_string();
+        assert!(err.contains("produced no audio"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn test_estimate_cost_is_zero() {
+        let provider = PiperProvider::new("/m/zh.onnx", 200, 80);
+        assert_eq!(provider.estimate_cost(10_000), 0.0);
+    }
+
+    #[test]
+    fn test_name_is_piper() {
+        assert_eq!(PiperProvider::new("/m/zh.onnx", 200, 80).name(), "piper");
+    }
 }
