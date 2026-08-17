@@ -6,7 +6,31 @@
 // and use the first one installed, so the 0-100 volume knob and the menu-bar
 // avatar hook keep working on Linux instead of being macOS-only.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
+
+use crate::error::{Result, VoiceError};
+
+/// Wall-clock cap on a single playback. The cap exists to break a wedged
+/// player, not to police latency, so it is deliberately generous: any realistic
+/// notification or read-aloud summary finishes far inside it.
+const PLAYBACK_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Players we try, in descending order of "likely installed AND honours
+/// volume". `paplay` ships with both PulseAudio and `pipewire-pulse`, so it
+/// covers most desktops; `aplay` is last because it bypasses the sound server
+/// entirely (and so fails when PipeWire holds the device) and has no volume
+/// control at all.
+pub fn default_candidates() -> &'static [&'static str] {
+    if cfg!(target_os = "macos") {
+        &["afplay"]
+    } else {
+        &["paplay", "pw-play", "ffplay", "mpv", "aplay"]
+    }
+}
 
 /// Locate `name` on `PATH` without spawning it.
 ///
@@ -166,6 +190,128 @@ fn runtime_dir_for_child() -> Option<String> {
     let uid = nix::unistd::Uid::current().as_raw();
     let exists = Path::new(&format!("/run/user/{}", uid)).is_dir();
     runtime_dir_default(current.as_deref(), uid, exists)
+}
+
+/// Play `file_path` to completion (blocking), applying `volume` (0-100).
+///
+/// This is the single playback choke point for the whole crate: every provider
+/// arrives here, which is what keeps the volume knob and the menu-bar avatar
+/// hook working uniformly across platforms.
+///
+/// # Errors
+/// Every failure is a [`VoiceError::Voice`] prefixed `"Audio playback failed"`.
+/// Crucially, this function never returns `Ok(())` without a player having
+/// exited zero — silence is always reported, never swallowed.
+pub fn play_file(file_path: &Path, volume: u32) -> Result<()> {
+    play_file_with(default_candidates(), file_path, volume, PLAYBACK_TIMEOUT)
+}
+
+/// [`play_file`] with the candidate list and timeout injected, so the selection,
+/// failure and timeout paths are testable without an audio device.
+pub fn play_file_with(
+    candidates: &[&str],
+    file_path: &Path,
+    volume: u32,
+    timeout: Duration,
+) -> Result<()> {
+    let player = select_player(candidates, volume).ok_or_else(|| {
+        VoiceError::Voice(format!(
+            "Audio playback failed: no supported audio player found on PATH (tried: {})",
+            candidates.join(", ")
+        ))
+    })?;
+
+    // Tell the menu bar avatar which file is playing so it can flap its mouth
+    // from the real amplitude. Written before the spawn so the animation starts
+    // at the same instant sound does. This is the only call site.
+    crate::notify_log::set_now_playing(file_path);
+
+    let args = player_args(&player, file_path, volume);
+    tracing::debug!("Playing with {}: {:?}", player, args);
+
+    let mut command = Command::new(&player);
+    command.args(&args);
+    // Scope the SSH workaround to the child only — mutating our own environment
+    // could leak into unrelated children (LLM/HTTP paths).
+    if let Some(dir) = runtime_dir_for_child() {
+        tracing::debug!("Defaulting XDG_RUNTIME_DIR={} for the player", dir);
+        command.env("XDG_RUNTIME_DIR", dir);
+    }
+
+    // stdin is nulled so a player can't probe and consume the parent's stdin —
+    // which, in a Claude Code hook, carries the event JSON.
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            VoiceError::Voice(format!(
+                "Audio playback failed: could not run {}: {}",
+                player, e
+            ))
+        })?;
+
+    // Drain stderr on a helper thread so a full pipe can't deadlock us, and
+    // signal on EOF so we can block on a timeout instead of busy-polling.
+    let stderr_pipe = child.stderr.take();
+    let (done_tx, done_rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stderr_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        let _ = done_tx.send(());
+        buf
+    });
+
+    match done_rx.recv_timeout(timeout) {
+        Ok(()) => {
+            // stderr closed ⇒ the player is exiting, so wait() returns promptly.
+            let status = child.wait().map_err(|e| {
+                VoiceError::Voice(format!(
+                    "Audio playback failed: could not wait for {}: {}",
+                    player, e
+                ))
+            })?;
+            let stderr = reader.join().unwrap_or_default();
+
+            if !status.success() {
+                return Err(VoiceError::Voice(format!(
+                    "Audio playback failed: {} exited with status {}: {}",
+                    player,
+                    status,
+                    stderr_tail(&stderr)
+                )));
+            }
+            Ok(())
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            Err(VoiceError::Voice(format!(
+                "Audio playback failed: {} timed out after {}s",
+                player,
+                timeout.as_secs_f32()
+            )))
+        }
+    }
+}
+
+/// The last non-empty line of a player's stderr, truncated to 200 chars.
+///
+/// This is what makes a PipeWire `Connection refused` visible to the user
+/// instead of leaving them with unexplained silence.
+fn stderr_tail(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let line = text
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    line.chars().take(200).collect()
 }
 
 #[cfg(test)]
@@ -340,6 +486,75 @@ mod tests {
             runtime_dir_default(None, 0, true),
             Some("/run/user/0".to_string())
         );
+    }
+
+    // Playback tests inject `true`/`false` as the "player": they exercise the
+    // real spawn/wait/exit-code path with no audio device and no real player.
+    const FIVE_SECONDS: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn test_play_file_with_succeeds_when_player_exits_zero() {
+        let result = play_file_with(
+            &["true"],
+            Path::new("/tmp/sumvox_nonexistent.wav"),
+            50,
+            FIVE_SECONDS,
+        );
+        assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_play_file_with_reports_nonzero_exit() {
+        let err = play_file_with(
+            &["false"],
+            Path::new("/tmp/sumvox_nonexistent.wav"),
+            50,
+            FIVE_SECONDS,
+        )
+        .expect_err("a player exiting non-zero must never report success")
+        .to_string();
+        assert!(err.contains("Audio playback failed"), "unexpected: {err}");
+        assert!(err.contains("exited"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn test_play_file_with_reports_no_player_installed() {
+        let err = play_file_with(
+            &["sumvox_no_such_player"],
+            Path::new("/tmp/x.wav"),
+            50,
+            FIVE_SECONDS,
+        )
+        .expect_err("no installed player must be an error, not silence")
+        .to_string();
+        assert!(
+            err.contains("Audio playback failed: no supported audio player found"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn test_play_file_with_refuses_aplay_at_zero_volume() {
+        // Deterministic with or without aplay installed.
+        let err = play_file_with(&["aplay"], Path::new("/tmp/x.wav"), 0, FIVE_SECONDS)
+            .expect_err("aplay cannot honour volume 0, so this must fail loudly")
+            .to_string();
+        assert!(
+            err.contains("no supported audio player found"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn test_default_candidates_are_platform_specific() {
+        if cfg!(target_os = "macos") {
+            assert_eq!(default_candidates(), &["afplay"]);
+        } else {
+            assert_eq!(
+                default_candidates(),
+                &["paplay", "pw-play", "ffplay", "mpv", "aplay"]
+            );
+        }
     }
 
     #[test]
