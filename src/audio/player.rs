@@ -101,6 +101,34 @@ pub fn player_args(player: &str, path: &Path, volume: u32) -> Vec<String> {
     }
 }
 
+/// Pick the first candidate that is installed and can honour `volume`.
+///
+/// Candidates are probed in order, so the list encodes our preference. `aplay`
+/// is a special case: it has no volume flag, so it is skipped entirely when the
+/// user asked for `volume == 0`. Playing at full blast when someone asked for
+/// silence is an active harm, whereas playing at 100 when they asked for 60 is
+/// merely a degradation — so the two are not treated the same.
+///
+/// `None` means nothing usable is installed; the caller turns that into an
+/// error rather than a silent no-op.
+pub fn select_player(candidates: &[&str], volume: u32) -> Option<String> {
+    for candidate in candidates {
+        if *candidate == "aplay" && volume == 0 {
+            tracing::debug!("Skipping aplay: it cannot honour volume 0");
+            continue;
+        }
+        if find_on_path(candidate).is_some() {
+            if *candidate == "aplay" {
+                tracing::warn!(
+                    "Using aplay: it has no volume control, so volume {volume} is ignored"
+                );
+            }
+            return Some((*candidate).to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,5 +230,44 @@ mod tests {
     #[test]
     fn test_player_args_unknown_player_gets_path_only() {
         assert_eq!(args("true", 50), ["/tmp/a.wav"]);
+    }
+
+    #[test]
+    fn test_select_player_none_installed() {
+        assert_eq!(select_player(&["sumvox_no_such_player"], 100), None);
+    }
+
+    #[test]
+    fn test_select_player_finds_installed() {
+        assert_eq!(select_player(&["sh"], 100), Some("sh".to_string()));
+    }
+
+    #[test]
+    fn test_select_player_first_installed_wins() {
+        assert_eq!(
+            select_player(&["sumvox_no_such_player", "sh"], 100),
+            Some("sh".to_string())
+        );
+    }
+
+    #[test]
+    fn test_select_player_rejects_aplay_at_zero_volume() {
+        // Deterministic with or without aplay installed: volume 0 disqualifies
+        // it before the PATH probe ever runs.
+        assert_eq!(select_player(&["aplay"], 0), None);
+    }
+
+    #[test]
+    fn test_select_player_falls_past_aplay_at_zero_volume() {
+        assert_eq!(select_player(&["aplay", "sh"], 0), Some("sh".to_string()));
+    }
+
+    #[test]
+    fn test_select_player_allows_aplay_above_zero_volume() {
+        // Consistency assertion: correct on machines with and without aplay.
+        assert_eq!(
+            select_player(&["aplay"], 50).is_some(),
+            find_on_path("aplay").is_some()
+        );
     }
 }
