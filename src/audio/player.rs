@@ -70,6 +70,15 @@ fn is_executable_file(path: &Path) -> bool {
     }
 }
 
+/// Map a 0-100 `volume` onto a player scale whose response is cubic in
+/// amplitude, so half the knob means half the amplitude (-6 dB).
+///
+/// `full` is the player's unity-gain value (65536 for paplay, 100 for mpv).
+/// The endpoints are exact: 0 stays 0 and 100 stays `full`.
+fn cube_root_scaled(volume: u32, full: f64) -> u32 {
+    (full * (volume as f64 / 100.0).cbrt()).round() as u32
+}
+
 /// Build the argument list for `player`, expressing `volume` (0-100) in that
 /// player's own units.
 ///
@@ -87,9 +96,19 @@ pub fn player_args(player: &str, path: &Path, volume: u32) -> Vec<String> {
     let path_arg = path.to_string_lossy().to_string();
 
     match player {
-        // paplay takes a linear 0-65536 scale, where 65536 is unity gain.
-        // Integer math keeps 50 -> exactly 32768.
-        "paplay" => vec![format!("--volume={}", volume * 65536 / 100), path_arg],
+        // paplay's 0-65536 scale and mpv's softvol are both CUBIC in amplitude,
+        // not linear: measured on a PulseAudio null sink (1 kHz tone, parec
+        // capture, ffmpeg volumedetect, exact shipped argv), `--volume=32768`
+        // and mpv `--volume=50` each came out at -18 dB, not the -6 dB a
+        // half-scale knob implies. Taking the cube root first makes volume=50
+        // mean -6 dB on every platform, matching macOS `afplay -v 0.50`.
+        // Hence the un-round-looking 52016 (= 65536 * 0.5^(1/3)) and 79.
+        // pw-play and ffplay measured LINEAR, so they are deliberately excluded
+        // from this correction — applying it to them would be a regression.
+        "paplay" => vec![
+            format!("--volume={}", cube_root_scaled(volume, 65536.0)),
+            path_arg,
+        ],
         // pw-play takes a 0.0-1.0 multiplier.
         "pw-play" => vec![format!("--volume={:.2}", volume as f32 / 100.0), path_arg],
         // ffplay is a video player by default: no window, quit at EOF, and stay
@@ -105,12 +124,13 @@ pub fn player_args(player: &str, path: &Path, volume: u32) -> Vec<String> {
             path_arg,
         ],
         // mpv likewise needs muzzling; --no-config keeps a user's mpv.conf from
-        // redirecting or reformatting our playback.
+        // redirecting or reformatting our playback. Its --volume is cube-root
+        // corrected for the same reason as paplay's (see above).
         "mpv" => vec![
             "--no-video".to_string(),
             "--no-config".to_string(),
             "--really-quiet".to_string(),
-            format!("--volume={}", volume),
+            format!("--volume={}", cube_root_scaled(volume, 100.0)),
             path_arg,
         ],
         // aplay: no volume flag exists; -q suppresses its progress chatter.
@@ -392,8 +412,15 @@ mod tests {
 
     #[test]
     fn test_player_args_paplay_scales_to_65536() {
-        assert_eq!(args("paplay", 50), ["--volume=32768", "/tmp/a.wav"]);
+        assert_eq!(args("paplay", 50), ["--volume=52016", "/tmp/a.wav"]);
         assert_eq!(args("paplay", 100), ["--volume=65536", "/tmp/a.wav"]);
+    }
+
+    #[test]
+    fn test_player_args_paplay_is_cube_root_not_linear() {
+        // Second curve point: a linear (or any other monotone) map cannot also
+        // land here. 41285 = 65536 * 0.25^(1/3), measured -11.8 dB.
+        assert_eq!(args("paplay", 25), ["--volume=41285", "/tmp/a.wav"]);
     }
 
     #[test]
@@ -436,7 +463,22 @@ mod tests {
                 "--no-video",
                 "--no-config",
                 "--really-quiet",
-                "--volume=50",
+                "--volume=79",
+                "/tmp/a.wav"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_player_args_mpv_is_cube_root_not_linear() {
+        // Second curve point: 63 = 100 * 0.25^(1/3), measured -11.9 dB.
+        assert_eq!(
+            args("mpv", 25),
+            [
+                "--no-video",
+                "--no-config",
+                "--really-quiet",
+                "--volume=63",
                 "/tmp/a.wav"
             ]
         );
