@@ -129,6 +129,45 @@ pub fn select_player(candidates: &[&str], volume: u32) -> Option<String> {
     None
 }
 
+/// Decide whether the player child needs an `XDG_RUNTIME_DIR` we supply.
+///
+/// Returns `Some(dir)` only when `current` is absent or blank **and**
+/// `/run/user/{uid}` exists — otherwise `None`, meaning "set nothing".
+///
+/// This exists because SumVox runs as a Claude Code hook and Claude Code is
+/// frequently driven over SSH, where `XDG_RUNTIME_DIR` is unset. Without it,
+/// every PulseAudio/PipeWire client fails to find the session socket and the
+/// notifier is silently mute even though the sound server is running. An
+/// existing value is never overridden: the session owns that variable, and a
+/// guess is only ever a last resort. Guessing wrong is harmless — the player
+/// then fails loudly and the error carries its stderr.
+pub fn runtime_dir_default(
+    current: Option<&str>,
+    uid: u32,
+    run_user_dir_exists: bool,
+) -> Option<String> {
+    if let Some(value) = current {
+        if !value.trim().is_empty() {
+            return None;
+        }
+    }
+    if !run_user_dir_exists {
+        return None;
+    }
+    Some(format!("/run/user/{}", uid))
+}
+
+/// Read the live environment and decide the child's `XDG_RUNTIME_DIR`.
+///
+/// A thin wrapper over [`runtime_dir_default`] that supplies the three real
+/// inputs; our own process environment is never mutated.
+fn runtime_dir_for_child() -> Option<String> {
+    let current = std::env::var("XDG_RUNTIME_DIR").ok();
+    let uid = nix::unistd::Uid::current().as_raw();
+    let exists = Path::new(&format!("/run/user/{}", uid)).is_dir();
+    runtime_dir_default(current.as_deref(), uid, exists)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,6 +299,47 @@ mod tests {
     #[test]
     fn test_select_player_falls_past_aplay_at_zero_volume() {
         assert_eq!(select_player(&["aplay", "sh"], 0), Some("sh".to_string()));
+    }
+
+    #[test]
+    fn test_runtime_dir_default_supplies_when_unset() {
+        assert_eq!(
+            runtime_dir_default(None, 1000, true),
+            Some("/run/user/1000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_runtime_dir_default_never_overrides_existing() {
+        assert_eq!(
+            runtime_dir_default(Some("/run/user/1000"), 1000, true),
+            None
+        );
+    }
+
+    #[test]
+    fn test_runtime_dir_default_treats_blank_as_unset() {
+        assert_eq!(
+            runtime_dir_default(Some(""), 1000, true),
+            Some("/run/user/1000".to_string())
+        );
+        assert_eq!(
+            runtime_dir_default(Some("   "), 1000, true),
+            Some("/run/user/1000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_runtime_dir_default_requires_the_dir_to_exist() {
+        assert_eq!(runtime_dir_default(None, 1000, false), None);
+    }
+
+    #[test]
+    fn test_runtime_dir_default_handles_root() {
+        assert_eq!(
+            runtime_dir_default(None, 0, true),
+            Some("/run/user/0".to_string())
+        );
     }
 
     #[test]
