@@ -106,6 +106,7 @@ impl std::fmt::Display for TtsEngine {
 // Re-export providers
 pub use cloud_tts::CloudTtsProvider;
 pub use elevenlabs::ElevenLabsProvider;
+pub use espeak::EspeakProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
 pub use openai::OpenAiTtsProvider;
@@ -280,6 +281,12 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 speed,
                 volume,
             )))
+        }
+        "espeak" | "espeak_ng" | "espeak-ng" => {
+            // No required field: espeak-ng ships its own default voice.
+            let voice = config.voice.clone();
+            let rate = config.rate.unwrap_or(espeak::DEFAULT_RATE);
+            Ok(Box::new(EspeakProvider::new(voice, rate, volume)))
         }
         "piper" | "piper_tts" => {
             // For piper, the voice IS a downloaded .onnx model file. `voice`
@@ -484,6 +491,45 @@ mod tests {
             "expected gemini_tts entry, got: {:?}",
             resolved.err()
         );
+    }
+
+    fn espeak_config(name: &str, voice: Option<&str>, rate: Option<u32>) -> TtsProviderConfig {
+        TtsProviderConfig {
+            name: name.to_string(),
+            model: None,
+            voice: voice.map(str::to_string),
+            path: None,
+            api_key: None,
+            rate,
+            volume: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        }
+    }
+
+    #[test]
+    fn test_factory_builds_espeak_from_alias_with_voice_and_rate() {
+        let provider = create_single_tts(&espeak_config("espeak_ng", Some("cmn+f3"), Some(175)))
+            .expect("espeak_ng entry should build");
+        assert_eq!(provider.name(), "espeak");
+    }
+
+    #[test]
+    fn test_factory_builds_espeak_with_no_voice_or_rate() {
+        let provider = create_single_tts(&espeak_config("espeak", None, None))
+            .expect("a bare espeak entry needs no configuration");
+        assert_eq!(provider.name(), "espeak");
+    }
+
+    #[test]
+    fn test_factory_builds_piper_from_model() {
+        let provider = create_single_tts(&piper_config(None, Some("/m/zh.onnx"), None))
+            .expect("piper entry with a model should build");
+        assert_eq!(provider.name(), "piper");
     }
 
     fn piper_config(
