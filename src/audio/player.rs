@@ -546,6 +546,29 @@ mod tests {
     }
 
     #[test]
+    fn test_play_file_with_kills_a_wedged_player() {
+        // `cat /dev/zero` never exits and never closes stderr, so it wedges the
+        // drain thread deterministically — no audio device involved. The hook
+        // must not block on it.
+        let start = std::time::Instant::now();
+        let err = play_file_with(
+            &["cat"],
+            Path::new("/dev/zero"),
+            50,
+            Duration::from_millis(100),
+        )
+        .expect_err("a player that never exits must time out, not hang")
+        .to_string();
+
+        assert!(err.contains("timed out"), "unexpected: {err}");
+        assert!(
+            start.elapsed() < FIVE_SECONDS,
+            "timeout took too long: {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
     fn test_default_candidates_are_platform_specific() {
         if cfg!(target_os = "macos") {
             assert_eq!(default_candidates(), &["afplay"]);
