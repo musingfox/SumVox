@@ -303,6 +303,26 @@ mod tests {
     }
 
     #[test]
+    fn test_is_available_tracks_the_installed_binary() {
+        // Consistency assertion: correct on machines with and without
+        // espeak-ng, so it never fails spuriously in CI.
+        let provider = EspeakProvider::new(None, 175, 100);
+        assert_eq!(
+            provider.is_available(),
+            player::find_on_path("espeak-ng").is_some()
+        );
+    }
+
+    #[test]
+    fn test_is_available_false_when_binary_missing() {
+        let provider = EspeakProvider::new(None, 175, 100).with_binary("sumvox_no_such_binary");
+        assert!(
+            !provider.is_available(),
+            "a missing engine must be skipped by the chain, not error"
+        );
+    }
+
+    #[test]
     fn test_estimate_cost_is_zero() {
         let provider = EspeakProvider::new(Some("cmn+f3".to_string()), 175, 80);
         assert_eq!(provider.estimate_cost(10_000), 0.0);
