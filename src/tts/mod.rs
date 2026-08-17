@@ -4,6 +4,7 @@
 pub mod cloud_tts;
 pub mod cloud_tts_auth;
 pub mod elevenlabs;
+pub mod espeak;
 pub mod google;
 pub mod macos;
 pub mod openai;
