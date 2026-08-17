@@ -76,6 +76,47 @@ rate = 200      # Speech rate (90-300, default: 200)
 # volume = 100  # ⚠️ NOT SUPPORTED - macOS 'say' command does not support volume control
                 # Use system volume settings instead
 
+# espeak-ng (Linux local TTS: free, offline, ~9 ms per short sentence)
+# Install: sudo pacman -S espeak-ng   |   sudo apt install espeak-ng
+# Handles Traditional and Simplified Chinese identically - no conversion needed.
+# Not installed? The provider reports itself unavailable and the chain skips it.
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "espeak"   # aliases: espeak_ng, espeak-ng
+# voice = "cmn+f3"  # Base voice plus an optional "+variant" suffix.
+#                   # Bases: cmn, cmn-latn-pinyin, en-us, ... (list with 'espeak-ng --voices')
+#                   # Variants: m1-m8, f1-f5, whisper, croak, ... from
+#                   #   /usr/share/espeak-ng-data/voices/!v/
+# rate = 175        # Words per minute, absolute (80-450; espeak-ng default: 175)
+# volume = 100      # Applied during playback, not by the engine (0-100, default: 100)
+
+# piper (Linux local TTS: neural quality, offline, ~640 ms per short sentence)
+# Install: uv tool install piper-tts   (no sudo, no AUR; puts 'piper' on PATH)
+# A piper "voice" IS a downloaded model file - SumVox never downloads one for you.
+# Get one (the .onnx AND its .onnx.json sidecar, both in the same directory) from:
+#   https://huggingface.co/rhasspy/piper-voices
+# zh_CN voices: chaowen, huayan, xiao_ya (~63 MB each), e.g.
+#   zh_CN-huayan-medium.onnx + zh_CN-huayan-medium.onnx.json
+# Missing binary OR missing model file => provider unavailable, the chain skips piper.
+# Latency note: the model is reloaded on every invocation (~640 ms, ~70x slower than
+#   espeak-ng). Prefer espeak for per-notification speech, piper for summaries.
+# Uncomment to enable:
+# [[tts.providers]]
+# name = "piper"  # alias: piper_tts
+# model = "~/.local/share/piper-voices/zh_CN-huayan-medium.onnx"
+#               # The model path IS the voice. Precedence: voice > model > path
+#               # (first non-blank wins), so this also works:
+#               #   sumvox say --tts piper --voice ~/voices/zh_CN-huayan-medium.onnx
+# rate = 200    # Mapped to piper's --length-scale (200 lands on the engine default 1.0)
+# volume = 100  # Applied during playback, not by the engine (0-100, default: 100)
+
+# Linux audio playback (applies to every non-macOS provider above)
+# Synthesized audio is played by the first of these found on PATH, in order:
+#   paplay -> pw-play -> ffplay -> mpv -> aplay
+# paplay comes from pipewire-pulse or pulseaudio-utils and is the recommended one.
+# aplay CANNOT honour `volume` - it always plays at full amplitude; install one of
+# the earlier players if you need the volume knob to do anything.
+
 # Google TTS (High quality, requires API key)
 # Uncomment to enable:
 # [[tts.providers]]
