@@ -109,6 +109,7 @@ pub use elevenlabs::ElevenLabsProvider;
 pub use google::GoogleTtsProvider;
 pub use macos::MacOsTtsProvider;
 pub use openai::OpenAiTtsProvider;
+pub use piper::PiperProvider;
 pub use xai::XaiTtsProvider;
 
 /// Create TTS provider from config array with automatic fallback
@@ -279,6 +280,24 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 speed,
                 volume,
             )))
+        }
+        "piper" | "piper_tts" => {
+            // For piper, the voice IS a downloaded .onnx model file. `voice`
+            // takes precedence because it is the field the CLI overlays, so
+            // `--voice ~/voices/zh.onnx` can select one.
+            let model_path = piper::resolve_model_path(
+                config.voice.as_deref(),
+                config.model.as_deref(),
+                config.path.as_deref(),
+            )
+            .ok_or_else(|| {
+                VoiceError::Config(
+                    "piper model is required. Set `model` (or `voice`) to a downloaded .onnx voice path."
+                        .into(),
+                )
+            })?;
+            let rate = config.rate.unwrap_or(piper::DEFAULT_RATE);
+            Ok(Box::new(PiperProvider::new(model_path, rate, volume)))
         }
         "audio_file" | "audio" | "file" => {
             let path_str = config.path.as_ref().ok_or_else(|| {
@@ -465,6 +484,90 @@ mod tests {
             "expected gemini_tts entry, got: {:?}",
             resolved.err()
         );
+    }
+
+    fn piper_config(
+        voice: Option<&str>,
+        model: Option<&str>,
+        path: Option<&str>,
+    ) -> TtsProviderConfig {
+        TtsProviderConfig {
+            name: "piper".to_string(),
+            model: model.map(str::to_string),
+            voice: voice.map(str::to_string),
+            path: path.map(str::to_string),
+            api_key: None,
+            rate: None,
+            volume: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        }
+    }
+
+    /// The `.onnx` path a built piper provider resolved to.
+    fn built_model_path(config: &TtsProviderConfig) -> String {
+        let provider = create_single_tts(config).expect("piper entry should build");
+        assert_eq!(provider.name(), "piper");
+        // Rebuild concretely to inspect the resolved model path.
+        piper::resolve_model_path(
+            config.voice.as_deref(),
+            config.model.as_deref(),
+            config.path.as_deref(),
+        )
+        .expect("a model path must have resolved")
+        .to_string_lossy()
+        .to_string()
+    }
+
+    #[test]
+    fn test_piper_without_a_model_reports_a_piper_error() {
+        let err = create_single_tts(&piper_config(None, None, None))
+            .err()
+            .expect("piper with no model must not build")
+            .to_string();
+        assert!(err.contains("piper model"), "unexpected error: {err}");
+        // Proves the arm is wired in, not falling through to the catch-all.
+        assert!(!err.contains("Unknown TTS provider"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn test_piper_builds_from_model_field() {
+        let config = piper_config(None, Some("/m/zh.onnx"), None);
+        assert_eq!(built_model_path(&config), "/m/zh.onnx");
+    }
+
+    #[test]
+    fn test_piper_voice_field_wins_over_model() {
+        // The CLI overlays `voice`, so it must be able to select the model.
+        let config = piper_config(Some("/m/b.onnx"), Some("/m/a.onnx"), None);
+        assert_eq!(built_model_path(&config), "/m/b.onnx");
+    }
+
+    #[test]
+    fn test_piper_blank_voice_falls_back_to_model() {
+        let config = piper_config(Some("   "), Some("/m/a.onnx"), None);
+        assert_eq!(built_model_path(&config), "/m/a.onnx");
+    }
+
+    #[test]
+    fn test_piper_builds_from_path_field() {
+        let config = piper_config(None, None, Some("/m/c.onnx"));
+        assert_eq!(built_model_path(&config), "/m/c.onnx");
+    }
+
+    #[test]
+    fn test_piper_expands_tilde_in_model_path() {
+        let config = piper_config(None, Some("~/v/zh.onnx"), None);
+        let resolved = built_model_path(&config);
+        assert!(
+            !resolved.starts_with('~'),
+            "tilde must be expanded: {resolved}"
+        );
+        assert!(resolved.ends_with("/v/zh.onnx"), "unexpected: {resolved}");
     }
 
     #[test]
