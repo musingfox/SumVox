@@ -499,6 +499,56 @@ mod tests {
         );
     }
 
+    // The alias arrays below are exactly the ones the dispatch arms in
+    // main.rs and hooks/claude_code.rs pass; the arms' existence is enforced by
+    // the compiler (both `match tts_engine` blocks are exhaustive).
+    const ESPEAK_ALIASES: &[&str] = &["espeak", "espeak_ng", "espeak-ng"];
+    const PIPER_ALIASES: &[&str] = &["piper", "piper_tts"];
+
+    #[test]
+    fn test_dispatch_resolves_espeak_from_config() {
+        let providers = vec![espeak_config("espeak", Some("cmn+f3"), Some(175))];
+        let provider = resolve_tts_provider(&providers, ESPEAK_ALIASES, None, 200, None)
+            .expect("configured espeak entry should resolve");
+        assert_eq!(provider.name(), "espeak");
+    }
+
+    #[test]
+    fn test_dispatch_espeak_errors_when_absent_from_config() {
+        let providers: Vec<TtsProviderConfig> = vec![];
+        let err = resolve_tts_provider(&providers, ESPEAK_ALIASES, None, 200, None)
+            .err()
+            .expect("an unconfigured engine must error")
+            .to_string();
+        assert!(
+            err.contains("espeak provider not found in config"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_dispatch_resolves_piper_with_cli_voice_override() {
+        // The CLI `--voice` overlay must reach piper's model knob.
+        let providers = vec![piper_config(None, Some("/m/a.onnx"), None)];
+        let provider =
+            resolve_tts_provider(&providers, PIPER_ALIASES, Some("/m/b.onnx"), 200, None)
+                .expect("configured piper entry should resolve");
+        assert_eq!(provider.name(), "piper");
+    }
+
+    #[test]
+    fn test_dispatch_piper_errors_when_absent_from_config() {
+        let providers: Vec<TtsProviderConfig> = vec![];
+        let err = resolve_tts_provider(&providers, PIPER_ALIASES, None, 200, None)
+            .err()
+            .expect("an unconfigured engine must error")
+            .to_string();
+        assert!(
+            err.contains("piper provider not found in config"),
+            "unexpected error: {err}"
+        );
+    }
+
     #[test]
     fn test_espeak_engine_from_str_accepts_all_aliases() {
         assert_eq!("espeak".parse::<TtsEngine>().ok(), Some(TtsEngine::Espeak));
