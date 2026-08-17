@@ -299,6 +299,51 @@ pub fn play_file_with(
     }
 }
 
+/// Write `audio_data` to a temp file and play it, applying `volume` (0-100).
+///
+/// Used by every provider that receives audio as bytes over the network. The
+/// temp file is named `{temp_file_prefix}.wav` and is removed on every path,
+/// including the error path, so no partial artifact is left in `TMPDIR`.
+pub fn play_bytes(audio_data: &[u8], volume: u32, temp_file_prefix: &str) -> Result<()> {
+    play_bytes_with(
+        default_candidates(),
+        audio_data,
+        volume,
+        temp_file_prefix,
+        PLAYBACK_TIMEOUT,
+    )
+}
+
+/// [`play_bytes`] with the candidate list and timeout injected, for tests.
+pub fn play_bytes_with(
+    candidates: &[&str],
+    audio_data: &[u8],
+    volume: u32,
+    temp_file_prefix: &str,
+    timeout: Duration,
+) -> Result<()> {
+    use std::io::Write;
+
+    tracing::debug!(
+        "Playing {} bytes, volume: {}, prefix: {}",
+        audio_data.len(),
+        volume,
+        temp_file_prefix
+    );
+
+    let tmp_path = std::env::temp_dir().join(format!("{}.wav", temp_file_prefix));
+    std::fs::File::create(&tmp_path)
+        .and_then(|mut f| f.write_all(audio_data))
+        .map_err(|e| VoiceError::Voice(format!("Failed to write temp WAV: {}", e)))?;
+
+    // Capture the result before cleanup so the temp file is removed on every
+    // path — including a spawn failure, which a bare `?` would have skipped,
+    // leaking the file.
+    let result = play_file_with(candidates, &tmp_path, volume, timeout);
+    let _ = std::fs::remove_file(&tmp_path);
+    result
+}
+
 /// The last non-empty line of a player's stderr, truncated to 200 chars.
 ///
 /// This is what makes a PipeWire `Connection refused` visible to the user
@@ -542,6 +587,35 @@ mod tests {
         assert!(
             err.contains("no supported audio player found"),
             "unexpected: {err}"
+        );
+    }
+
+    /// A minimal valid WAV file for testing.
+    fn create_test_wav() -> Vec<u8> {
+        crate::audio::wav_header::create_wav_file(&[0x00, 0x00], 24000, 1, 16)
+    }
+
+    #[test]
+    fn test_play_bytes_with_removes_temp_file_on_success() {
+        let prefix = "sumvox_test_bytes_ok";
+        let result = play_bytes_with(&["true"], &create_test_wav(), 50, prefix, FIVE_SECONDS);
+        assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+        assert!(
+            !std::env::temp_dir().join(format!("{prefix}.wav")).exists(),
+            "temp file must not survive a successful playback"
+        );
+    }
+
+    #[test]
+    fn test_play_bytes_with_removes_temp_file_on_error() {
+        let prefix = "sumvox_test_bytes_err";
+        let err = play_bytes_with(&["false"], &create_test_wav(), 50, prefix, FIVE_SECONDS)
+            .expect_err("a player exiting non-zero must never report success")
+            .to_string();
+        assert!(err.contains("Audio playback failed"), "unexpected: {err}");
+        assert!(
+            !std::env::temp_dir().join(format!("{prefix}.wav")).exists(),
+            "temp file must be removed on the error path too"
         );
     }
 

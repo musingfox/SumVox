@@ -60,7 +60,7 @@ impl XaiTtsProvider {
     }
 
     fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
-        use crate::audio::afplay::play_with_afplay;
+        use crate::audio::player::play_bytes;
 
         tracing::debug!(
             "Playing xAI TTS audio: {} bytes, volume: {}",
@@ -68,7 +68,7 @@ impl XaiTtsProvider {
             self.volume
         );
 
-        play_with_afplay(audio_data, self.volume, "sumvox_xai")
+        play_bytes(audio_data, self.volume, "sumvox_xai")
     }
 }
 

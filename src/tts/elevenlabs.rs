@@ -98,7 +98,7 @@ impl ElevenLabsProvider {
                 wav.len(),
                 self.volume
             );
-            return crate::audio::afplay::play_with_afplay(&wav, self.volume, "sumvox_elevenlabs");
+            return crate::audio::player::play_bytes(&wav, self.volume, "sumvox_elevenlabs");
         }
 
         tracing::debug!(

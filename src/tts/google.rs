@@ -125,9 +125,9 @@ impl GoogleTtsProvider {
             })
     }
 
-    /// Play audio data using afplay
+    /// Play audio data through the platform player
     fn play_audio(&self, audio_data: &[u8], mime_type: &str) -> Result<()> {
-        use crate::audio::afplay::play_with_afplay;
+        use crate::audio::player::play_bytes;
         use crate::audio::wav_header::create_wav_file;
 
         tracing::debug!(
@@ -141,8 +141,8 @@ impl GoogleTtsProvider {
         // Convert raw PCM to WAV format
         let wav_data = create_wav_file(audio_data, 24000, 1, 16);
 
-        // Play using afplay
-        play_with_afplay(&wav_data, self.volume, "sumvox_google")
+        // Play through the platform player
+        play_bytes(&wav_data, self.volume, "sumvox_google")
     }
 }
 

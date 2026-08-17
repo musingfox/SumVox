@@ -1,5 +1,5 @@
 // Google Cloud Text-to-Speech provider using service account authentication
-// Supports LINEAR16 audio with volume control via afplay
+// Supports LINEAR16 audio with volume control applied at playback
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -195,9 +195,9 @@ impl CloudTtsProvider {
         Ok(audio_data)
     }
 
-    /// Play audio data using afplay
+    /// Play audio data through the platform player
     fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
-        use crate::audio::afplay::play_with_afplay;
+        use crate::audio::player::play_bytes;
 
         tracing::debug!(
             "Playing audio: {} bytes, volume: {}",
@@ -206,7 +206,7 @@ impl CloudTtsProvider {
         );
 
         // Cloud TTS LINEAR16 response already includes WAV header
-        play_with_afplay(audio_data, self.volume, "sumvox_cloud_tts")
+        play_bytes(audio_data, self.volume, "sumvox_cloud_tts")
     }
 }
 

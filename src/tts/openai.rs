@@ -1,6 +1,6 @@
 // OpenAI Text-to-Speech provider (gpt-4o-mini-tts)
 // Docs: https://platform.openai.com/docs/api-reference/audio/createSpeech
-// Returns raw MP3 bytes played via afplay.
+// Returns raw MP3 bytes played through the platform player.
 
 use async_trait::async_trait;
 use reqwest::Client;
@@ -72,7 +72,7 @@ impl OpenAiTtsProvider {
     }
 
     fn play_audio(&self, audio_data: &[u8]) -> Result<()> {
-        use crate::audio::afplay::play_with_afplay;
+        use crate::audio::player::play_bytes;
 
         tracing::debug!(
             "Playing OpenAI TTS audio: {} bytes, volume: {}",
@@ -80,7 +80,7 @@ impl OpenAiTtsProvider {
             self.volume
         );
 
-        play_with_afplay(audio_data, self.volume, "sumvox_openai")
+        play_bytes(audio_data, self.volume, "sumvox_openai")
     }
 }
 
