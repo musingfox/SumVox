@@ -619,6 +619,32 @@ mod tests {
         );
     }
 
+    // Ported unchanged from the retired afplay module: on macOS the real
+    // `afplay` is present, so these exercise the genuine end-to-end path.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_play_bytes_success() {
+        let wav_data = create_test_wav();
+        let result = play_bytes(&wav_data, 50, "sumvox_test");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_play_bytes_zero_volume() {
+        let wav_data = create_test_wav();
+        let result = play_bytes(&wav_data, 0, "sumvox_test_zero");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_play_bytes_max_volume() {
+        let wav_data = create_test_wav();
+        let result = play_bytes(&wav_data, 100, "sumvox_test_max");
+        assert!(result.is_ok());
+    }
+
     #[test]
     fn test_play_file_with_kills_a_wedged_player() {
         // `cat /dev/zero` never exits and never closes stderr, so it wedges the

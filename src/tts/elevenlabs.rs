@@ -114,7 +114,7 @@ impl ElevenLabsProvider {
 
         // Capture the result before cleanup so the temp file is removed on
         // every path, including a spawn failure (the pre-refactor `?` skipped it).
-        let result = crate::audio::afplay::run_afplay(&tmp_path, self.volume);
+        let result = crate::audio::player::play_file(&tmp_path, self.volume);
         let _ = std::fs::remove_file(&tmp_path);
         result
     }

@@ -16,10 +16,11 @@ static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
 pub struct MacOsTtsProvider {
     voice_name: Option<String>,
     rate: u32,
-    // `say` itself has no volume flag, so we render to a file and let afplay
-    // apply `-v {volume/100}` on playback. This also routes macOS TTS through
-    // the same afplay choke point as every other provider (honors the volume
-    // knob on output devices with no software system volume, drives the avatar).
+    // `say` itself has no volume flag, so we render to a file and let the
+    // platform player apply the volume on playback. This also routes macOS TTS
+    // through the same playback choke point as every other provider (honors the
+    // volume knob on output devices with no software system volume, drives the
+    // avatar).
     volume: u32,
 }
 
@@ -57,7 +58,7 @@ impl TtsProvider for MacOsTtsProvider {
             self.volume
         );
 
-        // Render to a temp AIFF, then play via afplay so the volume knob applies.
+        // Render to a temp AIFF, then play it so the volume knob applies.
         // Qualify by PID + per-call counter so concurrent invocations (rapid
         // `sumvox say` calls that don't hold the hook queue lock, or across
         // processes) never clobber each other's file.
@@ -92,8 +93,9 @@ impl TtsProvider for MacOsTtsProvider {
             return Err(VoiceError::Voice(format!("Say command failed: {}", stderr)));
         }
 
-        // Play with afplay -v; clean up on every path (including playback error).
-        let result = crate::audio::afplay::run_afplay(&aiff_path, self.volume);
+        // Play at the configured volume; clean up on every path (including
+        // playback error).
+        let result = crate::audio::player::play_file(&aiff_path, self.volume);
         let _ = std::fs::remove_file(&aiff_path);
         result?;
 
@@ -149,8 +151,8 @@ mod tests {
         assert!(!result);
     }
 
-    // Exercises the full render-to-file + afplay path at a low volume; fails if
-    // `say -o` or the afplay handoff breaks. Uses volume 1 to stay near-silent.
+    // Exercises the full render-to-file + playback path at a low volume; fails
+    // if `say -o` or the playback handoff breaks. Volume 1 stays near-silent.
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn test_speak_renders_and_plays() {

@@ -99,11 +99,11 @@ impl AudioFileProvider {
     }
 }
 
-/// Play an audio file to completion (blocking) using afplay.
+/// Play an audio file to completion (blocking) via the platform player.
 fn play_audio_blocking(file_path: &Path, volume: u32) -> Result<()> {
     tracing::debug!("Playing audio file: {:?}, volume: {}", file_path, volume);
 
-    crate::audio::afplay::run_afplay(file_path, volume)
+    crate::audio::player::play_file(file_path, volume)
 }
 
 #[async_trait]
