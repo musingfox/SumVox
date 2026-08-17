@@ -67,6 +67,8 @@ pub enum TtsEngine {
     ElevenLabs,
     OpenAi,
     AudioFile,
+    Espeak,
+    Piper,
     Auto,
 }
 
@@ -82,6 +84,8 @@ impl FromStr for TtsEngine {
             "elevenlabs" | "eleven_labs" | "11labs" => Ok(TtsEngine::ElevenLabs),
             "openai" | "openai_tts" => Ok(TtsEngine::OpenAi),
             "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
+            "espeak" | "espeak_ng" | "espeak-ng" => Ok(TtsEngine::Espeak),
+            "piper" | "piper_tts" => Ok(TtsEngine::Piper),
             "auto" => Ok(TtsEngine::Auto),
             _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
         }
@@ -98,6 +102,8 @@ impl std::fmt::Display for TtsEngine {
             TtsEngine::ElevenLabs => write!(f, "elevenlabs"),
             TtsEngine::OpenAi => write!(f, "openai"),
             TtsEngine::AudioFile => write!(f, "audio_file"),
+            TtsEngine::Espeak => write!(f, "espeak"),
+            TtsEngine::Piper => write!(f, "piper"),
             TtsEngine::Auto => write!(f, "auto"),
         }
     }
@@ -491,6 +497,42 @@ mod tests {
             "expected gemini_tts entry, got: {:?}",
             resolved.err()
         );
+    }
+
+    #[test]
+    fn test_espeak_engine_from_str_accepts_all_aliases() {
+        assert_eq!("espeak".parse::<TtsEngine>().ok(), Some(TtsEngine::Espeak));
+        assert_eq!(
+            "espeak-ng".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::Espeak)
+        );
+        assert_eq!(
+            "espeak_ng".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::Espeak)
+        );
+        // Parsing is case-insensitive, like every other engine tag.
+        assert_eq!("ESPEAK".parse::<TtsEngine>().ok(), Some(TtsEngine::Espeak));
+    }
+
+    #[test]
+    fn test_piper_engine_from_str_accepts_all_aliases() {
+        assert_eq!("piper".parse::<TtsEngine>().ok(), Some(TtsEngine::Piper));
+        assert_eq!(
+            "piper_tts".parse::<TtsEngine>().ok(),
+            Some(TtsEngine::Piper)
+        );
+    }
+
+    #[test]
+    fn test_new_engines_display_as_their_canonical_tag() {
+        assert_eq!(TtsEngine::Espeak.to_string(), "espeak");
+        assert_eq!(TtsEngine::Piper.to_string(), "piper");
+    }
+
+    #[test]
+    fn test_espeakng_is_not_an_alias() {
+        // Only the three documented spellings map to Espeak.
+        assert!("espeakng".parse::<TtsEngine>().is_err());
     }
 
     fn espeak_config(name: &str, voice: Option<&str>, rate: Option<u32>) -> TtsProviderConfig {
