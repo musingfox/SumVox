@@ -114,6 +114,13 @@ impl TtsProvider for EspeakProvider {
     }
 
     async fn speak(&self, text: &str) -> Result<bool> {
+        // Guard before any temp-path or spawn work: nothing to say is a
+        // deliberate no-op, not a failure. Matches every other provider.
+        if text.trim().is_empty() {
+            tracing::warn!("Empty message, skipping voice notification");
+            return Ok(false);
+        }
+
         tracing::info!(
             "Speaking with espeak-ng: voice={:?}, rate={}, volume={}",
             self.voice,
@@ -300,6 +307,23 @@ mod tests {
             err.contains("espeak-ng synthesis failed"),
             "unexpected: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_speak_empty_text_is_a_no_op() {
+        // The binary is `false`, which would error if it were ever spawned —
+        // so Ok(false) proves the guard runs before the spawn.
+        let provider = EspeakProvider::new(None, 175, 80).with_binary("false");
+        assert!(!provider.speak("").await.expect("empty text must not error"));
+    }
+
+    #[tokio::test]
+    async fn test_speak_whitespace_only_is_a_no_op() {
+        let provider = EspeakProvider::new(None, 175, 80).with_binary("false");
+        assert!(!provider
+            .speak("   \n ")
+            .await
+            .expect("whitespace-only text must not error"));
     }
 
     #[test]

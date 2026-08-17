@@ -147,6 +147,13 @@ impl TtsProvider for PiperProvider {
     }
 
     async fn speak(&self, text: &str) -> Result<bool> {
+        // Guard before any temp-path or spawn work: nothing to say is a
+        // deliberate no-op, not a failure. Matches every other provider.
+        if text.trim().is_empty() {
+            tracing::warn!("Empty message, skipping voice notification");
+            return Ok(false);
+        }
+
         tracing::info!(
             "Speaking with piper: model={:?}, rate={}, volume={}",
             self.model_path,
@@ -312,6 +319,24 @@ mod tests {
             .expect_err("exit 0 with no WAV must be an error")
             .to_string();
         assert!(err.contains("produced no audio"), "unexpected: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_speak_empty_text_is_a_no_op() {
+        // The binary is `false`, which would error if it were ever spawned —
+        // so Ok(false) proves the guard runs before the spawn.
+        let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("false");
+        assert!(!provider.speak("").await.expect("empty text must not error"));
+    }
+
+    #[tokio::test]
+    async fn test_speak_ideographic_space_is_a_no_op() {
+        // U+3000 is whitespace, so a "blank" CJK message must not speak.
+        let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("false");
+        assert!(!provider
+            .speak("\u{3000}")
+            .await
+            .expect("ideographic space must not error"));
     }
 
     #[test]
