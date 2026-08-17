@@ -300,6 +300,12 @@ impl TtsProviderConfig {
             "xai" | "xai_tts" | "grok" => self.get_xai_api_key().is_some(),
             "openai" | "openai_tts" => self.get_openai_api_key().is_some(),
             "elevenlabs" | "eleven_labs" | "11labs" => self.get_elevenlabs_api_key().is_some(),
+            // espeak-ng needs no credentials and ships no assets: nothing to configure
+            "espeak" | "espeak_ng" | "espeak-ng" => true,
+            // piper needs a user-supplied .onnx voice model path in voice/model/path
+            "piper" | "piper_tts" => [&self.voice, &self.model, &self.path]
+                .iter()
+                .any(|field| field.as_deref().is_some_and(|v| !v.trim().is_empty())),
             _ => false,
         }
     }
@@ -952,6 +958,62 @@ mod tests {
             style_prompt: None,
         };
         assert!(macos_provider.is_configured());
+    }
+
+    fn local_tts_provider(name: &str) -> TtsProviderConfig {
+        TtsProviderConfig {
+            name: name.to_string(),
+            model: None,
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: None,
+            stability: None,
+            style: None,
+            style_prompt: None,
+        }
+    }
+
+    #[test]
+    fn test_espeak_is_configured() {
+        assert!(local_tts_provider("espeak").is_configured());
+    }
+
+    #[test]
+    fn test_espeak_ng_alias_is_configured() {
+        assert!(local_tts_provider("espeak-ng").is_configured());
+    }
+
+    #[test]
+    fn test_piper_without_model_is_not_configured() {
+        let provider = local_tts_provider("piper");
+        assert!(provider.model.is_none());
+        assert!(provider.voice.is_none());
+        assert!(provider.path.is_none());
+        assert!(!provider.is_configured());
+    }
+
+    #[test]
+    fn test_piper_with_model_is_configured() {
+        let mut provider = local_tts_provider("piper");
+        provider.model = Some("/m/zh.onnx".to_string());
+        assert!(provider.is_configured());
+    }
+
+    #[test]
+    fn test_piper_with_voice_is_configured() {
+        let mut provider = local_tts_provider("piper");
+        provider.voice = Some("/m/zh.onnx".to_string());
+        assert!(provider.is_configured());
+    }
+
+    #[test]
+    fn test_unknown_tts_provider_is_not_configured() {
+        assert!(!local_tts_provider("totally_unknown").is_configured());
     }
 
     fn openai_tts_provider(api_key: Option<String>) -> TtsProviderConfig {
