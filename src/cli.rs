@@ -34,17 +34,27 @@ pub struct SayArgs {
     /// Text to speak
     pub text: String,
 
-    /// TTS engine: auto, macos, google
+    /// TTS engine: auto, macos, espeak, piper, google, cloud_tts, xai, elevenlabs, openai, audio_file
     #[arg(long, default_value = "auto")]
     pub tts: String,
 
     /// Voice name (engine-specific)
-    /// For macos: Tingting, Meijia, etc.
-    /// For google: Aoede, Charon, Fenrir, Kore, Puck, Orus
+    ///
+    /// macos: Tingting, Meijia, etc.
+    /// google: Aoede, Charon, Fenrir, Kore, Puck, Orus.
+    /// espeak: an espeak-ng voice, optionally with a variant, e.g. cmn or cmn+f3.
+    /// piper: the path to a downloaded .onnx voice model,
+    /// e.g. ~/voices/zh_CN-huayan-medium.onnx
     #[arg(long)]
     pub voice: Option<String>,
 
-    /// Speech rate for macOS say (90-300), ignored for Google TTS
+    /// Speech rate in words per minute
+    ///
+    /// macos: passed to `say -r`.
+    /// espeak: passed to `espeak-ng -s` (clamped to 80-450).
+    /// piper: mapped onto --length-scale, where 200 is piper's default speed and
+    /// a higher value speaks faster.
+    /// Ignored by the cloud engines (google, cloud_tts, xai, elevenlabs, openai).
     #[arg(long, default_value = "200")]
     pub rate: u32,
 
@@ -79,15 +89,27 @@ pub struct SumArgs {
     #[arg(long, default_value = "10")]
     pub timeout: u64,
 
-    /// TTS engine: auto, macos, google
+    /// TTS engine: auto, macos, espeak, piper, google, cloud_tts, xai, elevenlabs, openai, audio_file
     #[arg(long, default_value = "auto")]
     pub tts: String,
 
     /// Voice name (engine-specific)
+    ///
+    /// macos: Tingting, Meijia, etc.
+    /// google: Aoede, Charon, Fenrir, Kore, Puck, Orus.
+    /// espeak: an espeak-ng voice, optionally with a variant, e.g. cmn or cmn+f3.
+    /// piper: the path to a downloaded .onnx voice model,
+    /// e.g. ~/voices/zh_CN-huayan-medium.onnx
     #[arg(long)]
     pub voice: Option<String>,
 
-    /// Speech rate for macOS say (90-300)
+    /// Speech rate in words per minute
+    ///
+    /// macos: passed to `say -r`.
+    /// espeak: passed to `espeak-ng -s` (clamped to 80-450).
+    /// piper: mapped onto --length-scale, where 200 is piper's default speed and
+    /// a higher value speaks faster.
+    /// Ignored by the cloud engines (google, cloud_tts, xai, elevenlabs, openai).
     #[arg(long, default_value = "200")]
     pub rate: u32,
 
@@ -253,5 +275,47 @@ mod tests {
     #[test]
     fn test_cli_verify() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn test_say_help_documents_local_engines() {
+        let rendered = Cli::try_parse_from(["sumvox", "say", "--help"])
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            rendered.contains("espeak"),
+            "help missing espeak: {rendered}"
+        );
+        assert!(rendered.contains("piper"), "help missing piper: {rendered}");
+        assert!(
+            rendered.contains("cmn+f3"),
+            "help missing espeak voice form: {rendered}"
+        );
+        assert!(
+            rendered.contains(".onnx"),
+            "help missing piper voice form: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_sum_help_documents_local_engines() {
+        let rendered = Cli::try_parse_from(["sumvox", "sum", "--help"])
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            rendered.contains("espeak"),
+            "help missing espeak: {rendered}"
+        );
+        assert!(rendered.contains("piper"), "help missing piper: {rendered}");
+        assert!(
+            rendered.contains("cmn+f3"),
+            "help missing espeak voice form: {rendered}"
+        );
+        assert!(
+            rendered.contains(".onnx"),
+            "help missing piper voice form: {rendered}"
+        );
     }
 }
