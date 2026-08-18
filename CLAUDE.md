@@ -90,7 +90,8 @@ sumvox say "Test" --tts macos --voice Daniel
 - `src/config.rs` - Configuration loading/saving
 - `src/transcript.rs` - Claude Code transcript parsing
 - `src/llm/` - Multi-provider LLM support (Gemini, Anthropic, OpenAI, xAI Grok, Ollama)
-- `src/tts/` - Text-to-Speech engines (macOS say, Google TTS, Google Cloud TTS, xAI TTS, ElevenLabs)
+- `src/tts/` - Text-to-Speech engines (macOS say, espeak-ng, piper, Google TTS, Google Cloud TTS, xAI TTS, OpenAI TTS, ElevenLabs)
+- `src/audio/` - Playback: `player.rs` is the single choke point (afplay on macOS, probed CLI player elsewhere)
 - `src/provider_factory.rs` - Provider creation with fallback chain
 
 ### Configuration Format
@@ -115,6 +116,7 @@ sumvox/
 │   ├── hooks/            # Hook handlers
 │   ├── llm/              # LLM providers
 │   ├── tts/              # TTS engines
+│   ├── audio/            # Playback (player.rs, file.rs, normalize.rs, wav_header.rs)
 │   └── provider_factory.rs
 ├── config/
 │   └── recommended.toml  # Example configuration with comments

@@ -20,7 +20,9 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
   - xAI TTS (natural speech, 5 voices, **volume control supported**)
   - Google TTS (Gemini-powered, high quality, **volume control supported**)
   - Google Cloud TTS (Standard/WaveNet/Chirp3-HD voices, **volume control supported**)
-  - macOS say (local, always available, **volume control NOT supported**)
+  - macOS say (local, offline, no API key, **volume control supported**)
+  - espeak-ng (local, offline, no API key, Linux/BSD, **volume control supported**)
+  - piper (local, offline neural voices, no API key, **volume control supported**)
 - 🎨 **Simple Configuration**: YAML format with comments and easy setup
 - 🔄 **Smart Fallback**: Automatic provider switching on failure
 - ✅ **Production Ready**: 90+ automated tests
@@ -78,7 +80,7 @@ sumvox init
 
 This creates `~/.config/sumvox/config.yaml` with sensible defaults:
 - **LLM**: Google Gemini → Anthropic → OpenAI → Ollama (fallback chain, local last)
-- **TTS**: macOS say (system default voice)
+- **TTS**: macOS say (system default voice) — on Linux, swap the first provider for `espeak` or `piper`, see [Local TTS on Linux](#local-tts-on-linux)
 - **Language**: English (customize in config)
 
 #### Step 2: Set API Key
@@ -238,6 +240,8 @@ hooks:
 ```
 
 - `macos` = Use only macOS TTS
+- `espeak` = Use only espeak-ng (local, offline)
+- `piper` = Use only piper (local, offline, neural)
 - `google` = Use only Google TTS (Gemini)
 - `xai` = Use only xAI TTS
 - `openai` = Use only OpenAI TTS
@@ -480,12 +484,16 @@ sumvox say "Hello world"
 
 # Specify TTS provider
 sumvox say "Hello" --tts macos
+sumvox say "Hello" --tts espeak --voice cmn+f3
+sumvox say "Hello" --tts piper
 sumvox say "Hello" --tts google --voice Aoede
 sumvox say "Hello" --tts xai --voice rex
 sumvox say "Hello" --tts openai --voice nova
 sumvox say "Hello" --tts elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
 
-# Adjust speech rate (macOS only, 90-300)
+# Adjust speech rate — local engines only, ignored by the cloud providers.
+# macOS say: words per minute (90-300). espeak: words per minute (80-450, default 175).
+# piper: inverse length-scale (default 200, higher = faster).
 sumvox say "Hello" --rate 250
 ```
 
@@ -553,7 +561,9 @@ RUST_LOG=trace sumvox
 
 | Provider | Voices | API Key Required | Speed | Quality | Cost | Volume Control |
 |----------|--------|------------------|-------|---------|------|----------------|
-| **macOS say** | System voices | ❌ | Instant | Good | Free | ❌ Not supported |
+| **macOS say** | System voices | ❌ | Instant | Good | Free | ✅ Supported (0-100) |
+| **espeak-ng** | 100+ languages/variants | ❌ | Instant | Robotic | Free | ✅ Supported (0-100) |
+| **piper** | One model per voice | ❌ | Fast | Good (neural) | Free | ✅ Supported (0-100) |
 | **xAI TTS** | 5 voices | ✅ | Fast | Excellent | $4.20/1M chars | ✅ Supported (0-100) |
 | **OpenAI TTS** | 10 voices | ✅ | Fast | Excellent | ~$0.015/min | ✅ Supported (0-100) |
 | **ElevenLabs TTS** | Library + Voice Design | ✅ | Fast | Premium | $0.06-0.12/1K chars | ✅ Supported (0-100) |
@@ -565,7 +575,41 @@ RUST_LOG=trace sumvox
 - No voice specified = uses system default language
 - English: `Alex`, `Samantha`, `Daniel`
 - Chinese: `Meijia` (繁體), `Tingting` (简体)
-- ⚠️ **Volume control not supported** - use macOS system volume settings
+- ✅ **Volume control supported** - synthesis is rendered to a file and played at the configured volume (0-100)
+
+##### Local TTS on Linux
+
+macOS `say` is unavailable off macOS; `espeak` and `piper` are its offline replacements. Both need
+their binary on `PATH`, and both are skipped by the fallback chain when it is missing.
+
+- **espeak-ng** — instant and tiny, but robotic. Install with `pacman -S espeak-ng` or
+  `apt install espeak-ng`. `voice` takes an espeak-ng voice name; append a variant with `+`
+  (`cmn` Mandarin, `cmn+f3` female, `en-us`, `yue` Cantonese). Run `espeak-ng --voices` to list
+  them. Traditional and Simplified Chinese produce identical phonemes, so no conversion is needed.
+- **piper** — neural, noticeably better Chinese prosody, still fast enough for notifications.
+  Install with `uv tool install piper-tts`. Voice models are downloaded by hand from
+  [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices); each voice is a `.onnx` file
+  that must sit next to its `.onnx.json` sidecar. Point `voice`, `model` or `path` at the `.onnx`
+  (first non-blank wins, `~` is expanded) — piper is treated as unavailable until both the binary
+  and the model exist.
+
+Playback needs a command-line player: SumVox probes `paplay` → `pw-play` → `ffplay` → `mpv` →
+`aplay` and uses the first one installed. `paplay` ships with both `pulseaudio-utils` and
+`pipewire-pulse`, so most desktops already have it.
+
+```toml
+[[tts.providers]]
+name = "espeak"
+voice = "cmn+f3"   # optional; omit for the espeak-ng default voice
+rate = 175         # words per minute (80-450)
+volume = 80
+
+[[tts.providers]]
+name = "piper"
+voice = "~/.local/share/piper/zh_CN-huayan-medium.onnx"
+rate = 200         # inverse length-scale; higher = faster
+volume = 80
+```
 
 **xAI TTS Voices:**
 - `eve` (default), `ara`, `rex`, `sal`, `leo`
@@ -618,8 +662,8 @@ summarization:
 hooks:
   claude_code:
     notification_filter: [...]  # Which notification types to speak
-    notification_tts_provider: "macos" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
-    stop_tts_provider: "macos" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
+    notification_tts_provider: "macos" | "espeak" | "piper" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
+    stop_tts_provider: "macos" | "espeak" | "piper" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
 ```
 
 ### Environment Variables
@@ -679,6 +723,10 @@ open ~/.config/sumvox/config.yaml
 - Test with: `sumvox say "test"`
 - Check system volume settings
 - For macOS: System Settings → Sound → Output
+- For Linux: install a player (`paplay`, `pw-play`, `ffplay`, `mpv` or `aplay`) — SumVox reports
+  which ones it looked for when none is found. `aplay` has no volume control and is skipped when
+  `volume` is 0. Over SSH, `XDG_RUNTIME_DIR` is often unset; SumVox defaults it to
+  `/run/user/{uid}` for the player, but if your runtime dir differs, export it before running.
 
 **Problem: "Ollama not responding"**
 ```bash

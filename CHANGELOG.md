@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **espeak TTS provider** (`espeak`, aliases `espeak_ng` / `espeak-ng`): local, offline, no API key — the Linux counterpart to `macos say`. Optional `voice` names an espeak-ng voice (e.g. `cmn+f3` for Mandarin with a female variant); `rate` is words per minute (default 175, clamped 80–450). Traditional and Simplified Chinese phonemize identically, so no conversion layer is needed. Requires the `espeak-ng` binary on `PATH`.
+- **piper TTS provider** (`piper`, alias `piper_tts`): local, offline neural TTS with markedly better Chinese prosody than espeak. The voice model is a `.onnx` file resolved from `voice`, `model` or `path` (first non-blank wins, `~` expanded) and must sit beside its `.onnx.json` sidecar; `rate` maps onto piper's `--length-scale` (default 200, higher = faster). Requires the `piper` binary (`uv tool install piper-tts`) and a hand-downloaded voice model.
+
 ### Changed
+- **Audio playback is no longer macOS-only.** The hardcoded `afplay` call became `src/audio/player.rs`, a single playback choke point for the whole crate. On macOS it still runs `afplay`; elsewhere it probes `paplay` → `pw-play` → `ffplay` → `mpv` → `aplay` and uses the first one installed. Every TTS provider — including the six cloud engines that were silent on Linux — now routes through it, so the 0–100 volume knob and the menu-bar avatar hook work on Linux too.
+  - Volume is mapped through a cube root for `paplay` and `mpv`, whose scales are cubic in amplitude: `volume = 50` now measures −6 dB rather than −18 dB, matching macOS. `aplay` has no volume control at all and is skipped entirely when `volume` is 0, rather than playing at full blast.
+  - `XDG_RUNTIME_DIR` defaults to `/run/user/{uid}` for the player process, so playback works from an SSH session (where the variable is often unset) instead of failing with `Connection refused`.
+  - A wedged player is killed after 120 s and reported as a timeout, instead of blocking the hook forever.
 - **menu bar app avatar**: replaced the PNG mouth-flap / text-face avatar with a native **Vector Orb** — a smooth, deformable blob drawn as a Catmull-Rom path filled with a radial gradient (original visual language, zero webview/dependencies). The avatar is now driven continuously by a 0..1 level — idle breathes with slow drifting lobes, speaking swells and wobbles the blob driven by the `now_playing` audio's RMS envelope, and the typewriter path synthesizes a smooth level when there is no real audio. Custom `~/.config/sumvox/avatar/{closed,open}.png` art is no longer read; the orb's emerald→cyan palette is built in.
+
+### Removed
+- **`src/audio/afplay.rs`**: the macOS-only playback module and its `run_afplay` helper are gone, replaced by `src/audio/player.rs`. No configuration change is needed — macOS behaviour is unchanged.
 
 ## [1.8.0] - 2026-07-04
 

@@ -95,11 +95,16 @@ llm:
 
 tts:
   providers:
-    - name: macos
+    - name: macos    # Linux: use `espeak`, or `piper` with a downloaded .onnx voice
 ```
 
 **Pros:** Zero cost, works offline
 **Cons:** Slower (30-60s for summaries)
+
+On Linux, `macos` is unavailable — install `espeak-ng` (`pacman -S espeak-ng` / `apt install
+espeak-ng`) or piper (`uv tool install piper-tts` plus a voice model from
+[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices)) and name it instead. See
+[README](README.md#local-tts-on-linux) for the details.
 
 ### High Quality
 ```yaml
@@ -158,13 +163,14 @@ hooks:
 ```yaml
 hooks:
   claude_code:
-    notification_tts_provider: macos  # Fast (no volume control)
-    stop_tts_provider: auto           # Best quality (Google TTS supports volume)
-    notification_volume: 80           # Only works with Google TTS
-    stop_volume: 100                  # Only works with Google TTS
+    notification_tts_provider: macos  # Fast, local, free
+    stop_tts_provider: auto           # Best quality (try the whole fallback chain)
+    notification_volume: 80           # 0-100
+    stop_volume: 100                  # 0-100
 ```
 
-**Note:** Volume control only works with Google TTS. macOS TTS uses system volume.
+**Note:** Volume control works with every provider. The one exception is Linux hosts where `aplay`
+is the only player installed — it has no volume control, so SumVox skips it when `volume` is 0.
 
 ## 🔇 Temporarily Disable SumVox
 
@@ -216,7 +222,7 @@ RUST_LOG=debug sumvox say "test"
 ## 📖 Full Documentation
 
 - [README.md](README.md) - Complete guide
-- [config/recommended.yaml](config/recommended.yaml) - Annotated config example
+- [config/recommended.toml](config/recommended.toml) - Annotated config example
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 
 ## 💬 Support

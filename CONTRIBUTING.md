@@ -56,8 +56,20 @@ sumvox/
 │   │   └── ollama.rs     # Local Ollama integration
 │   ├── tts/              # TTS engines
 │   │   ├── mod.rs
+│   │   ├── macos.rs      # macOS say command
+│   │   ├── espeak.rs     # espeak-ng (local, offline)
+│   │   ├── piper.rs      # piper neural TTS (local, offline)
 │   │   ├── google.rs     # Google TTS
-│   │   └── macos.rs      # macOS say command
+│   │   ├── cloud_tts.rs  # Google Cloud TTS
+│   │   ├── openai.rs     # OpenAI TTS
+│   │   ├── xai.rs        # xAI TTS
+│   │   └── elevenlabs.rs # ElevenLabs TTS
+│   ├── audio/            # Playback
+│   │   ├── mod.rs
+│   │   ├── player.rs     # Single playback choke point (afplay / paplay / ...)
+│   │   ├── file.rs       # audio_file provider
+│   │   ├── normalize.rs  # Loudness normalization
+│   │   └── wav_header.rs # PCM -> WAV framing
 │   └── provider_factory.rs  # Provider creation
 ├── config/
 │   └── recommended.toml  # Recommended configuration
