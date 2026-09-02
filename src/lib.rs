@@ -7,6 +7,7 @@ pub mod error;
 pub mod hooks;
 pub mod llm;
 pub mod notify_log;
+pub mod pipeline;
 pub mod provider_factory;
 pub mod queue;
 pub mod transcript;

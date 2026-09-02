@@ -92,6 +92,7 @@ sumvox say "Test" --tts macos --voice Daniel
 - `src/llm/` - Multi-provider LLM support (Gemini, Anthropic, OpenAI, xAI Grok, Ollama)
 - `src/tts/` - Text-to-Speech engines (macOS say, espeak-ng, piper, Google TTS, Google Cloud TTS, xAI TTS, OpenAI TTS, ElevenLabs)
 - `src/audio/` - Playback: `player.rs` is the single choke point (afplay on macOS, probed CLI player elsewhere)
+- `src/pipeline.rs` - Shared summarize → speak flow used by `say`/`sum`/`json` and the hook handlers
 - `src/provider_factory.rs` - Provider creation with fallback chain
 
 ### Configuration Format
@@ -114,6 +115,7 @@ sumvox/
 │   ├── transcript.rs     # Transcript parsing
 │   ├── error.rs          # Error types
 │   ├── hooks/            # Hook handlers
+│   ├── pipeline.rs       # Shared summarize → speak flow
 │   ├── llm/              # LLM providers
 │   ├── tts/              # TTS engines
 │   ├── audio/            # Playback (player.rs, file.rs, normalize.rs, wav_header.rs)
