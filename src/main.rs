@@ -58,7 +58,6 @@ async fn main() -> Result<()> {
                 tracing::info!("No subcommand provided, auto-detecting json mode from stdin");
                 handle_json(JsonArgs {
                     format: "auto".to_string(),
-                    timeout: 10,
                 })
                 .await
             } else {
@@ -188,10 +187,7 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
         HookFormat::ClaudeCode => {
             let input = ClaudeCodeInput::parse(&input_buffer)?;
             let tts_opts = TtsOptions::default();
-            let llm_opts = LlmOptions {
-                timeout: args.timeout,
-                ..Default::default()
-            };
+            let llm_opts = LlmOptions::default();
 
             hooks::claude_code::process(&input, &config, &tts_opts, &llm_opts).await?;
         }
@@ -208,10 +204,7 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
 
             let system_message = Some(config.summarization.system_message.clone());
 
-            let llm_opts = LlmOptions {
-                timeout: args.timeout,
-                ..Default::default()
-            };
+            let llm_opts = LlmOptions::default();
 
             let summary =
                 generate_summary(&config, &llm_opts, system_message, &user_prompt).await?;

@@ -28,10 +28,6 @@ where
     }
 }
 
-fn default_version() -> String {
-    "1.1.0".to_string()
-}
-
 fn default_turns() -> usize {
     1
 }
@@ -107,15 +103,6 @@ pub fn effective_disable_thinking(provider: &LlmProviderConfig, params: &LlmPara
 }
 
 impl LlmProviderConfig {
-    /// Check if this provider has the required credentials
-    #[allow(dead_code)]
-    pub fn has_credentials(&self) -> bool {
-        match self.name.to_lowercase().as_str() {
-            "ollama" | "local" => true, // No API key needed
-            _ => self.api_key.as_ref().is_some_and(|k| !k.is_empty()),
-        }
-    }
-
     /// Get API key from config or environment variable
     pub fn get_api_key(&self) -> Option<String> {
         // Config value takes priority
@@ -288,28 +275,6 @@ pub struct TtsProviderConfig {
 }
 
 impl TtsProviderConfig {
-    /// Check if this TTS provider has the required configuration
-    #[allow(dead_code)]
-    pub fn is_configured(&self) -> bool {
-        match self.name.to_lowercase().as_str() {
-            "macos" | "say" => true, // Always available on macOS
-            "google" | "google_tts" | "gcloud" | "gemini" => {
-                // Need API key from config or env
-                self.get_api_key().is_some()
-            }
-            "xai" | "xai_tts" | "grok" => self.get_xai_api_key().is_some(),
-            "openai" | "openai_tts" => self.get_openai_api_key().is_some(),
-            "elevenlabs" | "eleven_labs" | "11labs" => self.get_elevenlabs_api_key().is_some(),
-            // espeak-ng needs no credentials and ships no assets: nothing to configure
-            "espeak" | "espeak_ng" | "espeak-ng" => true,
-            // piper needs a user-supplied .onnx voice model path in voice/model/path
-            "piper" | "piper_tts" => [&self.voice, &self.model, &self.path]
-                .iter()
-                .any(|field| field.as_deref().is_some_and(|v| !v.trim().is_empty())),
-            _ => false,
-        }
-    }
-
     /// Get ElevenLabs API key from config or environment
     pub fn get_elevenlabs_api_key(&self) -> Option<String> {
         if let Some(ref key) = self.api_key {
@@ -538,11 +503,8 @@ pub struct HooksConfig {
 // Main SumvoxConfig
 // ============================================================================
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SumvoxConfig {
-    #[serde(default = "default_version")]
-    pub version: String,
-
     #[serde(default)]
     pub llm: LlmConfig,
 
@@ -556,18 +518,6 @@ pub struct SumvoxConfig {
     /// Hook-specific configurations
     #[serde(default)]
     pub hooks: HooksConfig,
-}
-
-impl Default for SumvoxConfig {
-    fn default() -> Self {
-        Self {
-            version: default_version(),
-            llm: LlmConfig::default(),
-            tts: TtsConfig::default(),
-            summarization: SummarizationConfig::default(),
-            hooks: HooksConfig::default(),
-        }
-    }
 }
 
 impl SumvoxConfig {
@@ -611,18 +561,6 @@ impl SumvoxConfig {
         // Priority 3: No config file found, use defaults
         tracing::info!("No config file found, using defaults");
         Ok(Self::default())
-    }
-
-    /// Load configuration from a specific path (auto-detect format)
-    #[allow(dead_code)]
-    pub fn load(path: PathBuf) -> Result<Self> {
-        if path.extension().and_then(|s| s.to_str()) == Some("yaml")
-            || path.extension().and_then(|s| s.to_str()) == Some("yml")
-        {
-            Self::load_yaml(path)
-        } else {
-            Self::load_json(path)
-        }
     }
 
     /// Load configuration from a JSON file
@@ -675,47 +613,6 @@ impl SumvoxConfig {
     pub fn save_to_home(&self) -> Result<()> {
         let config_path = Self::toml_config_path()?;
         self.save_toml(config_path)
-    }
-
-    /// Save configuration to a specific path (auto-detect format)
-    #[allow(dead_code)]
-    pub fn save(&self, path: PathBuf) -> Result<()> {
-        match path.extension().and_then(|s| s.to_str()) {
-            Some("toml") => self.save_toml(path),
-            Some("yaml") | Some("yml") => self.save_yaml(path),
-            Some("json") => self.save_json(path),
-            _ => self.save_toml(path), // Default to TOML for unknown extensions
-        }
-    }
-
-    /// Save configuration to a JSON file
-    #[allow(dead_code)]
-    pub fn save_json(&self, path: PathBuf) -> Result<()> {
-        // Ensure directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, json)?;
-
-        tracing::info!("Config saved to {:?}", path);
-        Ok(())
-    }
-
-    /// Save configuration to a YAML file
-    pub fn save_yaml(&self, path: PathBuf) -> Result<()> {
-        // Ensure directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let yaml = serde_yaml::to_string(self)
-            .map_err(|e| VoiceError::Config(format!("Failed to serialize YAML: {}", e)))?;
-        std::fs::write(&path, yaml)?;
-
-        tracing::info!("Config saved to {:?}", path);
-        Ok(())
     }
 
     /// Backup a config file with timestamp
@@ -848,7 +745,6 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SumvoxConfig::default();
-        assert_eq!(config.version, "1.1.0");
         assert!(!config.llm.providers.is_empty());
         assert!(!config.tts.providers.is_empty());
         assert_eq!(config.summarization.turns, 1);
@@ -861,7 +757,6 @@ mod tests {
     #[test]
     fn test_load_new_format() {
         let config_json = r#"{
-            "version": "1.0.0",
             "enabled": true,
             "llm": {
                 "providers": [
@@ -896,8 +791,7 @@ mod tests {
         temp_file.write_all(config_json.as_bytes()).unwrap();
         let path = temp_file.path().to_path_buf();
 
-        let config = SumvoxConfig::load(path).unwrap();
-        assert_eq!(config.version, "1.0.0");
+        let config = SumvoxConfig::load_json(path).unwrap();
         assert_eq!(config.llm.providers.len(), 2);
         assert_eq!(config.llm.providers[0].name, "google");
         assert_eq!(
@@ -905,115 +799,6 @@ mod tests {
             Some("test-key".to_string())
         );
         assert_eq!(config.tts.providers[0].name, "macos");
-    }
-
-    #[test]
-    fn test_provider_has_credentials() {
-        let provider_with_key = LlmProviderConfig {
-            name: "google".to_string(),
-            model: "gemini-2.5-flash".to_string(),
-            api_key: Some("test-key".to_string()),
-            base_url: None,
-            timeout: 10,
-            disable_thinking: None,
-        };
-        assert!(provider_with_key.has_credentials());
-
-        let provider_without_key = LlmProviderConfig {
-            name: "google".to_string(),
-            model: "gemini-2.5-flash".to_string(),
-            api_key: None,
-            base_url: None,
-            timeout: 10,
-            disable_thinking: None,
-        };
-        assert!(!provider_without_key.has_credentials());
-
-        let ollama_provider = LlmProviderConfig {
-            name: "ollama".to_string(),
-            model: "llama3.2".to_string(),
-            api_key: None,
-            base_url: None,
-            timeout: 10,
-            disable_thinking: None,
-        };
-        assert!(ollama_provider.has_credentials()); // Ollama doesn't need API key
-    }
-
-    #[test]
-    fn test_tts_is_configured() {
-        let macos_provider = TtsProviderConfig {
-            name: "macos".to_string(),
-            model: None,
-            voice: Some("Tingting".to_string()),
-            api_key: None,
-            rate: Some(200),
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
-        };
-        assert!(macos_provider.is_configured());
-    }
-
-    fn local_tts_provider(name: &str) -> TtsProviderConfig {
-        TtsProviderConfig {
-            name: name.to_string(),
-            model: None,
-            voice: None,
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
-        }
-    }
-
-    #[test]
-    fn test_espeak_is_configured() {
-        assert!(local_tts_provider("espeak").is_configured());
-    }
-
-    #[test]
-    fn test_espeak_ng_alias_is_configured() {
-        assert!(local_tts_provider("espeak-ng").is_configured());
-    }
-
-    #[test]
-    fn test_piper_without_model_is_not_configured() {
-        let provider = local_tts_provider("piper");
-        assert!(provider.model.is_none());
-        assert!(provider.voice.is_none());
-        assert!(provider.path.is_none());
-        assert!(!provider.is_configured());
-    }
-
-    #[test]
-    fn test_piper_with_model_is_configured() {
-        let mut provider = local_tts_provider("piper");
-        provider.model = Some("/m/zh.onnx".to_string());
-        assert!(provider.is_configured());
-    }
-
-    #[test]
-    fn test_piper_with_voice_is_configured() {
-        let mut provider = local_tts_provider("piper");
-        provider.voice = Some("/m/zh.onnx".to_string());
-        assert!(provider.is_configured());
-    }
-
-    #[test]
-    fn test_unknown_tts_provider_is_not_configured() {
-        assert!(!local_tts_provider("totally_unknown").is_configured());
     }
 
     fn openai_tts_provider(api_key: Option<String>) -> TtsProviderConfig {
@@ -1045,13 +830,6 @@ mod tests {
         std::env::remove_var("OPENAI_API_KEY");
         let provider = openai_tts_provider(Some("${OPENAI_API_KEY}".to_string()));
         assert_eq!(provider.get_openai_api_key(), None);
-    }
-
-    #[test]
-    fn test_openai_is_configured_without_key() {
-        std::env::remove_var("OPENAI_API_KEY");
-        let provider = openai_tts_provider(None);
-        assert!(!provider.is_configured());
     }
 
     #[test]
@@ -1101,23 +879,6 @@ mod tests {
 
         let result = config.validate();
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_save_and_load() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().join("test-config.json");
-
-        let mut config = SumvoxConfig::default();
-        config.llm.providers[0].api_key = Some("test-key".to_string());
-
-        config.save(path.clone()).unwrap();
-
-        let loaded = SumvoxConfig::load(path).unwrap();
-        assert_eq!(
-            loaded.llm.providers[0].api_key,
-            Some("test-key".to_string())
-        );
     }
 
     #[test]
@@ -1204,7 +965,6 @@ mod tests {
     #[test]
     fn test_load_yaml_format() {
         let config_yaml = r#"
-version: "1.0.0"
 llm:
   providers:
     - name: google
@@ -1233,7 +993,6 @@ tts:
         path = yaml_path;
 
         let config = SumvoxConfig::load_yaml(path).unwrap();
-        assert_eq!(config.version, "1.0.0");
         assert_eq!(config.llm.providers.len(), 2);
         assert_eq!(config.llm.providers[0].name, "google");
         assert_eq!(
@@ -1241,23 +1000,6 @@ tts:
             Some("test-key".to_string())
         );
         assert_eq!(config.tts.providers[0].name, "macos");
-    }
-
-    #[test]
-    fn test_save_and_load_yaml() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().join("test-config.yaml");
-
-        let mut config = SumvoxConfig::default();
-        config.llm.providers[0].api_key = Some("test-yaml-key".to_string());
-
-        config.save_yaml(path.clone()).unwrap();
-
-        let loaded = SumvoxConfig::load_yaml(path).unwrap();
-        assert_eq!(
-            loaded.llm.providers[0].api_key,
-            Some("test-yaml-key".to_string())
-        );
     }
 
     #[test]

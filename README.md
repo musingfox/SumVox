@@ -151,8 +151,6 @@ Start a Claude Code session and trigger a notification. You should hear:
 After running `sumvox init`, your config at `~/.config/sumvox/config.yaml` looks like this:
 
 ```yaml
-version: "1.0.0"
-
 llm:
   providers:
     - name: google
@@ -643,8 +641,6 @@ volume = 80
 ### Configuration File Structure
 
 ```yaml
-version: "1.0.0"
-
 llm:
   providers: [...]      # Array, tries in order
   parameters: {...}     # Shared across all providers

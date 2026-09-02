@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - **`src/audio/afplay.rs`**: the macOS-only playback module and its `run_afplay` helper are gone, replaced by `src/audio/player.rs`. No configuration change is needed — macOS behaviour is unchanged.
+- Dead configuration surface that was parsed but never read: the `version` config key, `sum --max-length`, `json --timeout`, and the `--format gemini-cli` value that was listed in `--help` but never implemented. Existing config files containing `version` still load; the key is ignored.
 
 ## [1.8.0] - 2026-07-04
 

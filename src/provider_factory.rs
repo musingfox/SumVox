@@ -32,45 +32,6 @@ impl FromStr for Provider {
 pub struct ProviderFactory;
 
 impl ProviderFactory {
-    /// Create provider from config array with automatic fallback
-    ///
-    /// Tries each provider in order until one is available.
-    /// Returns an error if no provider can be created.
-    #[allow(dead_code)] // Used in tests, may be used in future API
-    pub fn create_from_config(providers: &[LlmProviderConfig]) -> Result<Box<dyn LlmProvider>> {
-        let mut errors = Vec::new();
-
-        for config in providers {
-            match Self::create_single(config) {
-                Ok(provider) => {
-                    if provider.is_available() {
-                        tracing::info!(
-                            "Using LLM provider: {} (model: {})",
-                            config.name,
-                            config.model
-                        );
-                        return Ok(provider);
-                    } else {
-                        tracing::debug!(
-                            "Provider {} created but not available, trying next",
-                            config.name
-                        );
-                        errors.push(format!("{}: not available", config.name));
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!("Failed to create provider {}: {}", config.name, e);
-                    errors.push(format!("{}: {}", config.name, e));
-                }
-            }
-        }
-
-        Err(VoiceError::Config(format!(
-            "No LLM provider available. Tried: {}",
-            errors.join("; ")
-        )))
-    }
-
     /// Create a single provider from config
     pub fn create_single(config: &LlmProviderConfig) -> Result<Box<dyn LlmProvider>> {
         let timeout = Duration::from_secs(config.timeout);
@@ -236,65 +197,6 @@ mod tests {
 
         // Unknown provider
         assert!("unknown".parse::<Provider>().is_err());
-    }
-
-    #[test]
-    fn test_create_from_config_with_api_key() {
-        let providers = vec![LlmProviderConfig {
-            name: "google".to_string(),
-            model: "gemini-2.5-flash".to_string(),
-            api_key: Some("test-key".to_string()),
-            base_url: None,
-            timeout: 10,
-            disable_thinking: None,
-        }];
-
-        let result = ProviderFactory::create_from_config(&providers);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().name(), "gemini");
-    }
-
-    #[test]
-    fn test_create_from_config_fallback_to_ollama() {
-        // First provider has no key, should fallback to Ollama
-        let providers = vec![
-            LlmProviderConfig {
-                name: "google".to_string(),
-                model: "gemini-2.5-flash".to_string(),
-                api_key: None,
-                base_url: None,
-                timeout: 10,
-                disable_thinking: None,
-            },
-            LlmProviderConfig {
-                name: "ollama".to_string(),
-                model: "llama3.2".to_string(),
-                api_key: None,
-                base_url: None,
-                timeout: 10,
-                disable_thinking: None,
-            },
-        ];
-
-        // Clear any env vars that might interfere
-        env::remove_var("GEMINI_API_KEY");
-
-        let result = ProviderFactory::create_from_config(&providers);
-        // Note: This will only succeed if Ollama is actually running
-        // In CI, this test may need to be adjusted
-        if let Ok(provider) = result {
-            assert_eq!(provider.name(), "ollama");
-        }
-    }
-
-    #[test]
-    fn test_create_from_config_empty_providers() {
-        let providers: Vec<LlmProviderConfig> = vec![];
-
-        let result = ProviderFactory::create_from_config(&providers);
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.to_string().contains("No LLM provider"));
     }
 
     #[test]

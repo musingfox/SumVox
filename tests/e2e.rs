@@ -122,9 +122,7 @@ fn notification_json_stop_active() -> String {
 }
 
 fn config_without_llm() -> String {
-    r#"version = "1.2.0"
-
-[llm]
+    r#"[llm]
 providers = []
 [llm.parameters]
 max_tokens = 100
@@ -150,9 +148,7 @@ stop_tts_provider = "macos"
 }
 
 fn config_no_tts() -> String {
-    r#"version = "1.2.0"
-
-[llm]
+    r#"[llm]
 providers = []
 [llm.parameters]
 max_tokens = 100
@@ -175,9 +171,7 @@ notification_filter = ["*"]
 
 fn config_with_audio_file(path: &str) -> String {
     format!(
-        r#"version = "1.2.0"
-
-[llm]
+        r#"[llm]
 providers = []
 [llm.parameters]
 max_tokens = 100
@@ -208,9 +202,7 @@ stop_tts_provider = "macos"
 
 fn config_with_queue(timeout: u64) -> String {
     format!(
-        r#"version = "1.2.0"
-
-[llm]
+        r#"[llm]
 providers = []
 [llm.parameters]
 max_tokens = 100
@@ -243,9 +235,7 @@ fn config_with_specific_filter(types: &[&str]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        r#"version = "1.2.0"
-
-[llm]
+        r#"[llm]
 providers = []
 [llm.parameters]
 max_tokens = 100

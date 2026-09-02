@@ -2,8 +2,6 @@
 # Location: ~/.config/sumvox/config.yaml
 # Documentation: https://github.com/musingfox/sumvox
 
-version: "1.0.0"
-
 # LLM Provider Configuration (fallback chain - try in order)
 llm:
   # Provider list: tried in order until one succeeds

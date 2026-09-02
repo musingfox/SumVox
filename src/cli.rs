@@ -77,10 +77,6 @@ pub struct SumArgs {
     #[arg(long)]
     pub model: Option<String>,
 
-    /// Maximum summary length in words
-    #[arg(long, default_value = "50")]
-    pub max_length: usize,
-
     /// Only output summary, don't speak
     #[arg(long)]
     pub no_speak: bool,
@@ -121,13 +117,9 @@ pub struct SumArgs {
 /// Arguments for 'json' subcommand (hook mode)
 #[derive(Parser, Debug, Clone)]
 pub struct JsonArgs {
-    /// JSON format: auto, claude-code, gemini-cli, generic
+    /// JSON format: auto, claude-code, generic
     #[arg(long, default_value = "auto")]
     pub format: String,
-
-    /// Request timeout in seconds
-    #[arg(long, default_value = "10")]
-    pub timeout: u64,
 }
 
 /// Arguments for 'init' subcommand
@@ -188,7 +180,6 @@ mod tests {
                 assert_eq!(args.text, "Long text to summarize");
                 assert_eq!(args.provider, None);
                 assert_eq!(args.model, None);
-                assert_eq!(args.max_length, 50);
                 assert!(!args.no_speak);
             }
             _ => panic!("Expected Sum command"),
@@ -205,8 +196,6 @@ mod tests {
             "google",
             "--model",
             "gemini-2.5-flash",
-            "--max-length",
-            "100",
             "--no-speak",
         ])
         .unwrap();
@@ -216,7 +205,6 @@ mod tests {
                 assert_eq!(args.text, "-");
                 assert_eq!(args.provider, Some("google".to_string()));
                 assert_eq!(args.model, Some("gemini-2.5-flash".to_string()));
-                assert_eq!(args.max_length, 100);
                 assert!(args.no_speak);
             }
             _ => panic!("Expected Sum command"),
@@ -230,7 +218,6 @@ mod tests {
         match cli.command {
             Some(Commands::Json(args)) => {
                 assert_eq!(args.format, "auto");
-                assert_eq!(args.timeout, 10);
             }
             _ => panic!("Expected Json command"),
         }
