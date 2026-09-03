@@ -3,6 +3,9 @@
 #
 # Local: cp config/e2e_test.toml.example config/e2e_test.toml
 # CI: echo "$E2E_CONFIG" > config/e2e_test.toml
+#
+# Keep the local engine as "macos": on Linux the e2e harness rewrites it to
+# "espeak" automatically, so one file serves both platforms.
 
 [llm]
 [llm.parameters]

@@ -92,11 +92,20 @@ jobs:
     name: E2E
     needs: [fmt, clippy]
     if: github.event_name == 'push'
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     environment: E2E_CONFIG
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
+
+      # espeak-ng is the local TTS engine on Linux; ffplay is the audio player
+      # (the runner has no sound server, so playback goes to SDL's dummy driver).
+      - name: Install espeak-ng and ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y espeak-ng ffmpeg libasound2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -114,9 +123,10 @@ jobs:
       - name: Run E2E tests
         env:
           E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
+          SDL_AUDIODRIVER: dummy
         if: env.E2E_CONFIG != ''
         run: cargo test --test e2e --verbose
-        timeout-minutes: 5
+        timeout-minutes: 10
 
   build:
     name: Build

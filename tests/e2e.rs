@@ -2,6 +2,10 @@
 // Tests only external behavior: stdin/stdout/stderr/exit code
 // Requires: config/e2e_test.toml with real API keys
 //
+// The local TTS engine is platform-dependent: `macos` on macOS, `espeak` elsewhere.
+// Every config installed by the harness is written with `macos`; on non-macOS the
+// harness rewrites that literal to `espeak` so one config serves both platforms.
+//
 // Run: cargo test --test e2e
 // Debug single test: cargo test --test e2e test_name -- --nocapture
 
@@ -15,6 +19,18 @@ use tempfile::TempDir;
 // ============================================================================
 // Test Infrastructure
 // ============================================================================
+
+/// The local, offline TTS engine for the platform under test.
+const LOCAL_TTS: &str = if cfg!(target_os = "macos") {
+    "macos"
+} else {
+    "espeak"
+};
+
+/// Swap the `macos` engine for the platform's local engine in a TOML config.
+fn localize_config(content: &str) -> String {
+    content.replace("\"macos\"", &format!("\"{LOCAL_TTS}\""))
+}
 
 struct TestEnv {
     home_dir: TempDir,
@@ -44,7 +60,7 @@ impl TestEnv {
     fn install_config(&self, content: &str) -> &Path {
         let config_dir = self.home_dir.path().join(".config/sumvox");
         fs::create_dir_all(&config_dir).unwrap();
-        fs::write(config_dir.join("config.toml"), content).unwrap();
+        fs::write(config_dir.join("config.toml"), localize_config(content)).unwrap();
         self.home_dir.path()
     }
 
@@ -407,12 +423,12 @@ fn test_sum_no_llm_config() {
 // ============================================================================
 
 #[test]
-fn test_say_macos() {
+fn test_say_local() {
     let env = TestEnv::new();
     env.setup_base_config();
 
     env.cmd()
-        .args(["say", "hello", "--tts", "macos"])
+        .args(["say", "hello", "--tts", LOCAL_TTS])
         .assert()
         .success();
 }
@@ -423,7 +439,7 @@ fn test_say_volume() {
     env.setup_base_config();
 
     env.cmd()
-        .args(["say", "hello", "--tts", "macos", "--volume", "50"])
+        .args(["say", "hello", "--tts", LOCAL_TTS, "--volume", "50"])
         .assert()
         .success();
 }
@@ -522,7 +538,7 @@ fn test_say_audio_no_config() {
 // ============================================================================
 
 #[test]
-fn test_sum_full_flow_macos() {
+fn test_sum_full_flow_local() {
     let env = TestEnv::new();
     env.setup_base_config();
 
@@ -531,7 +547,7 @@ fn test_sum_full_flow_macos() {
             "sum",
             "Explain Rust ownership in one sentence",
             "--tts",
-            "macos",
+            LOCAL_TTS,
         ])
         .timeout(std::time::Duration::from_secs(30))
         .assert()
