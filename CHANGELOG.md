@@ -17,12 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `XDG_RUNTIME_DIR` defaults to `/run/user/{uid}` for the player process, so playback works from an SSH session (where the variable is often unset) instead of failing with `Connection refused`.
   - A wedged player is killed after 120 s and reported as a timeout, instead of blocking the hook forever.
 - **menu bar app avatar**: replaced the PNG mouth-flap / text-face avatar with a native **Vector Orb** — a smooth, deformable blob drawn as a Catmull-Rom path filled with a radial gradient (original visual language, zero webview/dependencies). The avatar is now driven continuously by a 0..1 level — idle breathes with slow drifting lobes, speaking swells and wobbles the blob driven by the `now_playing` audio's RMS envelope, and the typewriter path synthesizes a smooth level when there is no real audio. Custom `~/.config/sumvox/avatar/{closed,open}.png` art is no longer read; the orb's emerald→cyan palette is built in.
+  - The 1.8.0 toast — a HUD that appeared top-right and dismissed itself after 4 s — is now a persistent, draggable orb that sits wherever you leave it and opens the same menu on click. What appears per notification is the speech bubble beside it, which types the text out and hides after 4–12 s scaled to its length. The orb renders at 20 fps idle and 60 fps while speaking.
 
 - **`sumvox say`, `sumvox sum`, and generic-JSON hook input now go through the same speech pipeline as the Claude Code hooks** (`src/pipeline.rs`). Consequences: they honour the menu bar mute flag (`~/.config/sumvox/muted`), append every spoken text to `~/.config/sumvox/history.log`, skip `audio_file` entries in the auto fallback chain, and strip a leading `[emotion]` tag for engines that would read it aloud, and apply `--volume` in the default `auto` engine mode (it was silently ignored there before). In the hook path, `stop_tts_provider` / `notification_tts_provider = "gemini_tts"` now binds to the `gemini_tts` config entry instead of the first `cloud_tts` one.
+
+- **`sumvox init` and `--help` now name the format they actually use.** `init` has written `config.toml` since the TOML migration, but its output still told you it had created `config.yaml` and pointed at `config/recommended.yaml`. Both the `init` summary and the `--help` text for the command now say `config.toml`, as do the Homebrew caveats.
+- **`--help` documents every TTS engine**: `--tts`, `--voice` and `--rate` list the engines they accept and what each knob means per engine (macOS words-per-minute, espeak's 80–450 range, piper's length-scale, ignored by the cloud engines).
+- **espeak and piper report a configured status.** Both fell through to "not configured", because the check only knew how to look for an API key. `espeak` now always counts as configured (it needs no credentials and no assets); `piper` counts as configured once `voice`, `model` or `path` names a voice model.
+- **Documentation**: README and QUICKSTART are TOML throughout (they still showed YAML examples for a format the tool no longer writes), and both were trimmed of duplicated and unverifiable material. `config/recommended.toml` documents the espeak, piper and Linux-playback blocks, and no longer claims macOS TTS cannot honour `volume` — it has since `say` began rendering to a file.
+
+### Fixed
+- **`sumvox init` no longer overwrites an existing `config.toml`.** The "already exists" guard only looked for the legacy `config.yaml` / `config.json`, so once a config had been migrated to TOML a plain `sumvox init` silently replaced it — API keys and all. The guard now covers all three paths; `--force` still overwrites.
+- **Config values keep their decimal form.** TOML has only 64-bit floats, so the serializer cast every `f32` up and a saved config read `temperature = 0.30000001192092896`. `temperature` and the ElevenLabs `speed` / `stability` / `style` knobs now serialize as written (`0.3`), which also keeps a YAML → TOML migration from mangling them.
 
 ### Removed
 - **`src/audio/afplay.rs`**: the macOS-only playback module and its `run_afplay` helper are gone, replaced by `src/audio/player.rs`. No configuration change is needed — macOS behaviour is unchanged.
 - Dead configuration surface that was parsed but never read: the `version` config key, `sum --max-length`, `json --timeout`, and the `--format gemini-cli` value that was listed in `--help` but never implemented. Existing config files containing `version` still load; the key is ignored.
+- **`config/recommended.yaml`**: the legacy YAML example, superseded by `config/recommended.toml`. Existing YAML configs in `~/.config/sumvox/` are still migrated automatically.
+
+### Internal
+- **The e2e suite runs on Linux.** Every test hard-coded the `macos` engine, so it could only run on macOS and the Linux work had no end-to-end coverage. The harness now rewrites that literal to `espeak` on non-macOS hosts, so one `config/e2e_test.toml` serves both platforms, and CI runs the job on `ubuntu-latest` alongside `macos-latest`.
 
 ## [1.8.0] - 2026-07-04
 
