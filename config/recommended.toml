@@ -72,7 +72,7 @@ name = "macos"
 # voice = "Daniel"  # Optional: specify voice (run 'say -v ?' to list available voices)
 rate = 200      # Speech rate (90-300, default: 200)
 # volume = 100  # Playback volume (0-100); synthesis is rendered to a file and
-                # played through afplay, so the knob applies here too
+                # played by the platform player, so the knob applies here too
 
 # espeak-ng (Linux local TTS: free, offline, ~9 ms per short sentence)
 # Install: sudo pacman -S espeak-ng   |   sudo apt install espeak-ng
@@ -122,7 +122,7 @@ rate = 200      # Speech rate (90-300, default: 200)
 # model = "gemini-2.5-flash-preview-tts"  # Required for Google TTS
 # voice = "Aoede"     # Options: Aoede, Charon, Fenrir, Kore, Puck, Orus
 # api_key = "${GEMINI_API_KEY}"
-# volume = 50   # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+# volume = 50   # Playback volume (0-100, default: 100)
 #               # Gemini TTS output is loud by default, 40-60 is recommended
 
 # xAI TTS (Natural speech, 5 voices, requires API key)
@@ -135,7 +135,7 @@ rate = 200      # Speech rate (90-300, default: 200)
 # voice = "eve"           # Options: eve, ara, rex, sal, leo
 # language_code = "auto"  # Language: "auto", "en", "zh", "ja", etc.
 # api_key = "${XAI_API_KEY}"
-# volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+# volume = 100  # Playback volume (0-100, default: 100)
 
 # ElevenLabs TTS (Premium voices, very natural, requires API key)
 # Pricing:
@@ -151,7 +151,7 @@ rate = 200      # Speech rate (90-300, default: 200)
 #                                  #   JBFqnCBsd6RMkjVDRZzb (George), TX3LPaxmHKxFdv7VOQHJ (Liam),
 #                                  #   pNInz6obpgDQGcFmaJgB (Adam), EXAVITQu4vr4xnSDxMaL (Bella)
 # api_key = "${ELEVENLABS_API_KEY}"
-# volume = 100  # ✅ SUPPORTED - Volume control via afplay (0-100, default: 100)
+# volume = 100  # Playback volume (0-100, default: 100)
 
 # OpenAI TTS (gpt-4o-mini-tts, steerable style via instructions, requires API key)
 # Pricing: ~$0.015 per minute of audio (gpt-4o-mini-tts)
@@ -180,7 +180,7 @@ rate = 200      # Speech rate (90-300, default: 200)
 # language_code = "cmn-TW"  # Language code (en-US, cmn-TW, ja-JP, etc.)
 #                           # Note: Traditional Chinese uses "cmn-TW" (Mandarin-Taiwan), NOT "zh-TW"
 # voice = "cmn-TW-Standard-A"  # Voice name (Standard-A/B/C, Wavenet-A/B/C, etc.)
-# volume = 100  # ✅ SUPPORTED - Volume control via rodio (0-100, default: 100)
+# volume = 100  # Playback volume (0-100, default: 100)
 
 # Gemini-TTS (expressive voices via the same Cloud TTS endpoint)
 # Set `model` to switch cloud_tts into Gemini-TTS mode: bare voice names
@@ -197,7 +197,7 @@ rate = 200      # Speech rate (90-300, default: 200)
 # voice = "Kore"  # Bare Gemini voice name (Kore, Charon, Puck, Aoede, ...)
 # language_code = "en-US"
 # style_prompt = "Say the following in a calm, encouraging tone."  # Optional
-# volume = 100  # ✅ SUPPORTED - Volume control via afplay (0-100, default: 100)
+# volume = 100  # Playback volume (0-100, default: 100)
 
 # ============================================================================
 # Summarization Settings (used by Stop hook and sum command)
@@ -228,18 +228,19 @@ fallback_message = "Task completed"
 # ============================================================================
 
 [hooks.claude_code]
-# Notification types to speak (empty = disabled, ["*"] = all)
-# Available: permission_prompt, idle_prompt, elicitation_dialog, auth_success
+# Notification types to speak (empty = disabled, ["*"] = all).
+# Matched literally against Claude Code's `notification_type` field, so the
+# valid values are whatever it sends; these three are the common ones.
 notification_filter = [
     "permission_prompt",
     "idle_prompt",
     "elicitation_dialog"
 ]
 
-# TTS provider for Notification hook
-# "auto" = use TTS fallback chain
-# "macos" = force macOS TTS (fast, offline)
-# "google" = force Google TTS (high quality)
+# TTS provider for Notification hook. Either "auto" (walk the whole fallback
+# chain) or the name of one configured entry:
+#   macos | espeak | piper | google | cloud_tts | gemini_tts | xai | openai |
+#   elevenlabs | audio_file
 notification_tts_provider = "macos"
 
 # TTS provider for Stop hook
@@ -247,8 +248,14 @@ notification_tts_provider = "macos"
 stop_tts_provider = "auto"
 
 # Volume control for different hook types (0-100)
-# ⚠️ IMPORTANT: Volume control support depends on TTS provider
-#    ✅ Google TTS: Supports volume control
-#    ❌ macOS TTS: Does NOT support volume control (uses system volume)
-notification_volume = 80   # Notification volume (only works with Google TTS)
-stop_volume = 100          # Summary volume (only works with Google TTS)
+# Every engine honours it: synthesis is written to a file and played by the
+# platform player (afplay on macOS, the first of paplay/pw-play/ffplay/mpv/aplay
+# found on PATH elsewhere), which is where the volume is applied.
+# The one exception is a Linux host whose only player is `aplay` — it has no
+# volume flag, so it is skipped entirely when volume = 0.
+notification_volume = 80   # Notification volume
+stop_volume = 100          # Summary volume
+
+# Seconds to wait for the cross-process queue lock before giving up, so
+# overlapping hooks speak one after another instead of on top of each other.
+# queue_timeout = 30

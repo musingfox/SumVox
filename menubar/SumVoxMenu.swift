@@ -430,8 +430,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Amplitude-driven orb
     //
-    // now_playing is truncate-written by run_afplay just before it spawns afplay,
-    // so a write event on it means "real audio is starting now". We decode that
+    // now_playing is truncate-written by audio/player.rs just before it spawns the
+    // platform player, so a write event on it means "real audio is starting now". We decode that
     // file, build an RMS envelope, and drive the orb continuously by env[k]/peak
     // (0..1) over the clip's real duration. Same arm-dir-then-file pattern as
     // history.log. ponytail: parallel watcher instead of generalizing

@@ -334,7 +334,8 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
 
 /// Resolve a CLI/hook-selected TTS engine to a provider, sourcing all attributes
 /// from the matching config entry. Only the voice/volume the caller explicitly set
-/// override config; `rate` is taken from the caller (macOS-only). The engine must
+/// override config; `rate` is taken from the caller (used by macos, espeak and piper,
+/// ignored by the cloud engines). The engine must
 /// exist in config — config is the single source of truth, so an absent engine is
 /// an error and no provider/model/voice value is ever hardcoded here.
 pub fn resolve_tts_provider(

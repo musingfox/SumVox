@@ -1,5 +1,6 @@
 // Configuration loading and validation
-// Unified config at ~/.config/sumvox/config.json with array-based provider fallback
+// Unified config at ~/.config/sumvox/config.toml with array-based provider fallback;
+// a legacy config.yaml or config.json is migrated to TOML on load
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

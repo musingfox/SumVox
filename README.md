@@ -269,7 +269,9 @@ fallback_message = "Task completed"
 
 [hooks.claude_code]
 # Which notifications get spoken. ["*"] speaks all of them; [] disables them.
-notification_filter = ["permission_prompt", "idle_prompt", "elicitation_dialog", "auth_success"]
+# Entries are matched literally against Claude Code's own `notification_type`
+# field, so the valid values are whatever it sends.
+notification_filter = ["permission_prompt", "idle_prompt", "elicitation_dialog"]
 ```
 
 ## 🎯 CLI Commands

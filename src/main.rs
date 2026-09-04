@@ -240,7 +240,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
         }
     }
 
-    // Remove old JSON config if migrating to YAML
+    // Remove the old JSON config when --force rewrites it as TOML
     if args.force && json_path.exists() {
         std::fs::remove_file(&json_path).ok();
     }
