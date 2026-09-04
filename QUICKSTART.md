@@ -2,14 +2,11 @@
 
 ## 🚀 Installation (1 minute)
 
-### macOS (Homebrew)
 ```bash
+# Homebrew (macOS and Linux)
 brew tap musingfox/sumvox
 brew install sumvox
-```
 
-### Other Methods
-```bash
 # Cargo
 cargo install sumvox
 
@@ -19,33 +16,35 @@ cargo install sumvox
 ## ⚙️ Setup (3 minutes)
 
 ### 1. Initialize Config
+
 ```bash
 sumvox init
 ```
 
 ### 2. Set API Key
 
-Edit your config file:
-```bash
-open ~/.config/sumvox/config.toml
+Edit `~/.config/sumvox/config.toml` and replace the `${PROVIDER_API_KEY}` placeholder with a real
+key — a placeholder counts as unset, so the provider is skipped:
+
+```toml
+[[llm.providers]]
+name = "google"
+model = "gemini-3.1-flash-lite"
+api_key = "AIza..."   # Get one from https://ai.google.dev
 ```
 
-Replace `${PROVIDER_API_KEY}` with your actual API key:
-```yaml
-providers:
-  - name: google
-    model: gemini-3.1-flash-lite
-    api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
-```
+Or leave the placeholder and export `GEMINI_API_KEY` instead.
 
 ### 3. Test Voice
+
 ```bash
 sumvox say "Hello, SumVox is working!"
 ```
 
 ### 4. Configure Claude Code Hook
 
-Edit `~/.claude/settings.json`:
+Edit `~/.claude/settings.json` (find your path with `which sumvox`):
+
 ```json
 {
   "hooks": {
@@ -61,41 +60,43 @@ Edit `~/.claude/settings.json`:
 }
 ```
 
-**Find sumvox path:** `which sumvox`
-
 ## 🎯 Common Configurations
 
 ### Default (Recommended)
-```yaml
-# ~/.config/sumvox/config.toml
-llm:
-  providers:
-    - name: google
-      model: gemini-3.1-flash-lite
-      api_key: ${GEMINI_API_KEY}
-    - name: ollama
-      model: llama3.2
 
-tts:
-  providers:
-    - name: macos
-    - name: google
-      voice: Aoede
+```toml
+[[llm.providers]]
+name = "google"
+model = "gemini-3.1-flash-lite"
+api_key = "${PROVIDER_API_KEY}"
+
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+timeout = 60
+
+[[tts.providers]]
+name = "macos"
+
+[[tts.providers]]
+name = "google"
+model = "gemini-2.5-flash-preview-tts"   # required
+voice = "Aoede"                          # required
+api_key = "${PROVIDER_API_KEY}"
 ```
 
 **Pros:** Fast cloud LLM, free local TTS, reliable fallback
-**Cost:** ~$0.01/day
 
 ### Free & Offline
-```yaml
-llm:
-  providers:
-    - name: ollama
-      model: llama3.2
 
-tts:
-  providers:
-    - name: macos    # Linux: use `espeak`, or `piper` with a downloaded .onnx voice
+```toml
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+timeout = 60
+
+[[tts.providers]]
+name = "macos"   # Linux: "espeak", or "piper" with a downloaded .onnx voice
 ```
 
 **Pros:** Zero cost, works offline
@@ -107,114 +108,102 @@ espeak-ng`) or piper (`uv tool install piper-tts` plus a voice model from
 [README](README.md#local-tts-on-linux) for the details.
 
 ### High Quality
-```yaml
-llm:
-  providers:
-    - name: anthropic
-      model: claude-haiku-4-5-20251001
 
-tts:
-  providers:
-    - name: google
-      voice: Aoede
+```toml
+[[llm.providers]]
+name = "anthropic"
+model = "claude-haiku-4-5-20251001"
+api_key = "${PROVIDER_API_KEY}"
+
+[[tts.providers]]
+name = "google"
+model = "gemini-2.5-flash-preview-tts"
+voice = "Aoede"
+api_key = "${PROVIDER_API_KEY}"
 ```
-
-**Pros:** Best quality
-**Cost:** ~$0.10/day
 
 ## 🎨 Customization Cheat Sheet
 
 ### Change Voice Language
-```yaml
-tts:
-  providers:
-    - name: macos
-      voice: Meijia  # Chinese
-      # voice: Daniel  # English
-      # voice: ""  # System default
+
+```toml
+[[tts.providers]]
+name = "macos"
+voice = "Meijia"   # Chinese; "Daniel" for English; omit for the system default
 ```
 
 List voices: `say -v ?`
 
 ### Change Summary Style
-```yaml
-summarization:
-  # Skip transcript file I/O by using Claude Code's last_assistant_message field
-  # directly (LLM summarization still runs — only the JSONL read is skipped)
-  content_source: "last_message"  # Or "transcript" (default)
-  
-  system_message: "Be concise and technical"
-  # Or: "Be friendly and casual"
-  # Or: "用中文總結，語氣輕鬆"
+
+```toml
+[summarization]
+# "last_message" skips the transcript file read and uses Claude Code's
+# last_assistant_message directly (LLM summarization still runs)
+content_source = "transcript"   # or "last_message"
+system_message = "Be concise and technical"
 ```
 
 ### Filter Notifications
-```yaml
-hooks:
-  claude_code:
-    notification_filter:
-      - "*"  # All notifications
-      # Or selective:
-      # - permission_prompt
-      # - idle_prompt
+
+```toml
+[hooks.claude_code]
+notification_filter = ["*"]   # all; or ["permission_prompt", "idle_prompt"]
 ```
 
 ### TTS Provider per Hook
-```yaml
-hooks:
-  claude_code:
-    notification_tts_provider: macos  # Fast, local, free
-    stop_tts_provider: auto           # Best quality (try the whole fallback chain)
-    notification_volume: 80           # 0-100
-    stop_volume: 100                  # 0-100
+
+```toml
+[hooks.claude_code]
+notification_tts_provider = "macos"  # fast, local, free
+stop_tts_provider = "auto"           # best quality: try the whole fallback chain
+notification_volume = 80             # 0-100
+stop_volume = 100
 ```
 
-**Note:** Volume control works with every provider. The one exception is Linux hosts where `aplay`
-is the only player installed — it has no volume control, so SumVox skips it when `volume` is 0.
+**Note:** Volume works with every provider. The one exception is a Linux host where `aplay` is the
+only player installed — it has no volume control, so SumVox skips it when `volume = 0`.
 
 ## 🔇 Temporarily Disable SumVox
 
-Launch Claude Code without voice notifications:
-
 ```bash
-# Bash / Zsh
-SUMVOX_DISABLE=1 claude
-
-# Fish
-env SUMVOX_DISABLE=1 claude
+SUMVOX_DISABLE=1 claude       # Bash / Zsh
+env SUMVOX_DISABLE=1 claude   # Fish
 ```
 
 **Tip:** Create an alias for quick access:
+
 ```bash
-alias claude-quiet='SUMVOX_DISABLE=1 claude'  # Bash/Zsh
+alias claude-quiet='SUMVOX_DISABLE=1 claude'      # Bash / Zsh
 alias claude-quiet 'env SUMVOX_DISABLE=1 claude'  # Fish
 ```
 
 ## 🔧 Troubleshooting
 
 ### "No API key found"
-```bash
-# Check your config file
-cat ~/.config/sumvox/config.toml
 
-# Make sure api_key is set (not ${PROVIDER_API_KEY})
-# Edit config:
-open ~/.config/sumvox/config.toml
+```bash
+cat ~/.config/sumvox/config.toml
+# An api_key still reading ${PROVIDER_API_KEY} counts as unset
 ```
 
 ### "No audio"
+
 ```bash
-sumvox say "test"  # Should hear "test"
-# Check: System Settings → Sound → Output
+sumvox say "test"
+# macOS: System Settings → Sound → Output
+# Linux: install paplay / pw-play / ffplay / mpv / aplay
 ```
 
 ### "Ollama not responding"
+
 ```bash
 ollama serve
 ollama pull llama3.2
 ```
 
 ### Debug mode
+
 ```bash
 RUST_LOG=debug sumvox say "test"
 ```

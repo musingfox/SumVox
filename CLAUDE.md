@@ -94,6 +94,7 @@ sumvox say "Test" --tts macos --voice Daniel
 - `src/audio/` - Playback: `player.rs` is the single choke point (afplay on macOS, probed CLI player elsewhere)
 - `src/pipeline.rs` - Shared summarize → speak flow used by `say`/`sum`/`json` and the hook handlers
 - `src/provider_factory.rs` - Provider creation with fallback chain
+- `src/notify_log.rs` - Mute flag, history log and now_playing file shared with the menu bar app
 
 ### Configuration Format
 
@@ -114,12 +115,16 @@ sumvox/
 │   ├── config.rs         # Configuration loading/saving
 │   ├── transcript.rs     # Transcript parsing
 │   ├── error.rs          # Error types
+│   ├── queue.rs          # Serializes concurrent hook invocations
+│   ├── notify_log.rs     # History log + mute flag for the menu bar app
 │   ├── hooks/            # Hook handlers
 │   ├── pipeline.rs       # Shared summarize → speak flow
 │   ├── llm/              # LLM providers
 │   ├── tts/              # TTS engines
 │   ├── audio/            # Playback (player.rs, file.rs, normalize.rs, wav_header.rs)
 │   └── provider_factory.rs
+├── menubar/
+│   └── SumVoxMenu.swift  # Optional macOS status bar app (just menubar)
 ├── config/
 │   └── recommended.toml  # Example configuration with comments
 ├── .github/

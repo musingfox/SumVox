@@ -10,15 +10,16 @@ Be respectful, constructive, and collaborative. We're all here to build better t
 
 ### Prerequisites
 
-- Rust 1.70+ (install via [rustup](https://rustup.rs/))
-- macOS 10.15+ or Linux (for development)
+- A stable Rust toolchain (install via [rustup](https://rustup.rs/)) — CI builds on `stable`
+- macOS or Linux. On Linux, install `espeak-ng` and an audio player (`ffplay`, `paplay`, ...)
+  so the local TTS path is exercisable
 - API keys for testing (Gemini recommended)
 
 ### Getting Started
 
 1. **Fork and clone** the repository:
    ```bash
-   git fork https://github.com/musingfox/sumvox
+   gh repo fork musingfox/sumvox --clone
    cd sumvox
    ```
 
@@ -35,7 +36,7 @@ Be respectful, constructive, and collaborative. We're all here to build better t
 4. **Set up development config**:
    ```bash
    cargo run -- init
-   cargo run -- credentials set google
+   # then edit ~/.config/sumvox/config.toml and set an API key
    ```
 
 ### Project Structure
@@ -44,37 +45,27 @@ Be respectful, constructive, and collaborative. We're all here to build better t
 sumvox/
 ├── src/
 │   ├── main.rs           # Entry point and hook orchestration
+│   ├── lib.rs            # Library surface shared with the integration tests
 │   ├── cli.rs            # CLI argument parsing
-│   ├── config.rs         # Configuration management
+│   ├── config.rs         # Configuration loading, migration and saving
+│   ├── pipeline.rs       # Shared summarize -> speak flow (say / sum / json / hooks)
 │   ├── transcript.rs     # Claude Code transcript parsing
+│   ├── queue.rs          # Serializes concurrent hook invocations
+│   ├── notify_log.rs     # History log + mute flag for the menu bar app
 │   ├── error.rs          # Error types
-│   ├── llm/              # LLM providers
-│   │   ├── mod.rs
-│   │   ├── google.rs     # Gemini integration
-│   │   ├── anthropic.rs  # Claude integration
-│   │   ├── openai.rs     # GPT integration
-│   │   └── ollama.rs     # Local Ollama integration
-│   ├── tts/              # TTS engines
-│   │   ├── mod.rs
-│   │   ├── macos.rs      # macOS say command
-│   │   ├── espeak.rs     # espeak-ng (local, offline)
-│   │   ├── piper.rs      # piper neural TTS (local, offline)
-│   │   ├── google.rs     # Google TTS
-│   │   ├── cloud_tts.rs  # Google Cloud TTS
-│   │   ├── openai.rs     # OpenAI TTS
-│   │   ├── xai.rs        # xAI TTS
-│   │   └── elevenlabs.rs # ElevenLabs TTS
-│   ├── audio/            # Playback
-│   │   ├── mod.rs
-│   │   ├── player.rs     # Single playback choke point (afplay / paplay / ...)
-│   │   ├── file.rs       # audio_file provider
-│   │   ├── normalize.rs  # Loudness normalization
-│   │   └── wav_header.rs # PCM -> WAV framing
-│   └── provider_factory.rs  # Provider creation
+│   ├── hooks/            # Hook handlers (claude_code.rs)
+│   ├── llm/              # LLM providers (gemini, anthropic, openai, ollama, cost_tracker)
+│   ├── tts/              # TTS engines (macos, espeak, piper, google, cloud_tts,
+│   │                     #   openai, xai, elevenlabs)
+│   ├── audio/            # Playback: player.rs (choke point), file.rs, normalize.rs,
+│   │                     #   wav_header.rs
+│   └── provider_factory.rs  # LLM provider creation
 ├── config/
-│   └── recommended.toml  # Recommended configuration
-├── tests/                # Integration tests
-└── Cargo.toml           # Dependencies and metadata
+│   ├── recommended.toml      # Annotated reference configuration
+│   └── e2e_test.toml.example # Template for the e2e suite's config
+├── menubar/              # macOS menu bar companion app (Swift)
+├── tests/                # Integration tests (e2e.rs, recommended_config.rs)
+└── Cargo.toml            # Dependencies and metadata
 ```
 
 ## Testing
@@ -91,10 +82,18 @@ cargo test tts::
 
 # With output
 cargo test -- --nocapture
-
-# Specific test
-cargo test test_gemini_api
 ```
+
+The `e2e` suite drives the built binary end to end and needs a real config:
+
+```bash
+cp config/e2e_test.toml.example config/e2e_test.toml   # then fill in API keys
+cargo test --test e2e
+```
+
+It runs on macOS and Linux from the same config — the harness rewrites the `macos` engine to
+`espeak` on non-macOS hosts, so `espeak-ng` must be installed there. `SUMVOX_DISABLE` must not be
+set in the shell, or the binary exits before doing anything.
 
 ### Writing Tests
 
@@ -243,8 +242,7 @@ Add Homebrew installation method and clarify prerequisites.
 1. Create `src/llm/your_provider.rs`:
    ```rust
    use async_trait::async_trait;
-   use crate::error::Result;
-   use crate::llm::LlmProvider;
+   use crate::llm::{GenerationRequest, GenerationResponse, LlmProvider, LlmResult};
 
    pub struct YourProvider {
        api_key: String,
@@ -253,20 +251,34 @@ Add Homebrew installation method and clarify prerequisites.
 
    #[async_trait]
    impl LlmProvider for YourProvider {
-       async fn generate(&self, prompt: &str) -> Result<String> {
+       fn name(&self) -> &str { "your_provider" }
+
+       fn is_available(&self) -> bool {
+           !self.api_key.is_empty() && !self.api_key.starts_with("${")
+       }
+
+       async fn generate(&self, request: &GenerationRequest) -> LlmResult<GenerationResponse> {
            // Implementation
+       }
+
+       fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
+           // Per-million-token pricing
        }
    }
    ```
 
-2. Register in `src/llm/mod.rs`
-3. Add config support in `src/config.rs`
+2. Re-export it from `src/llm/mod.rs` (`pub use`) and register the name and its aliases in
+   `src/provider_factory.rs`
+3. Add any new config fields to `src/config.rs`
 4. Write tests
-5. Update documentation
+5. Document it in `README.md` and `config/recommended.toml`
 
 ### Adding a New TTS Engine
 
-Similar process - implement the `TtsEngine` trait.
+Same shape: implement the `TtsProvider` trait in `src/tts/your_engine.rs`, register the engine
+name and its aliases in `src/tts/mod.rs` (both `TtsEngine::from_str` and `create_single_tts`), and
+document it in `config/recommended.toml`. Report `is_available()` honestly — the fallback chain
+skips an unavailable provider instead of failing.
 
 ## Debugging
 
@@ -287,6 +299,9 @@ RUST_LOG=debug cargo run
 ### Updating Documentation
 
 - `README.md`: User-facing documentation
+- `QUICKSTART.md`: The 5-minute setup path
+- `config/recommended.toml`: Annotated reference config — new options are documented here
+- `CHANGELOG.md`: One entry per user-visible change, under `[Unreleased]`
 - `CLAUDE.md`: Project configuration for Claude
 - `CONTRIBUTING.md`: This file
 - Code comments: For complex logic only
@@ -314,7 +329,7 @@ We follow [Semantic Versioning](https://semver.org/):
 
 - [ ] All tests pass (`cargo test`)
 - [ ] Update version in `Cargo.toml`
-- [ ] Update version-related info in README.md
+- [ ] Update the docs (README.md, QUICKSTART.md, config/recommended.toml)
 - [ ] Update `CHANGELOG.md` with new version
 - [ ] Commit all changes
 - [ ] Create git tag (`git tag -a vX.Y.Z -m "Release vX.Y.Z"`)

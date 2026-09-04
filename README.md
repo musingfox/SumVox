@@ -2,7 +2,9 @@
 
 **Intelligent voice notifications for AI coding tools**
 
-SumVox transforms your AI coding sessions into voice notifications. It reads Claude Code conversation transcripts, generates concise summaries using LLM, and speaks them aloud - perfect for staying informed without context switching.
+SumVox turns your AI coding sessions into voice notifications. It reads Claude Code conversation
+transcripts, summarizes them with an LLM, and speaks the result aloud — so you stay informed
+without switching context. Runs on macOS and Linux.
 
 [![CI](https://github.com/musingfox/sumvox/actions/workflows/ci.yml/badge.svg)](https://github.com/musingfox/sumvox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,572 +12,351 @@ SumVox transforms your AI coding sessions into voice notifications. It reads Cla
 
 ## ✨ Features
 
-- ⚡ **Blazing Fast**: 7ms startup time (Rust implementation)
-- 🧠 **Multi-Model LLM Support**:
-  - Google Gemini (recommended, optimized)
-  - Anthropic Claude, OpenAI GPT, xAI Grok, Ollama
-- 🔊 **Multi-TTS Engines**:
-  - OpenAI TTS (gpt-4o-mini-tts, steerable style prompts, adjustable speed)
-  - ElevenLabs TTS (premium natural voices, voice tuning, **volume control supported**)
-  - xAI TTS (natural speech, 5 voices, **volume control supported**)
-  - Google TTS (Gemini-powered, high quality, **volume control supported**)
-  - Google Cloud TTS (Standard/WaveNet/Chirp3-HD voices, **volume control supported**)
-  - macOS say (local, offline, no API key, **volume control supported**)
-  - espeak-ng (local, offline, no API key, Linux/BSD, **volume control supported**)
-  - piper (local, offline neural voices, no API key, **volume control supported**)
-- 🎨 **Simple Configuration**: YAML format with comments and easy setup
-- 🔄 **Smart Fallback**: Automatic provider switching on failure
-- ✅ **Production Ready**: 90+ automated tests
-- 📝 **Localization**: Native Chinese/English support
-- 🎛️ **CLI Management**: Credential management and configuration tools
-- 🪝 **Seamless Integration**: Claude Code hook support
+- ⚡ **Single Rust binary** — no runtime, no dependencies to install
+- 🧠 **Multi-model LLM**: Google Gemini (recommended), Anthropic Claude, OpenAI GPT, xAI Grok, Ollama
+- 🔊 **Eight TTS engines**: macOS `say`, espeak-ng, piper (local/offline) plus Google TTS,
+  Google Cloud TTS, xAI, OpenAI and ElevenLabs (cloud)
+- 🔄 **Smart fallback**: providers are tried in order until one succeeds — for both LLM and TTS
+- 🔉 **Volume control everywhere**: one 0–100 knob applies to every engine on both platforms
+- 🎨 **TOML configuration** with inline comments
+- 📝 **Localization**: works in any language the chosen engines support
+- 🪝 **Claude Code hooks**: Notification and Stop events out of the box
+- 🖥️ **Optional macOS menu bar app**: mute toggle, notification history, talking orb
 
 ## 🚀 Quick Start
 
-> **⚡ Super Quick Setup?** See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
+> **In a hurry?** [QUICKSTART.md](QUICKSTART.md) is the 5-minute version.
 
 ### Installation
 
-#### Homebrew (macOS)
-
 ```bash
+# Homebrew (macOS and Linux)
 brew tap musingfox/sumvox
 brew install sumvox
-```
 
-#### Cargo
-
-```bash
+# Cargo
 cargo install sumvox
 ```
 
-#### Binary Download
-
-Download the appropriate binary from [GitHub Releases](https://github.com/musingfox/sumvox/releases/latest):
+Or grab a binary from [GitHub Releases](https://github.com/musingfox/sumvox/releases/latest) —
+`sumvox-macos-aarch64`, `sumvox-macos-x86_64`, `sumvox-linux-x86_64`, `sumvox-linux-aarch64`:
 
 ```bash
-# macOS Apple Silicon
 curl -LO https://github.com/musingfox/sumvox/releases/latest/download/sumvox-macos-aarch64.tar.gz
 tar xzf sumvox-macos-aarch64.tar.gz
 sudo mv sumvox /usr/local/bin/
-
-# macOS Intel
-curl -LO https://github.com/musingfox/sumvox/releases/latest/download/sumvox-macos-x86_64.tar.gz
-tar xzf sumvox-macos-x86_64.tar.gz
-sudo mv sumvox /usr/local/bin/
-
-# Linux x86_64
-curl -LO https://github.com/musingfox/sumvox/releases/latest/download/sumvox-linux-x86_64.tar.gz
-tar xzf sumvox-linux-x86_64.tar.gz
-sudo mv sumvox /usr/local/bin/
 ```
 
-### Setup
-
-#### Step 1: Initialize Configuration
+### Step 1: Initialize configuration
 
 ```bash
 sumvox init
 ```
 
-This creates `~/.config/sumvox/config.yaml` with sensible defaults:
-- **LLM**: Google Gemini → Anthropic → OpenAI → Ollama (fallback chain, local last)
-- **TTS**: macOS say (system default voice) — on Linux, swap the first provider for `espeak` or `piper`, see [Local TTS on Linux](#local-tts-on-linux)
-- **Language**: English (customize in config)
+This writes `~/.config/sumvox/config.toml` with:
 
-#### Step 2: Set API Key
+- **LLM**: Google Gemini → Anthropic → OpenAI → Ollama (local last)
+- **TTS**: macOS `say` → Google TTS. On Linux, replace `macos` with `espeak` or `piper` —
+  see [Local TTS on Linux](#local-tts-on-linux)
 
-Edit your config file:
+An existing `config.yaml` or `config.json` from an older release is migrated to TOML on first run
+(the original is kept as a timestamped backup).
+
+### Step 2: Set an API key
 
 ```bash
-open ~/.config/sumvox/config.yaml
+$EDITOR ~/.config/sumvox/config.toml
 ```
 
-Replace `${PROVIDER_API_KEY}` with your actual API key. For example, to use Google Gemini:
+Replace the `${PROVIDER_API_KEY}` placeholder with a real key. The placeholder is not expanded —
+a provider whose key still looks like `${...}` is treated as unconfigured and skipped:
 
-```yaml
-llm:
-  providers:
-    - name: google
-      model: gemini-3.1-flash-lite
-      api_key: "your-actual-api-key-here"  # Get from https://ai.google.dev
+```toml
+[[llm.providers]]
+name = "google"
+model = "gemini-3.1-flash-lite"
+api_key = "AIza..."   # Get one from https://ai.google.dev
 ```
 
-You can configure multiple providers. The system will try them in order until one succeeds.
+Alternatively, leave the placeholder and export the key as an environment variable — see
+[Environment Variables](#environment-variables).
 
-#### Step 3: Test Voice Notification
+### Step 3: Test playback
 
 ```bash
 sumvox say "Hello, this is a test"
 ```
 
-If you hear the message, TTS is working! If not, check your system audio settings.
+If you hear nothing, see [Troubleshooting](#troubleshooting).
 
-#### Step 4: Register Claude Code Hook
+### Step 4: Register the Claude Code hook
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (find your path with `which sumvox`):
 
 ```json
 {
   "hooks": {
     "Notification": [{
       "matcher": "",
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/homebrew/bin/sumvox"
-      }]
+      "hooks": [{"type": "command", "command": "/opt/homebrew/bin/sumvox"}]
     }],
     "Stop": [{
       "matcher": "",
-      "hooks": [{
-        "type": "command",
-        "command": "/opt/homebrew/bin/sumvox"
-      }]
+      "hooks": [{"type": "command", "command": "/opt/homebrew/bin/sumvox"}]
     }]
   }
 }
 ```
 
-**Note**: Update the path if you installed sumvox elsewhere (check with `which sumvox`)
+Start a Claude Code session and you should hear instant alerts on **Notification** events
+("Permission required") and an LLM-written summary on **Stop** events.
 
-#### Step 5: Verify Integration
+## 📖 Configuration
 
-Start a Claude Code session and trigger a notification. You should hear:
-- **Notification events**: Instant voice alerts (e.g., "Permission required")
-- **Stop events**: AI-generated summaries of the conversation
+Config lives at `~/.config/sumvox/config.toml`.
+[config/recommended.toml](config/recommended.toml) is a fully commented reference with every
+provider block, including the ones that ship commented out.
 
-## 📖 Configuration Guide
+### What `sumvox init` writes
 
-### Quick Start Configuration
+Abridged below — the generated file also carries the default `prompt_template`, and puts an
+`api_key = "${PROVIDER_API_KEY}"` placeholder on *every* provider, including the ones that need no
+key (`ollama`, `macos`). Leave those alone or delete them; a placeholder key is treated as unset.
 
-After running `sumvox init`, your config at `~/.config/sumvox/config.yaml` looks like this:
+```toml
+[[llm.providers]]
+name = "google"
+model = "gemini-3.1-flash-lite"
+api_key = "${PROVIDER_API_KEY}"
+timeout = 10
 
-```yaml
-llm:
-  providers:
-    - name: google
-      model: gemini-3.1-flash-lite
-      api_key: ${GEMINI_API_KEY}
-      timeout: 10
-    - name: anthropic
-      model: claude-haiku-4-5-20251001
-      api_key: ${ANTHROPIC_API_KEY}
-      timeout: 10
-    - name: openai
-      model: gpt-5-nano
-      api_key: ${OPENAI_API_KEY}
-      timeout: 10
-    - name: ollama
-      model: llama3.2
-      timeout: 60
-  parameters:
-    max_tokens: 10000
-    temperature: 0.3
-    disable_thinking: false
+[[llm.providers]]
+name = "anthropic"
+model = "claude-haiku-4-5-20251001"
+api_key = "${PROVIDER_API_KEY}"
+timeout = 10
 
-tts:
-  providers:
-    - name: macos
-      rate: 200
-    - name: google
-      model: gemini-2.5-flash-preview-tts
-      voice: Aoede
-      api_key: ${GEMINI_API_KEY}
+[[llm.providers]]
+name = "openai"
+model = "gpt-5-nano"
+api_key = "${PROVIDER_API_KEY}"
+timeout = 10
 
-summarization:
-  turns: 1
-  system_message: "You are a voice notification assistant. Generate concise summaries suitable for voice playback."
-  fallback_message: "Task completed"
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+timeout = 60
 
-hooks:
-  claude_code:
-    notification_filter:
-      - permission_prompt
-      - idle_prompt
-      - elicitation_dialog
-    notification_tts_provider: macos
-    stop_tts_provider: auto
+[llm.parameters]
+max_tokens = 10000
+temperature = 0.3
+disable_thinking = false
+
+[[tts.providers]]
+name = "macos"
+rate = 200
+
+[[tts.providers]]
+name = "google"
+model = "gemini-2.5-flash-preview-tts"
+voice = "Aoede"
+api_key = "${PROVIDER_API_KEY}"
+
+[summarization]
+content_source = "transcript"
+turns = 1
+system_message = "You are a voice notification assistant. Generate concise summaries suitable for voice playback."
+fallback_message = "Task completed"
+
+[hooks.claude_code]
+notification_filter = ["permission_prompt", "idle_prompt", "elicitation_dialog"]
+notification_tts_provider = "macos"
+stop_tts_provider = "auto"
 ```
 
-### Understanding Fallback Chains
+### Fallback chains
 
-SumVox uses **automatic fallback** for both LLM and TTS providers. If one fails, it tries the next:
+`[[llm.providers]]` and `[[tts.providers]]` are ordered lists. Each entry is tried in turn until
+one succeeds; an entry that is missing its API key, binary or voice model is skipped rather than
+failing the chain. If every LLM fails, `summarization.fallback_message` is spoken. If every TTS
+fails, SumVox stays silent instead of crashing.
 
-#### LLM Fallback Example
+### Per-hook TTS selection
 
-```yaml
-llm:
-  providers:
-    - name: google      # Try first
-    - name: anthropic   # Try if Google fails
-    - name: ollama      # Try if Anthropic fails (always works, local)
+```toml
+[hooks.claude_code]
+notification_tts_provider = "macos"  # short alerts: fastest engine
+stop_tts_provider = "auto"           # summaries: whole fallback chain
+notification_volume = 80             # 0-100
+stop_volume = 100
 ```
 
-**How it works:**
-1. Try Google Gemini with your API key
-2. If fails (no key, network error, quota exceeded) → try Anthropic
-3. If fails → try Ollama (local, no API key needed)
-4. If all fail → use fallback message
+A provider selector is either `auto` (walk the whole chain) or the name of one configured entry:
+`macos`, `espeak`, `piper`, `google`, `cloud_tts`, `gemini_tts`, `xai`, `openai`, `elevenlabs`,
+`audio_file`.
 
-#### TTS Fallback Example
+### Common setups
 
-```yaml
-tts:
-  providers:
-    - name: macos    # Try first (free, fast, always available)
-    - name: google   # Try if macOS fails (requires API key)
+**Free and offline** — no API keys, no network:
+
+```toml
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+timeout = 60
+
+[[tts.providers]]
+name = "macos"   # Linux: "espeak", or "piper" with a downloaded .onnx voice
 ```
 
-**Hook-specific TTS:**
-```yaml
-hooks:
-  claude_code:
-    # For quick notifications: use fast macOS TTS
-    notification_tts_provider: macos
+Slower summaries (30–60 s), but zero cost and nothing leaves the machine.
 
-    # For summaries: use fallback chain (try all providers)
-    stop_tts_provider: auto
+**Cloud LLM with a local fallback** (recommended) — fast summaries, free speech:
+
+```toml
+[[llm.providers]]
+name = "google"
+model = "gemini-3.1-flash-lite"
+api_key = "${PROVIDER_API_KEY}"
+
+[[llm.providers]]
+name = "ollama"
+model = "llama3.2"
+timeout = 60
+
+[[tts.providers]]
+name = "macos"
+
+[[tts.providers]]
+name = "google"
+model = "gemini-2.5-flash-preview-tts"
+voice = "Aoede"
+api_key = "${PROVIDER_API_KEY}"
 ```
 
-- `macos` = Use only macOS TTS
-- `espeak` = Use only espeak-ng (local, offline)
-- `piper` = Use only piper (local, offline, neural)
-- `google` = Use only Google TTS (Gemini)
-- `xai` = Use only xAI TTS
-- `openai` = Use only OpenAI TTS
-- `cloud_tts` = Use only Google Cloud TTS
-- `elevenlabs` = Use only ElevenLabs TTS
-- `auto` = Try all TTS providers in order (recommended for summaries)
+**Highest quality** — expressive cloud voices for everything:
 
-### Configuration Examples
+```toml
+[[llm.providers]]
+name = "anthropic"
+model = "claude-haiku-4-5-20251001"
+api_key = "${PROVIDER_API_KEY}"
 
-#### Example 1: Minimal Setup (Free, Local Only)
-
-```yaml
-llm:
-  providers:
-    - name: ollama
-      model: llama3.2
-
-tts:
-  providers:
-    - name: macos
+[[tts.providers]]
+name = "elevenlabs"
+model = "eleven_multilingual_v2"
+voice = "21m00Tcm4TlvDq8ikWAM"
+api_key = "${PROVIDER_API_KEY}"
 ```
 
-**Pros:** Completely free, works offline, no API keys needed
-**Cons:** Slower LLM, basic TTS quality
+### Customization
 
-#### Example 2: Cloud-First with Local Fallback (Recommended)
+```toml
+# Voice and language (macOS: run `say -v ?` to list voices)
+[[tts.providers]]
+name = "macos"
+voice = "Meijia"   # Traditional Chinese; Tingting = Simplified; omit for the system default
+rate = 200
 
-```yaml
-llm:
-  providers:
-    - name: google
-      model: gemini-3.1-flash-lite
-      api_key: ${GEMINI_API_KEY}
-    - name: ollama
-      model: llama3.2
+[summarization]
+# "transcript" reads the JSONL transcript; "last_message" uses Claude Code's
+# last_assistant_message field directly, skipping the file read
+content_source = "transcript"
+turns = 1
+system_message = "Summarize in a friendly, casual tone."
+prompt_template = "Based on the following context, generate a concise summary.\n\nContext:\n{context}\n\nSummary:"
+fallback_message = "Task completed"
 
-tts:
-  providers:
-    - name: macos
-    - name: google
-      model: gemini-2.5-flash-preview-tts
-      voice: Aoede
-      api_key: ${GEMINI_API_KEY}
+[hooks.claude_code]
+# Which notifications get spoken. ["*"] speaks all of them; [] disables them.
+notification_filter = ["permission_prompt", "idle_prompt", "elicitation_dialog", "auth_success"]
 ```
-
-**Pros:** Fast cloud LLM, reliable local fallback, free TTS
-**Cons:** Requires internet, small API costs
-
-#### Example 3: High Quality (Cloud Only)
-
-```yaml
-llm:
-  providers:
-    - name: anthropic
-      model: claude-haiku-4-5-20251001
-      api_key: ${ANTHROPIC_API_KEY}
-
-tts:
-  providers:
-    - name: google
-      model: gemini-2.5-flash-preview-tts
-      voice: Aoede
-      api_key: ${GEMINI_API_KEY}
-```
-
-**Pros:** Highest quality LLM and TTS
-**Cons:** Requires internet, higher API costs, no fallback
-
-### Customization Tips
-
-#### Change Voice Language
-
-```yaml
-# English (macOS default)
-tts:
-  providers:
-    - name: macos
-      # Uses system default voice
-
-# Chinese
-tts:
-  providers:
-    - name: macos
-      voice: Meijia  # Traditional Chinese
-      # voice: Tingting  # Simplified Chinese
-
-# List available voices
-# Run in terminal: say -v ?
-```
-
-#### Customize Summary Style
-
-```yaml
-summarization:
-  system_message: "You are a helpful assistant. Summarize in a friendly, casual tone."
-  # For Chinese: "你是一個友善的助理。用輕鬆的語氣總結內容。"
-
-  fallback_message: "Done!"
-  # For Chinese: "完成了！"
-```
-
-#### Filter Notification Types
-
-```yaml
-hooks:
-  claude_code:
-    # Speak all notifications
-    notification_filter:
-      - "*"
-
-    # Or be selective
-    notification_filter:
-      - permission_prompt  # "Permission required"
-      - idle_prompt        # "Waiting for input"
-```
-
-See [config/recommended.yaml](config/recommended.yaml) for more examples and detailed comments.
-
-## 💡 Real-World Usage Scenarios
-
-### Scenario 1: Multi-tasking Developer
-
-**Setup:** Fast local TTS for notifications, cloud LLM for summaries
-
-```yaml
-tts:
-  providers:
-    - name: macos  # Instant alerts
-
-hooks:
-  claude_code:
-    notification_tts_provider: macos  # Quick "Permission required" alerts
-    stop_tts_provider: auto           # Detailed summaries when task completes
-```
-
-**Workflow:**
-1. Start a Claude Code task
-2. Switch to another window to continue working
-3. Hear instant notifications when Claude needs input
-4. Hear AI-generated summary when task completes
-
-### Scenario 2: Offline Development
-
-**Setup:** All local, no cloud dependencies
-
-```yaml
-llm:
-  providers:
-    - name: ollama
-      model: llama3.2
-
-tts:
-  providers:
-    - name: macos
-```
-
-**Benefits:**
-- ✅ Works without internet
-- ✅ Zero API costs
-- ✅ Privacy (no data sent to cloud)
-- ⚠️ Slower LLM (30-60s for summaries)
-
-### Scenario 3: High-Quality Production
-
-**Setup:** Best quality cloud services with fallback
-
-```yaml
-llm:
-  providers:
-    - name: anthropic
-      model: claude-haiku-4-5-20251001
-    - name: google
-      model: gemini-3.1-flash-lite
-    - name: ollama
-      model: llama3.2
-
-tts:
-  providers:
-    - name: google
-      voice: Aoede
-    - name: macos
-```
-
-**Fallback chain:**
-1. Try Anthropic (highest quality)
-2. Fall back to Gemini (faster, cheaper)
-3. Fall back to Ollama (local, always works)
-4. TTS: Google → macOS (quality → reliability)
-
-### Scenario 4: Cost-Conscious Setup
-
-**Setup:** Minimal cloud usage, maximize free tier
-
-```yaml
-llm:
-  providers:
-    - name: google      # Free tier: 15 requests/min
-      model: gemini-3.1-flash-lite
-    - name: ollama      # Unlimited local fallback
-
-tts:
-  providers:
-    - name: macos       # Free, unlimited
-
-hooks:
-  claude_code:
-    notification_tts_provider: macos  # Free
-    stop_tts_provider: macos          # Free (skip Google TTS)
-```
-
-**Result:** ~$0.01/day for LLM, $0 for TTS
-
-## 📚 Documentation
-
-- [Quick Start](#-quick-start)
-- [Configuration Guide](#-configuration-guide)
-- [CLI Commands](#-cli-commands)
-- [How It Works](#️-how-it-works)
-- [Advanced Configuration](#-advanced-configuration)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
 
 ## 🎯 CLI Commands
 
-### Initialize Configuration
-
 ```bash
-# Create default config
-sumvox init
+sumvox init                  # create the config file
+sumvox init --force          # overwrite an existing one
 
-# Force overwrite existing config
-sumvox init --force
-```
-
-### Direct TTS (No LLM)
-
-```bash
-# Speak text directly
+# Direct TTS, no LLM
 sumvox say "Hello world"
-
-# Specify TTS provider
-sumvox say "Hello" --tts macos
+sumvox say "Hello" --tts macos --voice Daniel
 sumvox say "Hello" --tts espeak --voice cmn+f3
-sumvox say "Hello" --tts piper
+sumvox say "Hello" --tts piper --voice ~/voices/zh_CN-huayan-medium.onnx
 sumvox say "Hello" --tts google --voice Aoede
-sumvox say "Hello" --tts xai --voice rex
-sumvox say "Hello" --tts openai --voice nova
-sumvox say "Hello" --tts elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
+sumvox say "Hello" --volume 80
 
-# Adjust speech rate — local engines only, ignored by the cloud providers.
-# macOS say: words per minute (90-300). espeak: words per minute (80-450, default 175).
-# piper: inverse length-scale (default 200, higher = faster).
+# Speech rate: local engines only, ignored by the cloud providers.
+#   macos  - words per minute, 90-300
+#   espeak - words per minute, 80-450 (espeak-ng default 175)
+#   piper  - inverse length-scale; 200 is piper's own default, higher is faster
 sumvox say "Hello" --rate 250
-```
 
-### LLM Summarization + TTS
-
-```bash
-# Summarize text from argument
+# LLM summarization, then speech
 sumvox sum "Long text to summarize..."
-
-# Read from stdin
 echo "Long text..." | sumvox sum -
-
-# Specify LLM provider
 sumvox sum "Text" --provider anthropic
+sumvox sum "Text" --no-speak      # print the summary, don't speak it
 
-# Just print summary (no speech)
-sumvox sum "Text" --no-speak
-```
-
-### Hook Mode (Automatic)
-
-When registered as a Claude Code hook, SumVox runs automatically:
-
-```bash
-# Receives JSON via stdin
+# Hook mode: JSON on stdin, format auto-detected
 echo '{"hook_event_name":"Notification","message":"Test"}' | sumvox
 
-# Or from Claude Code (automatic)
-# No manual invocation needed!
-```
-
-### Debug Mode
-
-```bash
-# Show detailed logs
+# Logs: trace, debug, info, warn, error
 RUST_LOG=debug sumvox say "test"
-
-# Log levels: trace, debug, info, warn, error
-RUST_LOG=trace sumvox
 ```
 
-## 🔧 Advanced Configuration
+## 🔧 Provider Reference
 
-### Provider Reference
+### LLM providers
 
-#### LLM Providers
-
-| Provider | Model | API Key Required | Speed | Cost |
-|----------|-------|------------------|-------|------|
+| Provider | Example model | API key | Speed | Cost |
+|----------|---------------|---------|-------|------|
 | **Google Gemini** | `gemini-3.1-flash-lite` | ✅ | Fast | Low |
 | **Anthropic** | `claude-haiku-4-5-20251001` | ✅ | Fast | Medium |
 | **OpenAI** | `gpt-5-nano` | ✅ | Medium | Medium |
 | **xAI Grok** | `grok-build-0.1` | ✅ | Fast | Low |
 | **Ollama** | `llama3.2` | ❌ | Slow | Free |
 
-**xAI Grok** uses the OpenAI-compatible endpoint at `https://api.x.ai/v1`. Use `name: xai` (or `grok`) in the LLM providers list.
+Keys: [Gemini](https://ai.google.dev) · [Anthropic](https://console.anthropic.com) ·
+[OpenAI](https://platform.openai.com) · [xAI](https://console.x.ai).
+xAI uses the OpenAI-compatible endpoint at `https://api.x.ai/v1`; the provider name is `xai`
+(alias `grok`). Any provider accepts an optional `base_url` for proxies and compatible APIs.
 
-**Get API Keys:**
-- Gemini: https://ai.google.dev
-- Anthropic: https://console.anthropic.com
-- OpenAI: https://platform.openai.com
-- xAI Grok: https://console.x.ai
+### TTS providers
 
-#### TTS Providers
+Every engine supports the 0–100 `volume` knob. The single exception is a Linux host where `aplay`
+is the only audio player installed — it cannot change volume, so SumVox skips it when
+`volume = 0`.
 
-| Provider | Voices | API Key Required | Speed | Quality | Cost | Volume Control |
-|----------|--------|------------------|-------|---------|------|----------------|
-| **macOS say** | System voices | ❌ | Instant | Good | Free | ✅ Supported (0-100) |
-| **espeak-ng** | 100+ languages/variants | ❌ | Instant | Robotic | Free | ✅ Supported (0-100) |
-| **piper** | One model per voice | ❌ | Fast | Good (neural) | Free | ✅ Supported (0-100) |
-| **xAI TTS** | 5 voices | ✅ | Fast | Excellent | $4.20/1M chars | ✅ Supported (0-100) |
-| **OpenAI TTS** | 10 voices | ✅ | Fast | Excellent | ~$0.015/min | ✅ Supported (0-100) |
-| **ElevenLabs TTS** | Library + Voice Design | ✅ | Fast | Premium | $0.06-0.12/1K chars | ✅ Supported (0-100) |
-| **Google TTS** | 6+ voices | ✅ | Fast | Excellent | ~$0.016/1K chars | ✅ Supported (0-100) |
-| **Google Cloud TTS** | 100+ voices | ✅ (Service Account) | Fast | Professional | $4-16/1M chars | ✅ Supported (0-100) |
+| Provider | Voices | API key | Quality | Cost |
+|----------|--------|---------|---------|------|
+| **macOS say** | System voices | ❌ | Good | Free |
+| **espeak-ng** | 100+ languages/variants | ❌ | Robotic | Free |
+| **piper** | One model per voice | ❌ | Good (neural) | Free |
+| **Google TTS** | 6 Gemini voices | ✅ | Excellent | ~$0.016/1K chars |
+| **Google Cloud TTS** | 100+ (Standard/WaveNet/Chirp3-HD) | ✅ Service account | Professional | $4–16/1M chars |
+| **xAI TTS** | 5 voices | ✅ | Excellent | $4.20/1M chars |
+| **OpenAI TTS** | 10 voices | ✅ | Excellent | ~$0.015/min |
+| **ElevenLabs** | Library + Voice Design | ✅ | Premium | $0.06–0.12/1K chars |
 
-**macOS Voices:**
-- Run `say -v ?` to list all available voices
-- No voice specified = uses system default language
-- English: `Alex`, `Samantha`, `Daniel`
-- Chinese: `Meijia` (繁體), `Tingting` (简体)
-- ✅ **Volume control supported** - synthesis is rendered to a file and played at the configured volume (0-100)
+- **macOS say** — `say -v ?` lists voices. Omit `voice` for the system default. English: `Alex`,
+  `Samantha`, `Daniel`. Chinese: `Meijia` (繁體), `Tingting` (简体).
+- **Google TTS (Gemini)** — `Aoede`, `Charon`, `Fenrir`, `Kore`, `Puck`, `Orus`. Both `model`
+  (e.g. `gemini-2.5-flash-preview-tts`) and `voice` are required; there is no default for either.
+- **Google Cloud TTS** — `cloud_tts`; needs `service_account_key` pointing at a JSON key file
+  ([setup](https://cloud.google.com/text-to-speech/docs/before-you-begin)). Set a Gemini-TTS
+  `model` (e.g. `gemini-2.5-flash-tts`) to use bare voice names plus a `style_prompt`; the
+  `gemini_tts` alias binds to its own config entry.
+- **xAI TTS** — `eve` (default), `ara`, `rex`, `sal`, `leo`. Language is auto-detected or pinned
+  with `language_code`.
+- **OpenAI TTS** — `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`,
+  `shimmer`, plus `speed` (0.25–4.0) and a `style_prompt` for tone and accent.
+- **ElevenLabs** — `voice` is a Voice ID (default `21m00Tcm4TlvDq8ikWAM`, Rachel) from the
+  [voice library](https://elevenlabs.io/app/voice-library). Models: `eleven_flash_v2_5`,
+  `eleven_turbo_v2_5`, `eleven_multilingual_v2`, `eleven_v3`. Tuning: `speed` (0.7–1.2),
+  `stability` and `style` (0.0–1.0).
 
-##### Local TTS on Linux
+### Local TTS on Linux
 
 macOS `say` is unavailable off macOS; `espeak` and `piper` are its offline replacements. Both need
 their binary on `PATH`, and both are skipped by the fallback chain when it is missing.
@@ -589,7 +370,8 @@ their binary on `PATH`, and both are skipped by the fallback chain when it is mi
   [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices); each voice is a `.onnx` file
   that must sit next to its `.onnx.json` sidecar. Point `voice`, `model` or `path` at the `.onnx`
   (first non-blank wins, `~` is expanded) — piper is treated as unavailable until both the binary
-  and the model exist.
+  and the model exist. The model is reloaded on every invocation (~640 ms), so espeak suits
+  per-notification alerts and piper suits summaries.
 
 Playback needs a command-line player: SumVox probes `paplay` → `pw-play` → `ffplay` → `mpv` →
 `aplay` and uses the first one installed. `paplay` ships with both `pulseaudio-utils` and
@@ -609,240 +391,151 @@ rate = 200         # inverse length-scale; higher = faster
 volume = 80
 ```
 
-**xAI TTS Voices:**
-- `eve` (default), `ara`, `rex`, `sal`, `leo`
-- Automatic language detection or specify with `language_code`
-- Get API key: https://console.x.ai
-- ✅ **Volume control supported** - adjust playback volume (0-100)
+## ⚙️ Reference
 
-**OpenAI TTS Voices:**
-- `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`
-- Style steering via `style_prompt` (e.g. accent, pace, tone) and `speed` (0.25-4.0)
-- Get API key: https://platform.openai.com
-- ✅ **Volume control supported** - adjust playback volume (0-100)
+### Configuration file structure
 
-**ElevenLabs TTS Voices:**
-- Voice selected by **Voice ID** (default: `21m00Tcm4TlvDq8ikWAM`, Rachel); browse the [voice library](https://elevenlabs.io/app/voice-library)
-- Models: `eleven_flash_v2_5`, `eleven_turbo_v2_5` (~75ms, $0.06/1K chars), `eleven_multilingual_v2`, `eleven_multilingual_v3` (~300ms, $0.12/1K chars)
-- Voice tuning: `speed` (0.7-1.2), `stability` (0.0-1.0), `style` (0.0-1.0)
-- API key from config `api_key` or `ELEVENLABS_API_KEY` env: https://elevenlabs.io/app/settings/api-keys
-- ✅ **Volume control supported** - adjust playback volume (0-100)
+```toml
+[[llm.providers]]     # ordered fallback chain
+# name, model, api_key, base_url, timeout, disable_thinking
 
-**Google TTS Voices (Gemini):**
-- `Aoede`, `Charon`, `Fenrir`, `Kore`, `Puck`, `Orus` (expressive, high quality)
-- Get API key: https://ai.google.dev
-- ✅ **Volume control supported** - adjust playback volume (0-100)
+[llm.parameters]      # shared by every LLM provider
+# max_tokens, temperature, disable_thinking
 
-**Google Cloud TTS Voices:**
-- Standard, WaveNet, and Chirp3-HD voices across 40+ languages
-- Requires service account key: https://cloud.google.com/text-to-speech/docs/before-you-begin
-- ✅ **Volume control supported** - adjust playback volume (0-100)
+[[tts.providers]]     # ordered fallback chain
+# name, model, voice, api_key, rate, volume, path, service_account_key,
+# language_code, speed, stability, style, style_prompt
 
-### Configuration File Structure
+[summarization]
+# content_source ("transcript" | "last_message"), turns, system_message,
+# prompt_template ({context} placeholder), fallback_message
 
-```yaml
-llm:
-  providers: [...]      # Array, tries in order
-  parameters: {...}     # Shared across all providers
-
-tts:
-  providers: [...]      # Array, tries in order
-
-summarization:
-  content_source: "transcript" | "last_message"  # Stop hook content source (default: transcript)
-  turns: 1              # Number of conversation turns to read (only for transcript source)
-  system_message: "..." # LLM instruction for summary style
-  prompt_template: "..." # Template with {context} placeholder
-  fallback_message: "..." # Spoken when LLM fails
-
-hooks:
-  claude_code:
-    notification_filter: [...]  # Which notification types to speak
-    notification_tts_provider: "macos" | "espeak" | "piper" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
-    stop_tts_provider: "macos" | "espeak" | "piper" | "google" | "xai" | "openai" | "cloud_tts" | "elevenlabs" | "auto"
+[hooks.claude_code]
+# notification_filter, notification_tts_provider, stop_tts_provider,
+# notification_volume, stop_volume, queue_timeout
 ```
 
 ### Environment Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SUMVOX_DISABLE` | Temporarily disable SumVox (any value) | `SUMVOX_DISABLE=1 claude` |
-| `XAI_API_KEY` | xAI API key for Grok LLM and xAI TTS (alternative to config) | `export XAI_API_KEY=xai-...` |
-| `OPENAI_API_KEY` | OpenAI API key for GPT LLM and OpenAI TTS (alternative to config) | `export OPENAI_API_KEY=sk-...` |
-| `ELEVENLABS_API_KEY` | ElevenLabs TTS API key (alternative to config) | `export ELEVENLABS_API_KEY=...` |
-| `RUST_LOG` | Set log level for debugging | `RUST_LOG=debug sumvox say "test"` |
+API keys belong in the config file; the variables below are a fallback for when the config value
+is missing or still holds the `${...}` placeholder.
 
-#### Temporarily Disable SumVox
+| Variable | Description |
+|----------|-------------|
+| `SUMVOX_DISABLE` | Any value skips all SumVox processing |
+| `GEMINI_API_KEY` | Google Gemini LLM and Google TTS |
+| `GOOGLE_API_KEY` | Google TTS only (fallback after `GEMINI_API_KEY`) |
+| `ANTHROPIC_API_KEY` | Anthropic LLM |
+| `OPENAI_API_KEY` | OpenAI LLM and OpenAI TTS |
+| `XAI_API_KEY` | xAI Grok LLM and xAI TTS |
+| `ELEVENLABS_API_KEY` | ElevenLabs TTS |
+| `RUST_LOG` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
 
-Set `SUMVOX_DISABLE` to skip all SumVox processing. Useful when you want a quiet Claude Code session:
-
-```bash
-# Bash / Zsh
-SUMVOX_DISABLE=1 claude
-
-# Fish
-env SUMVOX_DISABLE=1 claude
-```
-
-You can also create a shell alias for convenience:
+For a quiet Claude Code session:
 
 ```bash
-# Bash / Zsh (~/.bashrc or ~/.zshrc)
-alias claude-quiet='SUMVOX_DISABLE=1 claude'
+SUMVOX_DISABLE=1 claude               # Bash / Zsh
+env SUMVOX_DISABLE=1 claude           # Fish
 
-# Fish (~/.config/fish/config.fish)
-alias claude-quiet 'env SUMVOX_DISABLE=1 claude'
+alias claude-quiet='SUMVOX_DISABLE=1 claude'      # Bash / Zsh
+alias claude-quiet 'env SUMVOX_DISABLE=1 claude'  # Fish
 ```
-
-**Note:** API keys should be configured in `~/.config/sumvox/config.yaml`, not as environment variables.
 
 ### Troubleshooting
 
-**Problem: "No API key found"**
-```bash
-# Check your config file
-cat ~/.config/sumvox/config.yaml
+**"No API key found"** — check `~/.config/sumvox/config.toml`: an `api_key` still reading
+`${PROVIDER_API_KEY}` counts as unset. Either paste the real key or export the matching
+environment variable.
 
-# Make sure api_key is set correctly (not ${PROVIDER_API_KEY})
-# Edit the config file:
-open ~/.config/sumvox/config.yaml
+**"Provider not available"** — verify the key, the network, and the order of the fallback chain.
 
-# Replace ${PROVIDER_API_KEY} with your actual API key
-```
+**No audio** — test with `sumvox say "test"`.
+On macOS check System Settings → Sound → Output.
+On Linux install a player (`paplay`, `pw-play`, `ffplay`, `mpv` or `aplay`); SumVox lists the ones
+it looked for when none is found. `aplay` has no volume control and is skipped when `volume = 0`.
+Over SSH `XDG_RUNTIME_DIR` is often unset — SumVox defaults it to `/run/user/{uid}` for the
+player, so export the real value if yours differs.
 
-**Problem: "Provider not available"**
-- Check internet connection (for cloud providers)
-- Verify API key is correct
-- Check provider fallback chain order
-
-**Problem: "No audio output"**
-- Test with: `sumvox say "test"`
-- Check system volume settings
-- For macOS: System Settings → Sound → Output
-- For Linux: install a player (`paplay`, `pw-play`, `ffplay`, `mpv` or `aplay`) — SumVox reports
-  which ones it looked for when none is found. `aplay` has no volume control and is skipped when
-  `volume` is 0. Over SSH, `XDG_RUNTIME_DIR` is often unset; SumVox defaults it to
-  `/run/user/{uid}` for the player, but if your runtime dir differs, export it before running.
-
-**Problem: "Ollama not responding"**
-```bash
-# Start Ollama
-ollama serve
-
-# Pull model if not installed
-ollama pull llama3.2
-```
+**Ollama not responding** — `ollama serve`, then `ollama pull llama3.2`.
 
 ## 🏗️ How It Works
 
-### Event Flow
-
 ```
-┌─────────────┐
-│ Claude Code │
-│   Session   │
-└──────┬──────┘
-       │ Hook Event (JSON via stdin)
-       ▼
-┌─────────────────────┐
-│  SumVox Process     │
-│                     │
-│  1. Parse Event     │
-│  2. Read Transcript │◄── ~/.claude/projects/.../transcript.jsonl
-│  3. Generate Summary│◄── LLM Provider (with fallback)
-│  4. Speak Text      │◄── TTS Provider (with fallback)
-└─────────────────────┘
-       │ Audio Output
-       ▼
-   🔊 System Audio
+Claude Code session
+        │  hook event (JSON on stdin)
+        ▼
+┌──────────────────────────────────────────────┐
+│ sumvox                                       │
+│  1. parse the event                          │
+│  2. read the transcript   ~/.claude/projects │
+│  3. summarize             LLM chain          │
+│  4. speak                 TTS chain          │
+└──────────────────────────────────────────────┘
+        │  audio
+        ▼
+   🔊 system audio
 ```
 
-### Fallback Mechanism
+Both chains behave the same way: try each provider in order, first success wins. An LLM chain that
+runs out of providers speaks `summarization.fallback_message`; a TTS chain that runs out stays
+silent. SumVox never fails the hook.
 
-**LLM Fallback:**
-```
-Try Provider 1 (Google)
-  ├─ Success → Generate Summary
-  └─ Fail → Try Provider 2 (Anthropic)
-      ├─ Success → Generate Summary
-      └─ Fail → Try Provider 3 (Ollama)
-          ├─ Success → Generate Summary
-          └─ Fail → Use Fallback Message
-```
+## 🖥️ Menu Bar App (macOS)
 
-**TTS Fallback (when `stop_tts_provider: auto`):**
-```
-Try Provider 1 (macOS)
-  ├─ Success → Speak Text
-  └─ Fail → Try Provider 2 (Google)
-      ├─ Success → Speak Text
-      └─ Fail → Silent (graceful degradation)
+An optional companion app lives in [`menubar/SumVoxMenu.swift`](menubar/SumVoxMenu.swift) — one
+Swift file, system frameworks only:
+
+```bash
+just menubar                      # builds target/release/sumvox-menubar
+target/release/sumvox-menubar &
 ```
 
-**Key Features:**
-- ⚡ **Fast**: Providers tried in order, first success wins
-- 🛡️ **Reliable**: Automatic retry with different providers
-- 🎯 **Configurable**: Control fallback order via config
-- 🔕 **Graceful**: Never crashes, worst case = silent or fallback message
+It launches with no Dock icon and puts up two things: a 🔊/🔇 status item, and a small floating
+**orb** that stays on screen (borderless, always-on-top, draggable to wherever you want it).
+Clicking either one opens the same menu:
+
+- **播放語音** — toggles `~/.config/sumvox/muted`. While that flag exists, SumVox skips playback on
+  *every* path — the hooks, `sumvox say` and `sumvox sum` — but still records the text.
+- **最近通知** — the last 50 spoken texts from `~/.config/sumvox/history.log`; click one to copy it.
+- **開啟設定檔** — opens `~/.config/sumvox/config.toml`.
+- **結束** — quits.
+
+When a new notification is recorded, a speech bubble appears next to the orb — on whichever side
+has room, clamped to the visible screen — types the text out, and fades away after 4–12 s (scaled
+to the text length). Because the text is recorded before
+the mute check, the bubble still appears while muted — you see the notification, you just don't
+hear it. The orb itself deforms in time with the audio: it reads the path in
+`~/.config/sumvox/now_playing`, decodes an RMS envelope off the main thread, and animates from
+that; with no real audio file (macOS `say`, for example) the typewriter synthesizes a level
+instead. It renders at 20 fps idle and 60 fps while speaking.
+
+State is never polled: the three files are watched with `DispatchSource`, and the menu is rebuilt
+only when it opens. Those files — `muted`, `history.log`, `now_playing` — are the entire contract
+between the two binaries (`src/notify_log.rs`), so not running the app just leaves them unread.
 
 ## 🛠️ Development
 
 ```bash
-# Build
 cargo build --release
-
-# Test
 cargo test
-cargo test llm::
-cargo test -- --nocapture
-
-# Code quality
-cargo fmt
-cargo clippy -- -D warnings
-
-# Run with debug
+cargo fmt && cargo clippy -- -D warnings
 RUST_LOG=debug cargo run
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guide.
-
-## 📊 Performance
-
-- **Startup**: ~7ms
-- **Memory**: ~10MB
-- **Binary size**: ~2.1MB
-- **LLM latency**: 1-2s (Gemini)
-- **TTS latency**: 0.5-1s (macOS), 1-2s (Google)
-
-## 💰 Cost Estimation
-
-### Gemini + Google TTS (Recommended)
-
-- **Per notification**: ~$0.00046
-- **Daily budget ($0.10)**: ~217 notifications
-- Breakdown:
-  - Gemini LLM: ~$0.00006/summary
-  - Google TTS: ~$0.0004/audio
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development and release guide.
 
 ## 🤝 Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions welcome. Areas that need help:
 
-Areas for contribution:
-- Test coverage for non-Gemini providers
+- Test coverage for the non-Gemini providers
 - Additional TTS engines
 - Windows support
-- Documentation improvements
+- Documentation
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE)
-
-## 🙏 Acknowledgments
-
-- Built with [Rust](https://www.rust-lang.org/)
-- Powered by [Google Gemini](https://ai.google.dev/)
-- Designed for [Claude Code](https://claude.com/claude-code)
+MIT — see [LICENSE](LICENSE).
 
 ## 🔗 Links
 
@@ -850,7 +543,3 @@ MIT License - see [LICENSE](LICENSE)
 - **Issues**: https://github.com/musingfox/sumvox/issues
 - **crates.io**: https://crates.io/crates/sumvox
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
-
----
-
-**Made with ❤️ for AI-powered development**

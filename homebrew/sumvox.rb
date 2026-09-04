@@ -37,8 +37,9 @@ class Sumvox < Formula
       SumVox has been installed!
 
       Next steps:
-      1. Edit config file and set your API keys:
-         open ~/.config/sumvox/config.yaml
+      1. Create the config file and set your API keys:
+         sumvox init
+         open ~/.config/sumvox/config.toml
          # Replace ${PROVIDER_API_KEY} with your actual API keys
 
       2. Test voice notification:
@@ -58,7 +59,7 @@ class Sumvox < Formula
            }
          }
 
-      Config: ~/.config/sumvox/config.yaml
+      Config: ~/.config/sumvox/config.toml
       Docs: https://github.com/musingfox/sumvox
     EOS
   end
