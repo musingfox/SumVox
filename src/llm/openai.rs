@@ -226,17 +226,6 @@ impl LlmProvider for OpenAIProvider {
             model: self.model.clone(),
         })
     }
-
-    fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        // GPT-4o-mini pricing (per 1K tokens)
-        const INPUT_COST_PER_1K: f64 = 0.00015;
-        const OUTPUT_COST_PER_1K: f64 = 0.0006;
-
-        let input_cost = (input_tokens as f64 / 1000.0) * INPUT_COST_PER_1K;
-        let output_cost = (output_tokens as f64 / 1000.0) * OUTPUT_COST_PER_1K;
-
-        input_cost + output_cost
-    }
 }
 
 #[cfg(test)]
@@ -308,19 +297,6 @@ mod tests {
         );
 
         assert_eq!(provider.extract_model_name(), "gpt-4o-mini");
-    }
-
-    #[test]
-    fn test_estimate_cost() {
-        let provider = OpenAIProvider::new(
-            "test-key".to_string(),
-            "gpt-4o-mini".to_string(),
-            Duration::from_secs(10),
-        );
-
-        let cost = provider.estimate_cost(1000, 1000);
-        // 1000 * 0.00015 + 1000 * 0.0006 = 0.00075
-        assert!((cost - 0.00075).abs() < 0.000001);
     }
 
     #[tokio::test]

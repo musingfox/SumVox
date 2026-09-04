@@ -260,10 +260,6 @@ Add Homebrew installation method and clarify prerequisites.
        async fn generate(&self, request: &GenerationRequest) -> LlmResult<GenerationResponse> {
            // Implementation
        }
-
-       fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-           // Per-million-token pricing
-       }
    }
    ```
 

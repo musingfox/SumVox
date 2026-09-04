@@ -141,11 +141,6 @@ impl LlmProvider for OllamaProvider {
             model: self.model.clone(),
         })
     }
-
-    fn estimate_cost(&self, _input_tokens: u32, _output_tokens: u32) -> f64 {
-        // Ollama is free (local)
-        0.0
-    }
 }
 
 #[cfg(test)]
@@ -208,18 +203,6 @@ mod tests {
         );
 
         assert_eq!(provider.extract_model_name(), "llama3.1");
-    }
-
-    #[test]
-    fn test_estimate_cost_is_zero() {
-        let provider = OllamaProvider::with_base_url(
-            "http://localhost:11434".to_string(),
-            "llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        let cost = provider.estimate_cost(1000, 1000);
-        assert_eq!(cost, 0.0);
     }
 
     // ── C2: OllamaRequestSerialization ──────────────────────────────────

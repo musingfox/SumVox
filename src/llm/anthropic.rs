@@ -193,20 +193,6 @@ impl LlmProvider for AnthropicProvider {
             model: self.model.clone(),
         })
     }
-
-    fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        // Claude 4.5 Haiku pricing (per 1K tokens)
-        // https://platform.claude.com/docs/en/about-claude/models/overview
-        // Input: $1/MTok = $0.001/1K tokens
-        // Output: $5/MTok = $0.005/1K tokens
-        const INPUT_COST_PER_1K: f64 = 0.001;
-        const OUTPUT_COST_PER_1K: f64 = 0.005;
-
-        let input_cost = (input_tokens as f64 / 1000.0) * INPUT_COST_PER_1K;
-        let output_cost = (output_tokens as f64 / 1000.0) * OUTPUT_COST_PER_1K;
-
-        input_cost + output_cost
-    }
 }
 
 #[cfg(test)]
@@ -256,19 +242,6 @@ mod tests {
         );
 
         assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_estimate_cost() {
-        let provider = AnthropicProvider::new(
-            "test-key".to_string(),
-            "claude-haiku-4-5".to_string(),
-            Duration::from_secs(10),
-        );
-
-        let cost = provider.estimate_cost(1000, 1000);
-        // 1000 * 0.001 + 1000 * 0.005 = 0.006
-        assert!((cost - 0.006).abs() < 0.000001);
     }
 
     #[tokio::test]

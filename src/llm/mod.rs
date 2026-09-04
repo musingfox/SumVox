@@ -8,7 +8,6 @@ pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
 
 pub mod anthropic;
-pub mod cost_tracker;
 pub mod gemini;
 pub mod ollama;
 pub mod openai;
@@ -43,10 +42,6 @@ pub trait LlmProvider: Send + Sync {
 
     /// Generate text from prompt
     async fn generate(&self, request: &GenerationRequest) -> LlmResult<GenerationResponse>;
-
-    /// Estimate cost for a request
-    #[allow(dead_code)]
-    fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64;
 }
 
 #[cfg(test)]

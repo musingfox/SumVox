@@ -241,17 +241,6 @@ impl LlmProvider for GeminiProvider {
             model: self.model.clone(),
         })
     }
-
-    fn estimate_cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        // Gemini Flash 2.0 pricing (per 1K tokens)
-        const INPUT_COST_PER_1K: f64 = 0.000075;
-        const OUTPUT_COST_PER_1K: f64 = 0.00030;
-
-        let input_cost = (input_tokens as f64 / 1000.0) * INPUT_COST_PER_1K;
-        let output_cost = (output_tokens as f64 / 1000.0) * OUTPUT_COST_PER_1K;
-
-        input_cost + output_cost
-    }
 }
 
 #[cfg(test)]
@@ -312,19 +301,6 @@ mod tests {
         );
 
         assert_eq!(provider.extract_model_name(), "gemini-2.0-flash-exp");
-    }
-
-    #[test]
-    fn test_estimate_cost() {
-        let provider = GeminiProvider::new(
-            "test-key".to_string(),
-            "gemini/gemini-2.0-flash-exp".to_string(),
-            Duration::from_secs(10),
-        );
-
-        let cost = provider.estimate_cost(1000, 1000);
-        // 1000 * 0.000075 + 1000 * 0.00030 = 0.000375
-        assert!((cost - 0.000375).abs() < 0.000001);
     }
 
     #[tokio::test]

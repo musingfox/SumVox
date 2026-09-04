@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **`src/audio/afplay.rs`**: the macOS-only playback module and its `run_afplay` helper are gone, replaced by `src/audio/player.rs`. No configuration change is needed — macOS behaviour is unchanged.
 - Dead configuration surface that was parsed but never read: the `version` config key, `sum --max-length`, `json --timeout`, and the `--format gemini-cli` value that was listed in `--help` but never implemented. Existing config files containing `version` still load; the key is ignored.
+- **LLM cost tracking**: `src/llm/cost_tracker.rs` and `LlmProvider::estimate_cost` are gone. The tracker wrote a daily usage ledger and enforced a budget, but nothing ever called it, and the per-provider price constants feeding it had drifted to models the project no longer configures (Gemini Flash 2.0, GPT-4o-mini). TTS cost estimation is untouched — that one is live in `src/pipeline.rs`.
+- **Unused dependencies**: `anyhow` and `is-terminal` (std has provided `IsTerminal` since Rust 1.70), plus the `libasound2-dev` installs in CI — nothing in the tree links ALSA.
 - **`config/recommended.yaml`**: the legacy YAML example, superseded by `config/recommended.toml`. Existing YAML configs in `~/.config/sumvox/` are still migrated automatically.
 
 ### Internal
