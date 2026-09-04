@@ -24,7 +24,7 @@ pub enum Commands {
     /// Read JSON from stdin (hook mode) - auto-detect format
     Json(JsonArgs),
 
-    /// Initialize config file at ~/.config/sumvox/config.yaml
+    /// Initialize config file at ~/.config/sumvox/config.toml
     Init(InitArgs),
 }
 

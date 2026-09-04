@@ -222,21 +222,22 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
 // ============================================================================
 
 async fn handle_init(args: InitArgs) -> Result<()> {
-    // Check for existing config (YAML or JSON)
+    // Check for an existing config: the TOML we write, or a legacy YAML/JSON one
+    let toml_path = SumvoxConfig::toml_config_path()?;
     let yaml_path = SumvoxConfig::yaml_config_path()?;
     let json_path = SumvoxConfig::config_path()?;
 
-    if (yaml_path.exists() || json_path.exists()) && !args.force {
-        let existing_path = if yaml_path.exists() {
-            &yaml_path
-        } else {
-            &json_path
-        };
-        eprintln!("Config file already exists at: {:?}", existing_path);
-        eprintln!();
-        eprintln!("To reset to defaults, use --force:");
-        eprintln!("  sumvox init --force");
-        return Ok(());
+    if !args.force {
+        if let Some(existing_path) = [&toml_path, &yaml_path, &json_path]
+            .into_iter()
+            .find(|path| path.exists())
+        {
+            eprintln!("Config file already exists at: {:?}", existing_path);
+            eprintln!();
+            eprintln!("To reset to defaults, use --force:");
+            eprintln!("  sumvox init --force");
+            return Ok(());
+        }
     }
 
     // Remove old JSON config if migrating to YAML
@@ -289,14 +290,14 @@ async fn handle_init(args: InitArgs) -> Result<()> {
         },
     ];
 
-    // Save as YAML (preferred format)
+    // Save as TOML (preferred format)
     config.save_to_home()?;
 
-    eprintln!("✓ Created config at: {:?}", yaml_path);
+    eprintln!("✓ Created config at: {:?}", toml_path);
     eprintln!();
     eprintln!("Next steps:");
     eprintln!("1. Edit config file and set your API keys:");
-    eprintln!("   open ~/.config/sumvox/config.yaml");
+    eprintln!("   open ~/.config/sumvox/config.toml");
     eprintln!(r#"   # Replace ${{PROVIDER_API_KEY}} with your actual API keys"#);
     eprintln!("   # Google: https://ai.google.dev");
     eprintln!("   # Anthropic: https://console.anthropic.com");
@@ -305,7 +306,7 @@ async fn handle_init(args: InitArgs) -> Result<()> {
     eprintln!("2. Test voice notification:");
     eprintln!("   sumvox say \"Hello, SumVox!\"");
     eprintln!();
-    eprintln!("3. See config/recommended.yaml for more examples");
+    eprintln!("3. See config/recommended.toml for more examples");
 
     Ok(())
 }

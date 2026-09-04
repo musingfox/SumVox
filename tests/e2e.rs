@@ -316,7 +316,7 @@ fn test_empty_stdin() {
 }
 
 // ============================================================================
-// Init Command (2)
+// Init Command (3)
 // ============================================================================
 
 #[test]
@@ -355,6 +355,35 @@ fn test_init_force() {
     assert!(
         config_path.exists(),
         "config.toml should be created after init --force"
+    );
+}
+
+#[test]
+fn test_init_does_not_overwrite_existing_toml() {
+    let env = TestEnv::new();
+    let home = env.setup_with_config("[[tts.providers]]\nname = \"macos\"\n");
+    let config_path = home.join(".config/sumvox/config.toml");
+    let before = fs::read_to_string(&config_path).unwrap();
+
+    // Without --force: the existing config.toml must survive untouched
+    env.cmd()
+        .arg("init")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("already exists"));
+
+    assert_eq!(
+        fs::read_to_string(&config_path).unwrap(),
+        before,
+        "init without --force must not overwrite an existing config.toml"
+    );
+
+    // With --force: overwriting is the point
+    env.cmd().args(["init", "--force"]).assert().success();
+    assert_ne!(
+        fs::read_to_string(&config_path).unwrap(),
+        before,
+        "init --force should replace the existing config.toml"
     );
 }
 
