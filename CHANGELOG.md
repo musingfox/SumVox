@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-04
+
 ### Added
 - **espeak TTS provider** (`espeak`, aliases `espeak_ng` / `espeak-ng`): local, offline, no API key — the Linux counterpart to `macos say`. Optional `voice` names an espeak-ng voice (e.g. `cmn+f3` for Mandarin with a female variant); `rate` is words per minute (default 175, clamped 80–450). Traditional and Simplified Chinese phonemize identically, so no conversion layer is needed. Requires the `espeak-ng` binary on `PATH`.
 - **piper TTS provider** (`piper`, alias `piper_tts`): local, offline neural TTS with markedly better Chinese prosody than espeak. The voice model is a `.onnx` file resolved from `voice`, `model` or `path` (first non-blank wins, `~` expanded) and must sit beside its `.onnx.json` sidecar; `rate` maps onto piper's `--length-scale` (default 200, higher = faster). Requires the `piper` binary (`uv tool install piper-tts`) and a hand-downloaded voice model.
