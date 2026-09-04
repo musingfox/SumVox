@@ -8,8 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
-#[allow(dead_code)]
-const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
+pub(crate) const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 #[derive(Debug, Serialize)]
@@ -30,8 +29,6 @@ struct Message {
 #[derive(Debug, Deserialize)]
 struct AnthropicResponse {
     content: Vec<ContentBlock>,
-    #[allow(dead_code)]
-    model: String,
     usage: Usage,
 }
 
@@ -63,11 +60,6 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    #[allow(dead_code)]
-    pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
-        Self::with_base_url(api_key, model, ANTHROPIC_API_BASE.to_string(), timeout)
-    }
-
     pub fn with_base_url(
         api_key: String,
         model: String,
@@ -190,7 +182,6 @@ impl LlmProvider for AnthropicProvider {
             text,
             input_tokens: anthropic_response.usage.input_tokens,
             output_tokens: anthropic_response.usage.output_tokens,
-            model: self.model.clone(),
         })
     }
 }
@@ -201,9 +192,10 @@ mod tests {
 
     #[test]
     fn test_anthropic_provider_creation() {
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             "test-key".to_string(),
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -213,9 +205,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_key() {
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             "sk-ant-test-key".to_string(),
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -224,9 +217,10 @@ mod tests {
 
     #[test]
     fn test_is_available_without_key() {
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             "".to_string(),
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -235,9 +229,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_placeholder() {
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             "${ANTHROPIC_API_KEY}".to_string(),
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -246,9 +241,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_with_unavailable_provider() {
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             "".to_string(),
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -330,9 +326,10 @@ mod tests {
     #[ignore]
     async fn test_generate_with_real_api() {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-        let provider = AnthropicProvider::new(
+        let provider = AnthropicProvider::with_base_url(
             api_key,
             "claude-haiku-4-5".to_string(),
+            ANTHROPIC_API_BASE.to_string(),
             Duration::from_secs(30),
         );
 

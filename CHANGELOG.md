@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 - **The e2e suite runs on Linux.** Every test hard-coded the `macos` engine, so it could only run on macOS and the Linux work had no end-to-end coverage. The harness now rewrites that literal to `espeak` on non-macOS hosts, so one `config/e2e_test.toml` serves both platforms, and CI runs the job on `ubuntu-latest` alongside `macos-latest`.
+- **Every `#[allow(dead_code)]` in the tree is gone**, along with what each was masking: `GenerationResponse::model`, the response fields `AnthropicResponse::model` and `OllamaResponse::{model, done}` (parsed, then discarded), and `ClaudeCodeInput::permission_mode` (never consulted — the hook still accepts the field, it is just no longer stored). The `new()` constructor on the Gemini, OpenAI and Anthropic providers is gone too: it only forwarded to `with_base_url` with the default endpoint and only tests called it. The `*_API_BASE` constants it used are now `provider_factory`'s defaults, replacing the three URL literals that file repeated.
 
 ## [1.8.0] - 2026-07-04
 

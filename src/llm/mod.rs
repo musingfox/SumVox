@@ -7,6 +7,10 @@ pub use gemini::GeminiProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
 
+pub(crate) use anthropic::ANTHROPIC_API_BASE;
+pub(crate) use gemini::GEMINI_API_BASE;
+pub(crate) use openai::OPENAI_API_BASE;
+
 pub mod anthropic;
 pub mod gemini;
 pub mod ollama;
@@ -28,8 +32,6 @@ pub struct GenerationResponse {
     pub text: String,
     pub input_tokens: u32,
     pub output_tokens: u32,
-    #[allow(dead_code)]
-    pub model: String,
 }
 
 #[async_trait]
@@ -73,12 +75,10 @@ mod tests {
             text: "Generated text".to_string(),
             input_tokens: 10,
             output_tokens: 20,
-            model: "test-model".to_string(),
         };
 
         assert_eq!(response.text, "Generated text");
         assert_eq!(response.input_tokens, 10);
         assert_eq!(response.output_tokens, 20);
-        assert_eq!(response.model, "test-model");
     }
 }

@@ -17,8 +17,6 @@ use crate::transcript::TranscriptReader;
 pub struct ClaudeCodeInput {
     pub session_id: String,
     pub transcript_path: String,
-    #[allow(dead_code)]
-    pub permission_mode: Option<String>,
     pub hook_event_name: String,
     pub stop_hook_active: Option<bool>,
     // Notification hook specific fields

@@ -8,8 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
-#[allow(dead_code)]
-const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
+pub(crate) const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
@@ -93,11 +92,6 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    #[allow(dead_code)]
-    pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
-        Self::with_base_url(api_key, model, GEMINI_API_BASE.to_string(), timeout)
-    }
-
     pub fn with_base_url(
         api_key: String,
         model: String,
@@ -238,7 +232,6 @@ impl LlmProvider for GeminiProvider {
             text,
             input_tokens,
             output_tokens,
-            model: self.model.clone(),
         })
     }
 }
@@ -249,9 +242,10 @@ mod tests {
 
     #[test]
     fn test_gemini_provider_creation() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "test-key".to_string(),
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -261,9 +255,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_empty_key() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "".to_string(),
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -272,9 +267,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_env_var_placeholder() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "${GEMINI_API_KEY}".to_string(),
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -283,9 +279,10 @@ mod tests {
 
     #[test]
     fn test_extract_model_name() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "test-key".to_string(),
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -294,9 +291,10 @@ mod tests {
 
     #[test]
     fn test_extract_model_name_without_prefix() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "test-key".to_string(),
             "gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -305,9 +303,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_with_unavailable_provider() {
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             "".to_string(),
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -374,9 +373,10 @@ mod tests {
     #[ignore]
     async fn test_generate_with_real_api() {
         let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-        let provider = GeminiProvider::new(
+        let provider = GeminiProvider::with_base_url(
             api_key,
             "gemini/gemini-2.0-flash-exp".to_string(),
+            GEMINI_API_BASE.to_string(),
             Duration::from_secs(30),
         );
 

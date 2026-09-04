@@ -31,11 +31,7 @@ struct OllamaOptions {
 
 #[derive(Debug, Deserialize)]
 struct OllamaResponse {
-    #[allow(dead_code)]
-    model: String,
     response: String,
-    #[allow(dead_code)]
-    done: bool,
     #[serde(default)]
     prompt_eval_count: u32,
     #[serde(default)]
@@ -138,7 +134,6 @@ impl LlmProvider for OllamaProvider {
             text: ollama_response.response,
             input_tokens: ollama_response.prompt_eval_count,
             output_tokens: ollama_response.eval_count,
-            model: self.model.clone(),
         })
     }
 }

@@ -2,7 +2,10 @@
 
 use crate::config::LlmProviderConfig;
 use crate::error::{Result, VoiceError};
-use crate::llm::{AnthropicProvider, GeminiProvider, LlmProvider, OllamaProvider, OpenAIProvider};
+use crate::llm::{
+    AnthropicProvider, GeminiProvider, LlmProvider, OllamaProvider, OpenAIProvider,
+    ANTHROPIC_API_BASE, GEMINI_API_BASE, OPENAI_API_BASE,
+};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -45,9 +48,10 @@ impl ProviderFactory {
                         LlmProviderConfig::env_var_name("google")
                     ))
                 })?;
-                let base_url = config.base_url.clone().unwrap_or_else(|| {
-                    "https://generativelanguage.googleapis.com/v1beta".to_string()
-                });
+                let base_url = config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| GEMINI_API_BASE.to_string());
                 Ok(Box::new(GeminiProvider::with_base_url(
                     api_key,
                     config.model.clone(),
@@ -65,7 +69,7 @@ impl ProviderFactory {
                 let base_url = config
                     .base_url
                     .clone()
-                    .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string());
+                    .unwrap_or_else(|| ANTHROPIC_API_BASE.to_string());
                 Ok(Box::new(AnthropicProvider::with_base_url(
                     api_key,
                     config.model.clone(),
@@ -83,7 +87,7 @@ impl ProviderFactory {
                 let base_url = config
                     .base_url
                     .clone()
-                    .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+                    .unwrap_or_else(|| OPENAI_API_BASE.to_string());
                 Ok(Box::new(OpenAIProvider::with_base_url(
                     api_key,
                     config.model.clone(),

@@ -8,8 +8,7 @@ use std::time::Duration;
 use super::{GenerationRequest, GenerationResponse, LlmProvider};
 use crate::error::{LlmError, LlmResult};
 
-#[allow(dead_code)]
-const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
+pub(crate) const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {
@@ -73,11 +72,6 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    #[allow(dead_code)]
-    pub fn new(api_key: String, model: String, timeout: Duration) -> Self {
-        Self::with_base_url(api_key, model, OPENAI_API_BASE.to_string(), timeout)
-    }
-
     pub fn with_base_url(
         api_key: String,
         model: String,
@@ -223,7 +217,6 @@ impl LlmProvider for OpenAIProvider {
             text,
             input_tokens: openai_response.usage.prompt_tokens,
             output_tokens: openai_response.usage.completion_tokens,
-            model: self.model.clone(),
         })
     }
 }
@@ -234,9 +227,10 @@ mod tests {
 
     #[test]
     fn test_openai_provider_creation() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "test-key".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -246,9 +240,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_key() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "sk-test-key".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -257,9 +252,10 @@ mod tests {
 
     #[test]
     fn test_is_available_without_key() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -268,9 +264,10 @@ mod tests {
 
     #[test]
     fn test_is_available_with_placeholder() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "${OPENAI_API_KEY}".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -279,9 +276,10 @@ mod tests {
 
     #[test]
     fn test_extract_model_name() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "test-key".to_string(),
             "openai/gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -290,9 +288,10 @@ mod tests {
 
     #[test]
     fn test_extract_model_name_without_prefix() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "test-key".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -301,9 +300,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_with_unavailable_provider() {
-        let provider = OpenAIProvider::new(
+        let provider = OpenAIProvider::with_base_url(
             "".to_string(),
             "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
             Duration::from_secs(10),
         );
 
@@ -428,8 +428,12 @@ mod tests {
     #[ignore]
     async fn test_generate_with_real_api() {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-        let provider =
-            OpenAIProvider::new(api_key, "gpt-4o-mini".to_string(), Duration::from_secs(30));
+        let provider = OpenAIProvider::with_base_url(
+            api_key,
+            "gpt-4o-mini".to_string(),
+            OPENAI_API_BASE.to_string(),
+            Duration::from_secs(30),
+        );
 
         let request = GenerationRequest {
             system_message: None,
