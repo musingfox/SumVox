@@ -28,6 +28,27 @@ where
     }
 }
 
+/// Serialize an f32 with its own shortest decimal form. TOML has only f64, so the
+/// serializer casts the f32 up and 0.3 lands in the file as 0.30000001192092896.
+fn serialize_f32<S>(value: &f32, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let widened = value.to_string().parse::<f64>().unwrap_or(*value as f64);
+    serializer.serialize_f64(widened)
+}
+
+/// Same as [`serialize_f32`] for the optional per-provider knobs.
+fn serialize_opt_f32<S>(value: &Option<f32>, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(v) => serialize_f32(v, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
 fn default_turns() -> usize {
     1
 }
@@ -135,7 +156,7 @@ pub struct LlmParameters {
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
 
-    #[serde(default = "default_temperature")]
+    #[serde(default = "default_temperature", serialize_with = "serialize_f32")]
     pub temperature: f32,
 
     /// Disable thinking/reasoning to reduce token usage
@@ -255,17 +276,29 @@ pub struct TtsProviderConfig {
 
     /// Speech speed multiplier (for ElevenLabs).
     /// Range 0.7-1.2; 1.0 = default, <1.0 slower, >1.0 faster.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_opt_f32"
+    )]
     pub speed: Option<f32>,
 
     /// Voice stability (for ElevenLabs). Range 0.0-1.0.
     /// Higher = calmer/less pitch variation, lower = more expressive.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_opt_f32"
+    )]
     pub stability: Option<f32>,
 
     /// Style exaggeration (for ElevenLabs). Range 0.0-1.0.
     /// Lower = flatter pitch/less expressive, 0.0 disables style.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_opt_f32"
+    )]
     pub style: Option<f32>,
 
     /// Style instruction prompt (for Gemini-TTS via cloud_tts).
@@ -830,6 +863,43 @@ mod tests {
         std::env::remove_var("OPENAI_API_KEY");
         let provider = openai_tts_provider(Some("${OPENAI_API_KEY}".to_string()));
         assert_eq!(provider.get_openai_api_key(), None);
+    }
+
+    #[test]
+    fn test_serialized_temperature_keeps_its_decimal_form() {
+        // The f32 -> f64 cast in the TOML serializer used to write 0.30000001192092896.
+        let config = SumvoxConfig::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        assert!(
+            toml_str.contains("temperature = 0.3\n"),
+            "temperature should serialize as 0.3, got:\n{}",
+            toml_str
+        );
+
+        // The same cast applies to the optional per-provider knobs, which a
+        // YAML -> TOML migration rewrites.
+        let provider = TtsProviderConfig {
+            name: "elevenlabs".to_string(),
+            model: None,
+            voice: None,
+            api_key: None,
+            rate: None,
+            volume: None,
+            path: None,
+            service_account_key: None,
+            language_code: None,
+            speed: Some(0.9),
+            stability: Some(0.4),
+            style: Some(0.2),
+            style_prompt: None,
+        };
+        let toml_str = toml::to_string_pretty(&provider).unwrap();
+        for expected in ["speed = 0.9\n", "stability = 0.4\n", "style = 0.2\n"] {
+            assert!(
+                toml_str.contains(expected),
+                "expected {expected:?} in:\n{toml_str}"
+            );
+        }
     }
 
     #[test]
