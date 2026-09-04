@@ -52,7 +52,6 @@ config/sounds/
 
 # Rust
 target/
-Cargo.lock
 
 # Release artifacts
 *.tar.gz
