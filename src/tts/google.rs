@@ -137,9 +137,12 @@ impl GoogleTtsProvider {
             self.volume
         );
 
-        // Gemini TTS returns LINEAR16 PCM format (16-bit signed little-endian at 24kHz mono)
-        // Convert raw PCM to WAV format
-        let wav_data = create_wav_file(audio_data, 24000, 1, 16);
+        // Gemini 3.8 returns a complete WAV; 2.5 returns headerless LINEAR16 PCM (24kHz mono).
+        let wav_data = if mime_type.starts_with("audio/wav") {
+            audio_data.to_vec()
+        } else {
+            create_wav_file(audio_data, 24000, 1, 16)
+        };
 
         // Play through the platform player
         play_bytes(&wav_data, self.volume, "sumvox_google")
@@ -168,13 +171,12 @@ impl TtsProvider for GoogleTtsProvider {
             text.len()
         );
 
-        // Build request using Gemini 2.5 Flash TTS API format
-        // IMPORTANT: Must include TTS instruction prefix for the model to generate audio
-        let tts_text = format!("Read this aloud: {}", text);
-
+        // Gemini 3.8 TTS reads the text verbatim, so an instruction prefix would be spoken.
         let request = GeminiTtsRequest {
             contents: vec![Content {
-                parts: vec![Part { text: tts_text }],
+                parts: vec![Part {
+                    text: text.to_string(),
+                }],
             }],
             generation_config: GenerationConfig {
                 response_modalities: vec!["AUDIO".to_string()],
