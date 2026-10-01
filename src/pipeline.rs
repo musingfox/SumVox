@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::config::{effective_disable_thinking, SumvoxConfig, TtsProviderConfig};
 use crate::error::Result;
-use crate::llm::GenerationRequest;
+use crate::llm::{GenerationRequest, LlmProvider};
 use crate::notify_log;
 use crate::provider_factory::ProviderFactory;
 use crate::tts::{
@@ -150,49 +150,61 @@ pub async fn generate_summary(
 
     // Try each provider in config order until one succeeds.
     // Build a per-provider GenerationRequest so each gets its own effective disable_thinking.
-    for provider_config in &llm_config.providers {
-        let disable_thinking = effective_disable_thinking(provider_config, &llm_config.parameters);
-
+    let mut attempts = llm_config.providers.iter().map(|provider_config| {
         let request = GenerationRequest {
             system_message: system_message.clone(),
             prompt: prompt.to_string(),
             max_tokens: llm_config.parameters.max_tokens,
             temperature: llm_config.parameters.temperature,
-            disable_thinking,
+            disable_thinking: effective_disable_thinking(provider_config, &llm_config.parameters),
+        };
+        let provider = ProviderFactory::create_single(provider_config)
+            .map_err(|e| format!("{}: {}", provider_config.name, e));
+        (provider, request)
+    });
+
+    Ok(generate_with_fallback(&mut attempts).await)
+}
+
+type LlmAttempt = (
+    std::result::Result<Box<dyn LlmProvider>, String>,
+    GenerationRequest,
+);
+
+type TtsCandidate = std::result::Result<Box<dyn TtsProvider>, String>;
+
+/// Run each (provider, request) in order until one generates; empty string if none do.
+/// An `Err` entry is a provider that could not be created and is skipped.
+async fn generate_with_fallback(attempts: &mut dyn Iterator<Item = LlmAttempt>) -> String {
+    for (provider, request) in attempts {
+        let provider = match provider {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::debug!("Failed to create provider {}", e);
+                continue;
+            }
         };
 
-        match ProviderFactory::create_single(provider_config) {
-            Ok(provider) => {
-                if !provider.is_available() {
-                    tracing::debug!("Provider {} not available, trying next", provider.name());
-                    continue;
-                }
+        if !provider.is_available() {
+            tracing::debug!("Provider {} not available, trying next", provider.name());
+            continue;
+        }
 
-                tracing::info!(
-                    "Trying LLM provider: {} (model: {})",
-                    provider_config.name,
-                    provider_config.model
+        tracing::info!("Trying LLM provider: {}", provider.name());
+
+        match provider.generate(&request).await {
+            Ok(response) => {
+                tracing::info!("Provider {} succeeded", provider.name());
+                tracing::debug!(
+                    "LLM usage: {} input tokens, {} output tokens",
+                    response.input_tokens,
+                    response.output_tokens
                 );
 
-                match provider.generate(&request).await {
-                    Ok(response) => {
-                        tracing::info!("Provider {} succeeded", provider.name());
-                        tracing::debug!(
-                            "LLM usage: {} input tokens, {} output tokens",
-                            response.input_tokens,
-                            response.output_tokens
-                        );
-
-                        return Ok(response.text.trim().to_string());
-                    }
-                    Err(e) => {
-                        tracing::warn!("Provider {} failed: {}, trying next", provider.name(), e);
-                        continue;
-                    }
-                }
+                return response.text.trim().to_string();
             }
             Err(e) => {
-                tracing::debug!("Failed to create provider {}: {}", provider_config.name, e);
+                tracing::warn!("Provider {} failed: {}, trying next", provider.name(), e);
                 continue;
             }
         }
@@ -200,7 +212,7 @@ pub async fn generate_summary(
 
     // All providers failed
     tracing::error!("All LLM providers failed");
-    Ok(String::new())
+    String::new()
 }
 
 /// Speak text using TTS
@@ -345,9 +357,7 @@ async fn speak_with_provider_fallback(
     text: &str,
     volume_override: Option<u32>,
 ) -> Result<()> {
-    let mut last_error = None;
-
-    for provider_config in providers {
+    let mut candidates = providers.iter().filter_map(|provider_config| {
         // Skip audio_file providers - they play sound effects,
         // not speech synthesis, and cannot render arbitrary text.
         if matches!(
@@ -357,7 +367,7 @@ async fn speak_with_provider_fallback(
             tracing::debug!(
                 "Skipping audio_file provider in fallback chain (not a speech synthesizer)"
             );
-            continue;
+            return None;
         }
 
         // Apply volume override if provided (hook-level volume takes priority)
@@ -366,16 +376,29 @@ async fn speak_with_provider_fallback(
             config_with_volume.volume = Some(vol);
         }
 
-        // Try to create provider
-        let provider = match create_single_tts(&config_with_volume) {
+        Some(
+            create_single_tts(&config_with_volume)
+                .map_err(|e| format!("{}: {}", provider_config.name, e)),
+        )
+    });
+
+    speak_with_fallback(&mut candidates, text).await
+}
+
+/// Speak with the first provider that is available and succeeds. An `Err` entry is a
+/// provider that could not be created. Always `Ok`: total failure is only logged.
+async fn speak_with_fallback(
+    providers: &mut dyn Iterator<Item = TtsCandidate>,
+    text: &str,
+) -> Result<()> {
+    let mut last_error = None;
+
+    for provider in providers {
+        let provider = match provider {
             Ok(p) => p,
             Err(e) => {
-                tracing::debug!(
-                    "Failed to create TTS provider {}: {}",
-                    provider_config.name,
-                    e
-                );
-                last_error = Some(format!("{}: {}", provider_config.name, e));
+                tracing::debug!("Failed to create TTS provider {}", e);
+                last_error = Some(e);
                 continue;
             }
         };
@@ -390,12 +413,7 @@ async fn speak_with_provider_fallback(
             continue;
         }
 
-        // Log selected provider
-        tracing::info!(
-            "Using TTS provider: {} (voice: {})",
-            provider_config.name,
-            provider_config.voice.as_deref().unwrap_or("default")
-        );
+        tracing::info!("Using TTS provider: {}", provider.name());
 
         // Estimate and log cost for cloud providers
         let cost = provider.estimate_cost(text.len());
