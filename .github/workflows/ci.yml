@@ -100,6 +100,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Run audio playback tests
+        env:
+          SDL_AUDIODRIVER: dummy
+        run: "cargo test --bins --verbose -- --ignored audio:: tts::"
+        timeout-minutes: 10
+
       - name: Write E2E config
         env:
           E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
