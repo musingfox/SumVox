@@ -76,10 +76,7 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: cargo test --lib --bins --verbose
-
-      - name: Run tests with all features
-        run: cargo test --lib --bins --all-features --verbose
+        run: cargo test --verbose
 
   e2e:
     name: E2E
@@ -118,7 +115,7 @@ jobs:
           E2E_CONFIG: ${{ secrets.E2E_CONFIG }}
           SDL_AUDIODRIVER: dummy
         if: env.E2E_CONFIG != ''
-        run: cargo test --test e2e --verbose
+        run: cargo test --test e2e --verbose -- --ignored
         timeout-minutes: 10
 
   build:
