@@ -456,3 +456,6 @@ async fn speak_with_fallback(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
