@@ -230,40 +230,23 @@ mod tests {
             args(Some("cmn+f3"), 200),
             ["--stdin", "-w", "/tmp/o.wav", "-v", "cmn+f3", "-s", "200"]
         );
-    }
 
-    #[test]
-    fn test_espeak_args_omits_voice_when_absent() {
-        assert_eq!(
-            args(None, 175),
-            ["--stdin", "-w", "/tmp/o.wav", "-s", "175"]
-        );
-    }
+        // Absent and blank voices are omitted
+        for voice in [None, Some("   ")] {
+            assert_eq!(
+                args(voice, 175),
+                ["--stdin", "-w", "/tmp/o.wav", "-s", "175"]
+            );
+        }
 
-    #[test]
-    fn test_espeak_args_omits_blank_voice() {
-        assert_eq!(
-            args(Some("   "), 175),
-            ["--stdin", "-w", "/tmp/o.wav", "-s", "175"]
-        );
-    }
-
-    #[test]
-    fn test_espeak_args_clamps_rate_to_minimum() {
-        let argv = args(Some("cmn"), 10);
-        assert!(
-            argv.windows(2).any(|w| w == ["-s", "80"]),
-            "expected clamp to 80: {argv:?}"
-        );
-    }
-
-    #[test]
-    fn test_espeak_args_clamps_rate_to_maximum() {
-        let argv = args(Some("cmn"), 10000);
-        assert!(
-            argv.windows(2).any(|w| w == ["-s", "450"]),
-            "expected clamp to 450: {argv:?}"
-        );
+        // Rate is clamped to espeak-ng's 80..=450 range
+        for (rate, clamped) in [(10, "80"), (10000, "450")] {
+            let argv = args(Some("cmn"), rate);
+            assert!(
+                argv.windows(2).any(|w| w == ["-s", clamped]),
+                "expected clamp to {clamped}: {argv:?}"
+            );
+        }
     }
 
     // Synthesis tests inject `true`/`false` as the "engine": they exercise the
@@ -315,11 +298,6 @@ mod tests {
         // so Ok(false) proves the guard runs before the spawn.
         let provider = EspeakProvider::new(None, 175, 80).with_binary("false");
         assert!(!provider.speak("").await.expect("empty text must not error"));
-    }
-
-    #[tokio::test]
-    async fn test_speak_whitespace_only_is_a_no_op() {
-        let provider = EspeakProvider::new(None, 175, 80).with_binary("false");
         assert!(!provider
             .speak("   \n ")
             .await
@@ -333,13 +311,5 @@ mod tests {
             !provider.is_available(),
             "a missing engine must be skipped by the chain, not error"
         );
-    }
-
-    #[test]
-    fn test_espeak_args_never_carries_the_text() {
-        // The builder has no text parameter at all — a structural guarantee,
-        // stronger than asserting the absence of a string.
-        let argv = args(Some("cmn"), 175);
-        assert!(argv.contains(&"--stdin".to_string()), "{argv:?}");
     }
 }

@@ -157,6 +157,8 @@ mod tests {
         assert_eq!(provider.volume, 80);
         assert!(matches!(provider.mode, AudioFileMode::SingleFile(_)));
         assert_eq!(provider.estimate_cost(100), 0.0);
+        assert!(provider.is_available());
+        assert_eq!(provider.get_playback_file().unwrap(), temp_file.path());
     }
 
     #[test]
@@ -167,6 +169,7 @@ mod tests {
         let provider = AudioFileProvider::new(path, 100).unwrap();
         assert_eq!(provider.name(), "audio_file");
         assert!(matches!(provider.mode, AudioFileMode::Directory(_)));
+        assert!(provider.is_available());
     }
 
     #[test]
@@ -175,17 +178,6 @@ mod tests {
         let result = AudioFileProvider::new(path, 100);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
-    }
-
-    #[test]
-    fn test_get_playback_file_single_mode() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"fake audio data").unwrap();
-        let path = temp_file.path().to_path_buf();
-
-        let provider = AudioFileProvider::new(path.clone(), 100).unwrap();
-        let result = provider.get_playback_file().unwrap();
-        assert_eq!(result, path);
     }
 
     #[test]
@@ -224,22 +216,5 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("No audio files found"));
-    }
-
-    #[test]
-    fn test_is_available_single_file() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"fake audio").unwrap();
-        let path = temp_file.path().to_path_buf();
-
-        let provider = AudioFileProvider::new(path, 100).unwrap();
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_directory() {
-        let temp_dir = tempdir().unwrap();
-        let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100).unwrap();
-        assert!(provider.is_available());
     }
 }

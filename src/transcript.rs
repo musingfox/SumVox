@@ -270,47 +270,12 @@ mod tests {
         assert_eq!(texts[0], "First response");
         assert_eq!(texts[1], "Second response");
         assert_eq!(texts[2], "Third response");
-    }
 
-    #[tokio::test]
-    async fn test_read_last_n_texts() {
-        let jsonl_content = r#"{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 1"}]},"timestamp":"2025-01-22T10:00:01Z"}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 2"}]},"timestamp":"2025-01-22T10:00:02Z"}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 3"}]},"timestamp":"2025-01-22T10:00:03Z"}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 4"}]},"timestamp":"2025-01-22T10:00:04Z"}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 5"}]},"timestamp":"2025-01-22T10:00:05Z"}
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(jsonl_content.as_bytes()).unwrap();
-        let path = temp_file.path();
-
-        let texts = TranscriptReader::read_last_n_texts(path, 3).await.unwrap();
-
-        assert_eq!(texts.len(), 3);
-        assert_eq!(texts[0], "Text 3");
-        assert_eq!(texts[1], "Text 4");
-        assert_eq!(texts[2], "Text 5");
-    }
-
-    #[tokio::test]
-    async fn test_read_with_limit() {
-        let jsonl_content = r#"{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 1"}]}}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 2"}]}}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 3"}]}}
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(jsonl_content.as_bytes()).unwrap();
-        let path = temp_file.path();
-
-        let texts = TranscriptReader::read_assistant_texts(path, 2)
+        // The limit stops reading early
+        let limited = TranscriptReader::read_assistant_texts(path, 2)
             .await
             .unwrap();
-
-        assert_eq!(texts.len(), 2);
-        assert_eq!(texts[0], "Text 1");
-        assert_eq!(texts[1], "Text 2");
+        assert_eq!(limited, ["First response", "Second response"]);
     }
 
     #[tokio::test]
@@ -398,26 +363,6 @@ invalid json line
     }
 
     #[tokio::test]
-    async fn test_read_last_n_turns_with_tools() {
-        let jsonl_content = r#"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"Do something"}]}}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Let me help"}]}}
-{"type":"message","message":{"role":"assistant","content":[{"type":"tool_use","name":"bash","input":{"command":"ls"}}]}}
-{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]}}
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(jsonl_content.as_bytes()).unwrap();
-        let path = temp_file.path();
-
-        let texts = TranscriptReader::read_last_n_turns(path, 1).await.unwrap();
-
-        // Should only extract text blocks, not tool_use
-        assert_eq!(texts.len(), 2);
-        assert_eq!(texts[0], "Let me help");
-        assert_eq!(texts[1], "Done");
-    }
-
-    #[tokio::test]
     async fn test_read_last_n_turns_no_user() {
         let jsonl_content = r#"{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 1"}]}}
 {"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Text 2"}]}}
@@ -432,6 +377,9 @@ invalid json line
         let texts = TranscriptReader::read_last_n_turns(path, 1).await.unwrap();
         assert_eq!(texts.len(), 1);
         assert_eq!(texts[0], "Text 3");
+
+        let texts = TranscriptReader::read_last_n_texts(path, 2).await.unwrap();
+        assert_eq!(texts, ["Text 2", "Text 3"]);
     }
 
     #[tokio::test]

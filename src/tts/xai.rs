@@ -168,19 +168,16 @@ mod tests {
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
         assert!(provider.estimate_cost(1000) > 0.0);
-    }
 
-    #[test]
-    fn test_custom_voice_and_language() {
-        let provider = XaiTtsProvider::new(
+        let custom = XaiTtsProvider::new(
             "test-api-key".to_string(),
             "rex".to_string(),
             Some("zh".to_string()),
             75,
         );
-        assert_eq!(provider.voice_id, "rex");
-        assert_eq!(provider.language, "zh");
-        assert_eq!(provider.volume, 75);
+        assert_eq!(custom.voice_id, "rex");
+        assert_eq!(custom.language, "zh");
+        assert_eq!(custom.volume, 75);
     }
 
     #[test]

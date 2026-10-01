@@ -144,28 +144,16 @@ mod tests {
 
     #[test]
     fn test_extract_model_name() {
-        let provider = OllamaProvider::with_base_url(
-            "http://localhost:11434".to_string(),
-            "ollama/llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        assert_eq!(provider.extract_model_name(), "llama3.1");
-        assert!(provider.is_available());
+        for model in ["ollama/llama3.1", "llama3.1"] {
+            let provider = OllamaProvider::with_base_url(
+                "http://localhost:11434".to_string(),
+                model.to_string(),
+                Duration::from_secs(30),
+            );
+            assert_eq!(provider.extract_model_name(), "llama3.1");
+            assert!(provider.is_available());
+        }
     }
-
-    #[test]
-    fn test_extract_model_name_without_prefix() {
-        let provider = OllamaProvider::with_base_url(
-            "http://localhost:11434".to_string(),
-            "llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        assert_eq!(provider.extract_model_name(), "llama3.1");
-    }
-
-    // ── C2: OllamaRequestSerialization ──────────────────────────────────
 
     #[test]
     fn test_c2_think_wire_format() {

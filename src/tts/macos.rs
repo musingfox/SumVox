@@ -119,14 +119,8 @@ mod tests {
         let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
+        assert!(!provider.speak("   ").await.unwrap());
         assert_eq!(provider.estimate_cost(100), 0.0);
-    }
-
-    #[tokio::test]
-    async fn test_speak_whitespace_only() {
-        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100);
-        let result = provider.speak("   ").await.unwrap();
-        assert!(!result);
     }
 
     // Exercises the full render-to-file + playback path at a low volume; fails

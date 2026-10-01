@@ -278,35 +278,23 @@ mod tests {
 
     #[test]
     fn test_cost_estimation_flash() {
-        let provider = ElevenLabsProvider::new(
-            "test-key".to_string(),
-            "21m00Tcm4TlvDq8ikWAM".to_string(),
-            "eleven_flash_v2_5".to_string(),
-            None,
-            None,
-            None,
-            100,
-        );
-        assert_eq!(provider.name(), "elevenlabs");
-        // 1M chars × $0.00005 = $50
-        let cost = provider.estimate_cost(1_000_000);
-        assert!((cost - 50.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_cost_estimation_multilingual() {
-        let provider = ElevenLabsProvider::new(
-            "test-key".to_string(),
-            "21m00Tcm4TlvDq8ikWAM".to_string(),
-            "eleven_multilingual_v2".to_string(),
-            None,
-            None,
-            None,
-            100,
-        );
-        // 1M chars × $0.0001 = $100
-        let cost = provider.estimate_cost(1_000_000);
-        assert!((cost - 100.0).abs() < 0.001);
+        // (model, expected cost for 1M chars): flash is half the multilingual price
+        for (model, expected) in [
+            ("eleven_flash_v2_5", 50.0),
+            ("eleven_multilingual_v2", 100.0),
+        ] {
+            let provider = ElevenLabsProvider::new(
+                "test-key".to_string(),
+                "21m00Tcm4TlvDq8ikWAM".to_string(),
+                model.to_string(),
+                None,
+                None,
+                None,
+                100,
+            );
+            assert_eq!(provider.name(), "elevenlabs");
+            assert!((provider.estimate_cost(1_000_000) - expected).abs() < 0.001);
+        }
     }
 
     #[tokio::test]

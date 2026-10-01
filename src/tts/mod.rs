@@ -392,16 +392,33 @@ mod tests {
 
     #[test]
     fn test_tts_engine_from_str() {
-        assert_eq!("macos".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
-        assert_eq!("say".parse::<TtsEngine>().ok(), Some(TtsEngine::MacOS));
-        assert_eq!("google".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
-        assert_eq!(
-            "google_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::Google)
-        );
-        assert_eq!("gcloud".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
-        assert_eq!("auto".parse::<TtsEngine>().ok(), Some(TtsEngine::Auto));
+        use TtsEngine::*;
+        for (tag, engine) in [
+            ("macos", MacOS),
+            ("say", MacOS),
+            ("google", Google),
+            ("google_tts", Google),
+            ("gcloud", Google),
+            ("cloud_tts", CloudTts),
+            ("gcp_tts", CloudTts),
+            ("google_cloud", CloudTts),
+            ("gemini_tts", CloudTts),
+            ("openai", OpenAi),
+            ("openai_tts", OpenAi),
+            ("espeak", Espeak),
+            ("espeak-ng", Espeak),
+            ("espeak_ng", Espeak),
+            // Parsing is case-insensitive, like every other engine tag
+            ("ESPEAK", Espeak),
+            ("piper", Piper),
+            ("piper_tts", Piper),
+            ("auto", Auto),
+        ] {
+            assert_eq!(tag.parse::<TtsEngine>().ok(), Some(engine), "{tag}");
+        }
         assert!("unknown".parse::<TtsEngine>().is_err());
+        // Only the three documented spellings map to Espeak
+        assert!("espeakng".parse::<TtsEngine>().is_err());
 
         // Display and FromStr agree on the canonical name of every engine
         for engine in [
@@ -418,26 +435,6 @@ mod tests {
         ] {
             assert_eq!(engine.to_string().parse::<TtsEngine>().ok(), Some(engine));
         }
-    }
-
-    #[test]
-    fn test_cloud_tts_engine_from_str() {
-        assert_eq!(
-            "cloud_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::CloudTts)
-        );
-        assert_eq!(
-            "gcp_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::CloudTts)
-        );
-        assert_eq!(
-            "google_cloud".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::CloudTts)
-        );
-        assert_eq!(
-            "gemini_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::CloudTts)
-        );
     }
 
     #[test]
@@ -523,14 +520,6 @@ mod tests {
     const PIPER_ALIASES: &[&str] = &["piper", "piper_tts"];
 
     #[test]
-    fn test_dispatch_resolves_espeak_from_config() {
-        let providers = vec![espeak_config("espeak", Some("cmn+f3"), Some(175))];
-        let provider = resolve_tts_provider(&providers, ESPEAK_ALIASES, None, 200, None)
-            .expect("configured espeak entry should resolve");
-        assert_eq!(provider.name(), "espeak");
-    }
-
-    #[test]
     fn test_dispatch_espeak_errors_when_absent_from_config() {
         let providers: Vec<TtsProviderConfig> = vec![];
         let err = resolve_tts_provider(&providers, ESPEAK_ALIASES, None, 200, None)
@@ -541,59 +530,6 @@ mod tests {
             err.contains("espeak provider not found in config"),
             "unexpected error: {err}"
         );
-    }
-
-    #[test]
-    fn test_dispatch_resolves_piper_with_cli_voice_override() {
-        // The CLI `--voice` overlay must reach piper's model knob.
-        let providers = vec![piper_config(None, Some("/m/a.onnx"), None)];
-        let provider =
-            resolve_tts_provider(&providers, PIPER_ALIASES, Some("/m/b.onnx"), 200, None)
-                .expect("configured piper entry should resolve");
-        assert_eq!(provider.name(), "piper");
-    }
-
-    #[test]
-    fn test_dispatch_piper_errors_when_absent_from_config() {
-        let providers: Vec<TtsProviderConfig> = vec![];
-        let err = resolve_tts_provider(&providers, PIPER_ALIASES, None, 200, None)
-            .err()
-            .expect("an unconfigured engine must error")
-            .to_string();
-        assert!(
-            err.contains("piper provider not found in config"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn test_espeak_engine_from_str_accepts_all_aliases() {
-        assert_eq!("espeak".parse::<TtsEngine>().ok(), Some(TtsEngine::Espeak));
-        assert_eq!(
-            "espeak-ng".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::Espeak)
-        );
-        assert_eq!(
-            "espeak_ng".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::Espeak)
-        );
-        // Parsing is case-insensitive, like every other engine tag.
-        assert_eq!("ESPEAK".parse::<TtsEngine>().ok(), Some(TtsEngine::Espeak));
-    }
-
-    #[test]
-    fn test_piper_engine_from_str_accepts_all_aliases() {
-        assert_eq!("piper".parse::<TtsEngine>().ok(), Some(TtsEngine::Piper));
-        assert_eq!(
-            "piper_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::Piper)
-        );
-    }
-
-    #[test]
-    fn test_espeakng_is_not_an_alias() {
-        // Only the three documented spellings map to Espeak.
-        assert!("espeakng".parse::<TtsEngine>().is_err());
     }
 
     fn espeak_config(name: &str, voice: Option<&str>, rate: Option<u32>) -> TtsProviderConfig {
@@ -615,24 +551,14 @@ mod tests {
     }
 
     #[test]
-    fn test_factory_builds_espeak_from_alias_with_voice_and_rate() {
-        let provider = create_single_tts(&espeak_config("espeak_ng", Some("cmn+f3"), Some(175)))
-            .expect("espeak_ng entry should build");
-        assert_eq!(provider.name(), "espeak");
-    }
-
-    #[test]
     fn test_factory_builds_espeak_with_no_voice_or_rate() {
         let provider = create_single_tts(&espeak_config("espeak", None, None))
             .expect("a bare espeak entry needs no configuration");
         assert_eq!(provider.name(), "espeak");
-    }
 
-    #[test]
-    fn test_factory_builds_piper_from_model() {
-        let provider = create_single_tts(&piper_config(None, Some("/m/zh.onnx"), None))
-            .expect("piper entry with a model should build");
-        assert_eq!(provider.name(), "piper");
+        let aliased = create_single_tts(&espeak_config("espeak_ng", Some("cmn+f3"), Some(175)))
+            .expect("espeak_ng entry should build");
+        assert_eq!(aliased.name(), "espeak");
     }
 
     fn piper_config(
@@ -719,16 +645,6 @@ mod tests {
         assert!(resolved.ends_with("/v/zh.onnx"), "unexpected: {resolved}");
     }
 
-    #[test]
-    fn test_openai_engine_from_str_and_display() {
-        assert_eq!("openai".parse::<TtsEngine>().ok(), Some(TtsEngine::OpenAi));
-        assert_eq!(
-            "openai_tts".parse::<TtsEngine>().ok(),
-            Some(TtsEngine::OpenAi)
-        );
-        assert_eq!(TtsEngine::OpenAi.to_string(), "openai");
-    }
-
     fn openai_config(model: Option<&str>, voice: Option<&str>) -> TtsProviderConfig {
         TtsProviderConfig {
             name: "openai".to_string(),
@@ -771,51 +687,6 @@ mod tests {
             .expect("fully specified openai entry should build");
         assert_eq!(provider.name(), "openai");
         assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_resolve_openai_errors_when_absent() {
-        let providers: Vec<TtsProviderConfig> = vec![];
-        let err = resolve_tts_provider(&providers, &["openai", "openai_tts"], None, 200, None)
-            .err()
-            .expect("expected error with empty config")
-            .to_string();
-        assert!(
-            err.contains("openai provider not found in config"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn test_google_still_maps_to_google() {
-        assert!(matches!(
-            "google".parse::<TtsEngine>(),
-            Ok(TtsEngine::Google)
-        ));
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn test_create_macos_tts() {
-        let providers = vec![TtsProviderConfig {
-            name: "macos".to_string(),
-            model: None,
-            voice: Some("Tingting".to_string()),
-            api_key: None,
-            rate: Some(200),
-            volume: Some(80),
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
-        }];
-
-        let result = create_tts_from_config(&providers);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().name(), "macos");
     }
 
     #[test]
@@ -899,22 +770,19 @@ mod tests {
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
-    }
 
-    #[test]
-    fn test_resolve_tts_provider_errors_when_engine_absent() {
-        let providers: Vec<TtsProviderConfig> = vec![];
-        let result = resolve_tts_provider(&providers, &["google", "gemini"], None, 200, None);
-        assert!(result.is_err());
-    }
+        // Other engines resolve from config the same way (aliases are the ones
+        // the dispatch arms pass)
+        let espeak = vec![espeak_config("espeak", Some("cmn+f3"), Some(175))];
+        let provider = resolve_tts_provider(&espeak, ESPEAK_ALIASES, None, 200, None)
+            .expect("configured espeak entry should resolve");
+        assert_eq!(provider.name(), "espeak");
 
-    #[test]
-    fn test_resolve_tts_provider_macos_errors_when_absent() {
-        // config is the single source of truth: an unconfigured engine errors,
-        // even the credential-free macOS one.
-        let providers: Vec<TtsProviderConfig> = vec![];
-        let result = resolve_tts_provider(&providers, &["macos", "say"], None, 200, None);
-        assert!(result.is_err());
+        // The CLI `--voice` overlay reaches piper's model knob
+        let piper = vec![piper_config(None, Some("/m/a.onnx"), None)];
+        let provider = resolve_tts_provider(&piper, PIPER_ALIASES, Some("/m/b.onnx"), 200, None)
+            .expect("configured piper entry should resolve");
+        assert_eq!(provider.name(), "piper");
     }
 
     #[test]

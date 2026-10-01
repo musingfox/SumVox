@@ -337,54 +337,30 @@ mod tests {
         );
     }
 
-    // ── Volume override tests ──────────────────────────────────────────
-
-    // ── Contract 1: last_assistant_message deserialization ──────────────
-
-    // ── Contract 3: select_stop_context_source logic ────────────────────
-
     #[test]
-    fn test_select_source_transcript_none() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::Transcript, None);
-        assert!(matches!(source, StopContextSource::ReadTranscript));
-    }
+    fn test_select_source() {
+        use crate::config::ContentSource::{LastMessage, Transcript};
 
-    #[test]
-    fn test_select_source_transcript_some() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::Transcript, Some("anything"));
-        assert!(matches!(source, StopContextSource::ReadTranscript));
-    }
-
-    #[test]
-    fn test_select_source_last_message_present() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::LastMessage, Some("hello"));
-        match source {
+        // The last message is used only when asked for and non-blank
+        match select_stop_context_source(LastMessage, Some("hello")) {
             StopContextSource::UseLastMessage(text) => assert_eq!(text, "hello"),
             _ => panic!("Expected UseLastMessage"),
         }
-    }
 
-    #[test]
-    fn test_select_source_last_message_whitespace() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::LastMessage, Some("  "));
-        assert!(matches!(source, StopContextSource::ReadTranscript));
-    }
-
-    #[test]
-    fn test_select_source_last_message_empty() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::LastMessage, Some(""));
-        assert!(matches!(source, StopContextSource::ReadTranscript));
-    }
-
-    #[test]
-    fn test_select_source_last_message_none() {
-        use crate::config::ContentSource;
-        let source = select_stop_context_source(ContentSource::LastMessage, None);
-        assert!(matches!(source, StopContextSource::ReadTranscript));
+        for (source, message) in [
+            (Transcript, None),
+            (Transcript, Some("anything")),
+            (LastMessage, Some("  ")),
+            (LastMessage, Some("")),
+            (LastMessage, None),
+        ] {
+            assert!(
+                matches!(
+                    select_stop_context_source(source, message),
+                    StopContextSource::ReadTranscript
+                ),
+                "{source:?} with {message:?} should read the transcript"
+            );
+        }
     }
 }

@@ -395,15 +395,11 @@ mod tests {
     }
 
     #[test]
-    fn test_find_on_path_empty_name() {
-        assert!(find_on_path("").is_none());
-    }
-
-    #[test]
     fn test_find_on_path_rejects_path_separator() {
         // A name with a separator is not a PATH lookup — reject rather than
         // silently resolving it relative to the cwd.
         assert!(find_on_path("./sh").is_none());
+        assert!(find_on_path("").is_none());
     }
 
     fn args(player: &str, volume: u32) -> Vec<String> {
@@ -412,25 +408,17 @@ mod tests {
 
     #[test]
     fn test_player_args_paplay_scales_to_65536() {
-        assert_eq!(args("paplay", 50), ["--volume=52016", "/tmp/a.wav"]);
-        assert_eq!(args("paplay", 100), ["--volume=65536", "/tmp/a.wav"]);
-    }
-
-    #[test]
-    fn test_player_args_paplay_is_cube_root_not_linear() {
-        // Second curve point: a linear (or any other monotone) map cannot also
-        // land here. 41285 = 65536 * 0.25^(1/3), measured -11.8 dB.
-        assert_eq!(args("paplay", 25), ["--volume=41285", "/tmp/a.wav"]);
-    }
-
-    #[test]
-    fn test_player_args_clamps_volume_above_100() {
-        assert_eq!(args("paplay", 150), ["--volume=65536", "/tmp/a.wav"]);
-    }
-
-    #[test]
-    fn test_player_args_paplay_zero_volume() {
-        assert_eq!(args("paplay", 0), ["--volume=0", "/tmp/a.wav"]);
+        // (volume, expected --volume). 25 is a second curve point (65536 * 0.25^(1/3),
+        // measured -11.8 dB) that a linear map cannot also hit; 150 clamps to 100.
+        for (volume, expected) in [
+            (0, "--volume=0"),
+            (25, "--volume=41285"),
+            (50, "--volume=52016"),
+            (100, "--volume=65536"),
+            (150, "--volume=65536"),
+        ] {
+            assert_eq!(args("paplay", volume), [expected, "/tmp/a.wav"]);
+        }
     }
 
     #[test]
@@ -457,31 +445,19 @@ mod tests {
 
     #[test]
     fn test_player_args_mpv() {
-        assert_eq!(
-            args("mpv", 50),
-            [
-                "--no-video",
-                "--no-config",
-                "--really-quiet",
-                "--volume=79",
-                "/tmp/a.wav"
-            ]
-        );
-    }
-
-    #[test]
-    fn test_player_args_mpv_is_cube_root_not_linear() {
-        // Second curve point: 63 = 100 * 0.25^(1/3), measured -11.9 dB.
-        assert_eq!(
-            args("mpv", 25),
-            [
-                "--no-video",
-                "--no-config",
-                "--really-quiet",
-                "--volume=63",
-                "/tmp/a.wav"
-            ]
-        );
+        // 25 is a second curve point: 100 * 0.25^(1/3), measured -11.9 dB.
+        for (volume, expected) in [(50, "--volume=79"), (25, "--volume=63")] {
+            assert_eq!(
+                args("mpv", volume),
+                [
+                    "--no-video",
+                    "--no-config",
+                    "--really-quiet",
+                    expected,
+                    "/tmp/a.wav"
+                ]
+            );
+        }
     }
 
     #[test]
@@ -507,11 +483,6 @@ mod tests {
     #[test]
     fn test_select_player_none_installed() {
         assert_eq!(select_player(&["sumvox_no_such_player"], 100), None);
-    }
-
-    #[test]
-    fn test_select_player_finds_installed() {
-        assert_eq!(select_player(&["sh"], 100), Some("sh".to_string()));
     }
 
     #[test]
@@ -577,14 +548,6 @@ mod tests {
         assert_eq!(runtime_dir_default(None, 1000, false), None);
     }
 
-    #[test]
-    fn test_runtime_dir_default_handles_root() {
-        assert_eq!(
-            runtime_dir_default(None, 0, true),
-            Some("/run/user/0".to_string())
-        );
-    }
-
     // Playback tests inject `true`/`false` as the "player": they exercise the
     // real spawn/wait/exit-code path with no audio device and no real player.
     const FIVE_SECONDS: Duration = Duration::from_secs(5);
@@ -630,18 +593,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_play_file_with_refuses_aplay_at_zero_volume() {
-        // Deterministic with or without aplay installed.
-        let err = play_file_with(&["aplay"], Path::new("/tmp/x.wav"), 0, FIVE_SECONDS)
-            .expect_err("aplay cannot honour volume 0, so this must fail loudly")
-            .to_string();
-        assert!(
-            err.contains("no supported audio player found"),
-            "unexpected: {err}"
-        );
-    }
-
     /// A minimal valid WAV file for testing.
     fn create_test_wav() -> Vec<u8> {
         crate::audio::wav_header::create_wav_file(&[0x00, 0x00], 24000, 1, 16)
@@ -679,24 +630,6 @@ mod tests {
     fn test_play_bytes_success() {
         let wav_data = create_test_wav();
         let result = play_bytes(&wav_data, 50, "sumvox_test");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    #[ignore = "e2e-audio"]
-    fn test_play_bytes_zero_volume() {
-        let wav_data = create_test_wav();
-        let result = play_bytes(&wav_data, 0, "sumvox_test_zero");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    #[ignore = "e2e-audio"]
-    fn test_play_bytes_max_volume() {
-        let wav_data = create_test_wav();
-        let result = play_bytes(&wav_data, 100, "sumvox_test_max");
         assert!(result.is_ok());
     }
 

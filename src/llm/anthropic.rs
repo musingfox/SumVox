@@ -192,39 +192,21 @@ mod tests {
 
     #[test]
     fn test_is_available_with_key() {
-        let provider = AnthropicProvider::with_base_url(
-            "sk-ant-test-key".to_string(),
-            "claude-haiku-4-5".to_string(),
-            ANTHROPIC_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.name(), "anthropic");
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_without_key() {
-        let provider = AnthropicProvider::with_base_url(
-            "".to_string(),
-            "claude-haiku-4-5".to_string(),
-            ANTHROPIC_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_with_placeholder() {
-        let provider = AnthropicProvider::with_base_url(
-            "${ANTHROPIC_API_KEY}".to_string(),
-            "claude-haiku-4-5".to_string(),
-            ANTHROPIC_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
+        // (api key, expected): empty and `${...}` placeholder keys are unusable
+        for (key, expected) in [
+            ("sk-ant-test-key", true),
+            ("", false),
+            ("${ANTHROPIC_API_KEY}", false),
+        ] {
+            let provider = AnthropicProvider::with_base_url(
+                key.to_string(),
+                "claude-haiku-4-5".to_string(),
+                ANTHROPIC_API_BASE.to_string(),
+                Duration::from_secs(10),
+            );
+            assert_eq!(provider.is_available(), expected, "key={key:?}");
+            assert_eq!(provider.name(), "anthropic");
+        }
     }
 
     #[tokio::test]

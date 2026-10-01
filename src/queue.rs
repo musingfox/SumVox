@@ -128,20 +128,6 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
-    async fn test_lock_acquire_when_available() {
-        let temp_dir = tempdir().unwrap();
-        let lock_path = temp_dir.path().join("test.lock");
-
-        // Create queue with custom lock path
-        let mut queue = NotificationQueue::new(Some(Duration::from_secs(5))).unwrap();
-        queue.lock_file_path = lock_path;
-
-        // Should acquire lock successfully
-        let lock = QueueLock::acquire(&queue).await;
-        assert!(lock.is_ok());
-    }
-
-    #[tokio::test]
     async fn test_lock_auto_release_on_drop() {
         let temp_dir = tempdir().unwrap();
         let lock_path = temp_dir.path().join("test.lock");
