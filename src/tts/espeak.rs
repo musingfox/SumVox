@@ -7,16 +7,13 @@
 // amplitude flag is deliberately unused — volume is a playback-time knob.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
 
+use super::render::render_then_play;
 use super::TtsProvider;
 use crate::audio::player;
-use crate::error::{Result, VoiceError};
+use crate::error::Result;
 
 /// espeak-ng's own default speech rate, in words per minute.
 pub const DEFAULT_RATE: u32 = 175;
@@ -24,14 +21,6 @@ pub const DEFAULT_RATE: u32 = 175;
 /// The program we invoke. Overridable in tests only, so the spawn/exit-code
 /// paths can be exercised with `true`/`false` stand-ins.
 const BINARY: &str = "espeak-ng";
-
-/// Wall-clock cap on synthesis. espeak is ~9 ms for a short sentence, so this
-/// is ~3000x headroom: the cap exists to break a wedge, not to police latency.
-const SYNTH_TIMEOUT: Duration = Duration::from_secs(30);
-
-// Per-call counter so the temp path is unique even for concurrent calls that
-// share a PID — same collision-safety scheme as audio/normalize.rs.
-static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Bounds espeak-ng accepts for `-s`; outside them it rejects the argument.
 const MIN_RATE: u32 = 80;
@@ -114,13 +103,6 @@ impl TtsProvider for EspeakProvider {
     }
 
     async fn speak(&self, text: &str) -> Result<bool> {
-        // Guard before any temp-path or spawn work: nothing to say is a
-        // deliberate no-op, not a failure. Matches every other provider.
-        if text.trim().is_empty() {
-            tracing::warn!("Empty message, skipping voice notification");
-            return Ok(false);
-        }
-
         tracing::info!(
             "Speaking with espeak-ng: voice={:?}, rate={}, volume={}",
             self.voice,
@@ -128,86 +110,14 @@ impl TtsProvider for EspeakProvider {
             self.volume
         );
 
-        // Qualify by PID + per-call counter so concurrent invocations never
-        // clobber each other's file.
-        let wav_path = std::env::temp_dir().join(format!(
-            "sumvox_espeak_{}_{}.wav",
-            std::process::id(),
-            CALL_SEQ.fetch_add(1, Ordering::Relaxed)
-        ));
-
-        let args = espeak_args(self.voice.as_deref(), self.rate, &wav_path);
-        tracing::debug!("espeak-ng argv: {:?}", args);
-
-        let spawned = Command::new(&self.binary)
-            .args(&args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            // If we bail out early (timeout), don't leave the child running.
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut child = spawned.map_err(|e| {
-            VoiceError::Voice(format!("espeak-ng synthesis failed: could not run: {}", e))
-        })?;
-
-        // The text goes to stdin, never onto the command line. A write failure
-        // is not fatal on its own — the exit status decides.
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(text.as_bytes()).await {
-                tracing::debug!("espeak-ng: failed writing text to stdin: {}", e);
-            }
-            // Dropping/closing stdin signals EOF so espeak stops reading.
-            let _ = stdin.shutdown().await;
-        }
-
-        let output = match tokio::time::timeout(SYNTH_TIMEOUT, child.wait_with_output()).await {
-            Ok(Ok(output)) => output,
-            Ok(Err(e)) => {
-                let _ = std::fs::remove_file(&wav_path);
-                return Err(VoiceError::Voice(format!(
-                    "espeak-ng synthesis failed: {}",
-                    e
-                )));
-            }
-            Err(_) => {
-                // kill_on_drop reaps the child as `child` is dropped here.
-                let _ = std::fs::remove_file(&wav_path);
-                return Err(VoiceError::Voice(format!(
-                    "espeak-ng synthesis failed: timed out after {}s",
-                    SYNTH_TIMEOUT.as_secs()
-                )));
-            }
-        };
-
-        if !output.status.success() {
-            // espeak may have left a partial file behind before failing.
-            let _ = std::fs::remove_file(&wav_path);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(VoiceError::Voice(format!(
-                "espeak-ng synthesis failed: {}",
-                stderr.trim()
-            )));
-        }
-
-        // Exit zero with no audio must not reach the player: that would look
-        // like success while producing silence.
-        let rendered = std::fs::metadata(&wav_path).map(|m| m.len()).unwrap_or(0);
-        if rendered == 0 {
-            let _ = std::fs::remove_file(&wav_path);
-            return Err(VoiceError::Voice(
-                "espeak-ng synthesis failed: produced no audio".to_string(),
-            ));
-        }
-
-        // Clean up on every path, including the playback-error path.
-        let result = player::play_file(&wav_path, self.volume);
-        let _ = std::fs::remove_file(&wav_path);
-        result?;
-
-        tracing::debug!("espeak-ng playback completed");
-        Ok(true)
+        render_then_play(
+            "espeak-ng",
+            &self.binary,
+            |wav| espeak_args(self.voice.as_deref(), self.rate, wav),
+            text,
+            self.volume,
+        )
+        .await
     }
 }
 

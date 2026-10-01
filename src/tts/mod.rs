@@ -9,6 +9,7 @@ pub mod google;
 pub mod macos;
 pub mod openai;
 pub mod piper;
+mod render;
 pub mod xai;
 
 use async_trait::async_trait;
