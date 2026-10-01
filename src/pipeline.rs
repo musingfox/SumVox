@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use crate::config::{effective_disable_thinking, SumvoxConfig, TtsProviderConfig};
-use crate::error::Result;
+use crate::error::{Result, VoiceError};
 use crate::llm::{GenerationRequest, LlmProvider};
 use crate::notify_log;
 use crate::provider_factory::ProviderFactory;
@@ -215,8 +215,39 @@ async fn generate_with_fallback(attempts: &mut dyn Iterator<Item = LlmAttempt>) 
     String::new()
 }
 
+enum EngineChoice<'a> {
+    Engine(TtsEngine),
+    Named(&'a TtsProviderConfig),
+}
+
+/// Interpret `--tts`: "auto"/empty, a known engine alias, or the exact name of a
+/// configured provider. Anything else is an error rather than a silent fallback.
+fn select_engine<'a>(name: &str, providers: &'a [TtsProviderConfig]) -> Result<EngineChoice<'a>> {
+    if name.is_empty() {
+        return Ok(EngineChoice::Engine(TtsEngine::Auto));
+    }
+    if let Ok(engine) = name.parse::<TtsEngine>() {
+        return Ok(EngineChoice::Engine(engine));
+    }
+    providers
+        .iter()
+        .find(|p| p.name.to_lowercase() == name)
+        .map(EngineChoice::Named)
+        .ok_or_else(|| {
+            VoiceError::Config(format!(
+                "Unknown TTS engine '{}': not a known engine or a configured provider name",
+                name
+            ))
+        })
+}
+
 /// Speak text using TTS
 pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str) -> Result<()> {
+    // The raw engine name disambiguates entries that share one TtsEngine
+    // (cloud_tts vs gemini_tts); resolve_tts_provider matches it exactly first.
+    let engine_name = tts_opts.engine.to_lowercase();
+    let choice = select_engine(&engine_name, &config.tts.providers)?;
+
     // Record every agent voice report (even when muted) for the menu bar app.
     notify_log::record(text);
     if notify_log::is_muted() {
@@ -224,35 +255,37 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
         return Ok(());
     }
 
-    // The raw engine name disambiguates entries that share one TtsEngine
-    // (cloud_tts vs gemini_tts); resolve_tts_provider matches it exactly first.
-    let engine_name = tts_opts.engine.to_lowercase();
-    let tts_engine = tts_opts.engine.parse().unwrap_or(TtsEngine::Auto);
-
     // Create TTS provider: CLI override or config fallback chain
-    let provider: Box<dyn TtsProvider> = match tts_engine {
-        TtsEngine::Auto => {
+    let provider: Box<dyn TtsProvider> = match choice {
+        EngineChoice::Named(entry) => resolve_tts_provider(
+            &config.tts.providers,
+            &[entry.name.to_lowercase().as_str()],
+            tts_opts.voice.as_deref(),
+            tts_opts.rate,
+            tts_opts.volume,
+        )?,
+        EngineChoice::Engine(TtsEngine::Auto) => {
             // Use config fallback chain
             create_tts_from_config(&config.tts.providers)?
         }
         // An explicitly selected engine overrides which configured provider to use;
         // all attributes come from that config entry, with only explicit CLI/hook
         // voice/volume layered on top. Nothing is hardcoded.
-        TtsEngine::MacOS => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::MacOS) => resolve_tts_provider(
             &config.tts.providers,
             &["macos", "say"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::Google => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::Google) => resolve_tts_provider(
             &config.tts.providers,
             &["google", "google_tts", "gcloud", "gemini"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::CloudTts => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::CloudTts) => resolve_tts_provider(
             &config.tts.providers,
             &[
                 engine_name.as_str(),
@@ -265,42 +298,42 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::AudioFile => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::AudioFile) => resolve_tts_provider(
             &config.tts.providers,
             &["audio_file", "audio", "file"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::Xai => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::Xai) => resolve_tts_provider(
             &config.tts.providers,
             &["xai", "xai_tts", "grok"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::ElevenLabs => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::ElevenLabs) => resolve_tts_provider(
             &config.tts.providers,
             &["elevenlabs", "eleven_labs", "11labs"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::OpenAi => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::OpenAi) => resolve_tts_provider(
             &config.tts.providers,
             &["openai", "openai_tts"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::Espeak => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::Espeak) => resolve_tts_provider(
             &config.tts.providers,
             &["espeak", "espeak_ng", "espeak-ng"],
             tts_opts.voice.as_deref(),
             tts_opts.rate,
             tts_opts.volume,
         )?,
-        TtsEngine::Piper => resolve_tts_provider(
+        EngineChoice::Engine(TtsEngine::Piper) => resolve_tts_provider(
             &config.tts.providers,
             &["piper", "piper_tts"],
             tts_opts.voice.as_deref(),
@@ -321,8 +354,8 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
     }
 
     // Speak with error handling and fallback for Auto mode
-    match tts_engine {
-        TtsEngine::Auto => {
+    match choice {
+        EngineChoice::Engine(TtsEngine::Auto) => {
             // For Auto mode, try all providers in config order
             // Pass volume override so hook-level volume (stop_volume/notification_volume) is applied
             speak_with_provider_fallback(&config.tts.providers, text, tts_opts.volume).await

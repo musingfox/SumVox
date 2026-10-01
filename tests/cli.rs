@@ -142,28 +142,6 @@ fn notification_json_stop_active() -> String {
     .to_string()
 }
 
-fn config_no_tts() -> String {
-    r#"[llm]
-providers = []
-[llm.parameters]
-max_tokens = 100
-temperature = 0.3
-
-[tts]
-providers = []
-
-[summarization]
-turns = 1
-system_message = "Test"
-prompt_template = "Summarize: {context}"
-fallback_message = "Test completed"
-
-[hooks.claude_code]
-notification_filter = ["*"]
-"#
-    .to_string()
-}
-
 fn config_with_audio_file(path: &str) -> String {
     format!(
         r#"[llm]
@@ -336,15 +314,14 @@ fn test_sum_no_llm_config() {
 #[test]
 fn test_say_unknown_tts() {
     let env = TestEnv::new();
-    // Use config with no TTS providers — "nonexistent" falls back to Auto,
-    // Auto with empty providers → error
-    env.setup_with_config(&config_no_tts());
+    env.setup_with_config(&config_without_llm());
+    env.mute();
 
     env.cmd()
-        .args(["say", "hello", "--tts", "nonexistent"])
+        .args(["say", "hello", "--tts", "nonsense"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No TTS provider"));
+        .stderr(predicate::str::contains("Unknown TTS engine 'nonsense'"));
 }
 
 #[test]
