@@ -347,6 +347,28 @@ pub(crate) fn unique_temp_path(prefix: &str, ext: &str) -> PathBuf {
     ))
 }
 
+/// Write `data` to a fresh [`unique_temp_path`]. `create_new` refuses a path
+/// that already exists (including a planted symlink) and the file is
+/// owner-only, since the name is predictable in a shared temp dir.
+pub(crate) fn write_temp_audio(prefix: &str, ext: &str, data: &[u8]) -> Result<PathBuf> {
+    let path = unique_temp_path(prefix, ext);
+    write_exclusive(&path, data)
+        .map_err(|e| VoiceError::Voice(format!("Failed to write temp audio: {}", e)))?;
+    Ok(path)
+}
+
+fn write_exclusive(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .and_then(|mut f| f.write_all(data))
+}
+
 /// [`play_bytes`] with the candidate list and timeout injected, for tests.
 pub fn play_bytes_with(
     candidates: &[&str],
@@ -355,8 +377,6 @@ pub fn play_bytes_with(
     temp_file_prefix: &str,
     timeout: Duration,
 ) -> Result<()> {
-    use std::io::Write;
-
     tracing::debug!(
         "Playing {} bytes, volume: {}, prefix: {}",
         audio_data.len(),
@@ -364,10 +384,7 @@ pub fn play_bytes_with(
         temp_file_prefix
     );
 
-    let tmp_path = unique_temp_path(temp_file_prefix, "wav");
-    std::fs::File::create(&tmp_path)
-        .and_then(|mut f| f.write_all(audio_data))
-        .map_err(|e| VoiceError::Voice(format!("Failed to write temp WAV: {}", e)))?;
+    let tmp_path = write_temp_audio(temp_file_prefix, "wav", audio_data)?;
 
     // Capture the result before cleanup so the temp file is removed on every
     // path — including a spawn failure, which a bare `?` would have skipped,
@@ -625,6 +642,26 @@ mod tests {
         let b = unique_temp_path("sumvox_test_unique", "wav");
         assert_ne!(a, b);
         assert_eq!(a.extension().unwrap(), "wav");
+    }
+
+    #[test]
+    fn test_write_temp_audio_refuses_existing_path_and_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = write_temp_audio("sumvox_test_write", "wav", b"x").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+
+        let planted = unique_temp_path("sumvox_test_planted", "wav");
+        std::fs::write(&planted, b"planted").unwrap();
+        assert!(
+            write_exclusive(&planted, b"x").is_err(),
+            "an existing path must not be reused"
+        );
+        assert_eq!(std::fs::read(&planted).unwrap(), b"planted");
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&planted);
     }
 
     #[test]
