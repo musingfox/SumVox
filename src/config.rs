@@ -1,6 +1,5 @@
 // Configuration loading and validation
-// Unified config at ~/.config/sumvox/config.toml with array-based provider fallback;
-// a legacy config.yaml or config.json is migrated to TOML on load
+// Unified config at ~/.config/sumvox/config.toml with array-based provider fallback
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -562,62 +561,33 @@ impl SumvoxConfig {
         Ok(home.join(".config").join("sumvox"))
     }
 
-    /// Get the standard config path: ~/.config/sumvox/config.json (deprecated)
-    pub fn config_path() -> Result<PathBuf> {
-        Ok(Self::config_dir()?.join("config.json"))
-    }
-
-    /// Get the YAML config path: ~/.config/sumvox/config.yaml
-    pub fn yaml_config_path() -> Result<PathBuf> {
-        Ok(Self::config_dir()?.join("config.yaml"))
-    }
-
     /// Get the TOML config path: ~/.config/sumvox/config.toml
     pub fn toml_config_path() -> Result<PathBuf> {
         Ok(Self::config_dir()?.join("config.toml"))
     }
 
-    /// Load configuration from ~/.config/sumvox/config.toml (preferred) with auto-migration
+    /// Load configuration from ~/.config/sumvox/config.toml, or defaults when none exists
     pub fn load_from_home() -> Result<Self> {
-        // Priority 1: Try TOML (new format)
         let toml_path = Self::toml_config_path()?;
         if toml_path.exists() {
             tracing::info!("Loading config from {:?}", toml_path);
             return Self::load_toml(toml_path);
         }
 
-        // Priority 2: Try migrating from YAML/JSON
-        if let Some(migrated_path) = Self::migrate_legacy_config()? {
-            tracing::info!("Auto-migrated legacy config: {:?}", migrated_path);
-            return Self::load_toml(Self::toml_config_path()?);
+        // A YAML/JSON config is no longer read; silently using defaults would hide it
+        for legacy in ["config.yaml", "config.yml", "config.json"] {
+            let legacy_path = Self::config_dir()?.join(legacy);
+            if legacy_path.exists() {
+                return Err(VoiceError::Config(format!(
+                    "Found legacy config {:?} but no config.toml. YAML/JSON configs are no longer supported: convert it to {:?} or run `sumvox init`.",
+                    legacy_path, toml_path
+                )));
+            }
         }
 
-        // Priority 3: No config file found, use defaults
+        // No config file found, use defaults
         tracing::info!("No config file found, using defaults");
         Ok(Self::default())
-    }
-
-    /// Load configuration from a JSON file
-    pub fn load_json(path: PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(&path).map_err(|e| {
-            VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
-        })?;
-
-        let config: SumvoxConfig = serde_json::from_str(&content)?;
-        config.validate()?;
-        Ok(config)
-    }
-
-    /// Load configuration from a YAML file
-    pub fn load_yaml(path: PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(&path).map_err(|e| {
-            VoiceError::Config(format!("Failed to read config file {:?}: {}", path, e))
-        })?;
-
-        let config: SumvoxConfig = serde_yaml::from_str(&content)
-            .map_err(|e| VoiceError::Config(format!("Failed to parse YAML config: {}", e)))?;
-        config.validate()?;
-        Ok(config)
     }
 
     /// Load configuration from a TOML file
@@ -647,64 +617,6 @@ impl SumvoxConfig {
     pub fn save_to_home(&self) -> Result<()> {
         let config_path = Self::toml_config_path()?;
         self.save_toml(config_path)
-    }
-
-    /// Backup a config file with timestamp
-    fn backup_config(path: &std::path::Path) -> Result<PathBuf> {
-        if !path.exists() {
-            return Err(VoiceError::Config(format!(
-                "Config file {:?} does not exist",
-                path
-            )));
-        }
-        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let backup_name = format!(
-            "{}.backup-{}",
-            path.file_name().unwrap().to_string_lossy(),
-            timestamp
-        );
-        let backup_path = path.parent().unwrap().join(backup_name);
-        std::fs::copy(path, &backup_path)
-            .map_err(|e| VoiceError::Config(format!("Failed to backup config: {}", e)))?;
-        tracing::info!("Created backup: {:?}", backup_path);
-        Ok(backup_path)
-    }
-
-    /// Migrate legacy config (YAML/JSON) to TOML
-    fn migrate_legacy_config() -> Result<Option<PathBuf>> {
-        let yaml_path = Self::yaml_config_path()?;
-        let json_path = Self::config_path()?;
-
-        let (source_path, format_name) = if yaml_path.exists() {
-            (yaml_path, "YAML")
-        } else if json_path.exists() {
-            (json_path, "JSON")
-        } else {
-            return Ok(None); // No legacy config
-        };
-
-        tracing::info!(
-            "Migrating {} config to TOML: {:?}",
-            format_name,
-            source_path
-        );
-
-        // Load legacy config
-        let config = if format_name == "YAML" {
-            Self::load_yaml(source_path.clone())?
-        } else {
-            Self::load_json(source_path.clone())?
-        };
-
-        // Backup original file
-        Self::backup_config(&source_path)?;
-
-        // Save as TOML
-        let toml_path = Self::toml_config_path()?;
-        config.save_toml(toml_path.clone())?;
-
-        tracing::info!("Migration completed: {} -> TOML", format_name);
-        Ok(Some(source_path))
     }
 
     /// Validate configuration
@@ -773,55 +685,7 @@ impl SumvoxConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_load_new_format() {
-        let config_json = r#"{
-            "enabled": true,
-            "llm": {
-                "providers": [
-                    {
-                        "name": "google",
-                        "model": "gemini-2.5-flash",
-                        "api_key": "test-key",
-                        "timeout": 10
-                    },
-                    {
-                        "name": "ollama",
-                        "model": "llama3.2"
-                    }
-                ],
-                "parameters": {
-                    "max_tokens": 100,
-                    "temperature": 0.3
-                }
-            },
-            "tts": {
-                "providers": [
-                    {
-                        "name": "macos",
-                        "voice": "Tingting",
-                        "rate": 200
-                    }
-                ]
-            }
-        }"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(config_json.as_bytes()).unwrap();
-        let path = temp_file.path().to_path_buf();
-
-        let config = SumvoxConfig::load_json(path).unwrap();
-        assert_eq!(config.llm.providers.len(), 2);
-        assert_eq!(config.llm.providers[0].name, "google");
-        assert_eq!(
-            config.llm.providers[0].api_key,
-            Some("test-key".to_string())
-        );
-        assert_eq!(config.tts.providers[0].name, "macos");
-    }
 
     fn openai_tts_provider(api_key: Option<String>) -> TtsProviderConfig {
         TtsProviderConfig {
@@ -866,8 +730,7 @@ mod tests {
             toml_str
         );
 
-        // The same cast applies to the optional per-provider knobs, which a
-        // YAML -> TOML migration rewrites.
+        // The same cast applies to the optional per-provider knobs.
         let provider = TtsProviderConfig {
             name: "elevenlabs".to_string(),
             model: None,
@@ -955,46 +818,6 @@ mod tests {
     }
 
     #[test]
-    fn test_load_yaml_format() {
-        let config_yaml = r#"
-llm:
-  providers:
-    - name: google
-      model: gemini-2.5-flash
-      api_key: test-key
-      timeout: 10
-    - name: ollama
-      model: llama3.2
-  parameters:
-    max_tokens: 100
-    temperature: 0.3
-tts:
-  providers:
-    - name: macos
-      voice: Tingting
-      rate: 200
-"#;
-
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(config_yaml.as_bytes()).unwrap();
-        let mut path = temp_file.path().to_path_buf();
-
-        // Rename to .yaml extension
-        let yaml_path = path.with_extension("yaml");
-        std::fs::rename(&path, &yaml_path).unwrap();
-        path = yaml_path;
-
-        let config = SumvoxConfig::load_yaml(path).unwrap();
-        assert_eq!(config.llm.providers.len(), 2);
-        assert_eq!(config.llm.providers[0].name, "google");
-        assert_eq!(
-            config.llm.providers[0].api_key,
-            Some("test-key".to_string())
-        );
-        assert_eq!(config.tts.providers[0].name, "macos");
-    }
-
-    #[test]
     fn test_load_save_toml() {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("test.toml");
@@ -1009,22 +832,6 @@ tts:
             loaded.llm.providers[0].api_key,
             Some("test-toml-key".to_string())
         );
-    }
-
-    #[test]
-    fn test_backup_creation() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().join("config.yaml");
-        std::fs::write(&path, "test content").unwrap();
-
-        let backup = SumvoxConfig::backup_config(&path).unwrap();
-        assert!(backup.exists());
-        assert!(backup
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .starts_with("config.yaml.backup-"));
     }
 
     #[test]
