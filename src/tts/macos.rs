@@ -155,6 +155,7 @@ mod tests {
     // if `say -o` or the playback handoff breaks. Volume 1 stays near-silent.
     #[cfg(target_os = "macos")]
     #[tokio::test]
+    #[ignore = "e2e-audio"]
     async fn test_speak_renders_and_plays() {
         let provider = MacOsTtsProvider::new(None, 300, 1);
         let result = provider.speak("test").await.unwrap();

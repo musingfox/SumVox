@@ -665,6 +665,7 @@ mod tests {
     // `afplay` is present, so these exercise the genuine end-to-end path.
     #[test]
     #[cfg(target_os = "macos")]
+    #[ignore = "e2e-audio"]
     fn test_play_bytes_success() {
         let wav_data = create_test_wav();
         let result = play_bytes(&wav_data, 50, "sumvox_test");
@@ -673,6 +674,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
+    #[ignore = "e2e-audio"]
     fn test_play_bytes_zero_volume() {
         let wav_data = create_test_wav();
         let result = play_bytes(&wav_data, 0, "sumvox_test_zero");
@@ -681,6 +683,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
+    #[ignore = "e2e-audio"]
     fn test_play_bytes_max_volume() {
         let wav_data = create_test_wav();
         let result = play_bytes(&wav_data, 100, "sumvox_test_max");

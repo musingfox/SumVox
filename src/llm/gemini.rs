@@ -370,7 +370,7 @@ mod tests {
 
     // Integration test - requires actual API key
     #[tokio::test]
-    #[ignore]
+    #[ignore = "e2e-network"]
     async fn test_generate_with_real_api() {
         let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
         let provider = GeminiProvider::with_base_url(

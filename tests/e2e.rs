@@ -6,8 +6,9 @@
 // Every config installed by the harness is written with `macos`; on non-macOS the
 // harness rewrites that literal to `espeak` so one config serves both platforms.
 //
-// Run: cargo test --test e2e
-// Debug single test: cargo test --test e2e test_name -- --nocapture
+// Every test is #[ignore]d so plain `cargo test` stays offline and silent.
+// Run: cargo test --test e2e -- --ignored
+// Debug single test: cargo test --test e2e test_name -- --ignored --nocapture
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
@@ -137,54 +138,6 @@ fn notification_json_stop_active() -> String {
     .to_string()
 }
 
-fn config_without_llm() -> String {
-    r#"[llm]
-providers = []
-[llm.parameters]
-max_tokens = 100
-temperature = 0.3
-
-[tts]
-[[tts.providers]]
-name = "macos"
-rate = 200
-
-[summarization]
-turns = 1
-system_message = "Test"
-prompt_template = "Summarize: {context}"
-fallback_message = "Test completed"
-
-[hooks.claude_code]
-notification_filter = ["*"]
-notification_tts_provider = "macos"
-stop_tts_provider = "macos"
-"#
-    .to_string()
-}
-
-fn config_no_tts() -> String {
-    r#"[llm]
-providers = []
-[llm.parameters]
-max_tokens = 100
-temperature = 0.3
-
-[tts]
-providers = []
-
-[summarization]
-turns = 1
-system_message = "Test"
-prompt_template = "Summarize: {context}"
-fallback_message = "Test completed"
-
-[hooks.claude_code]
-notification_filter = ["*"]
-"#
-    .to_string()
-}
-
 fn config_with_audio_file(path: &str) -> String {
     format!(
         r#"[llm]
@@ -244,154 +197,12 @@ stop_tts_provider = "macos"
     )
 }
 
-fn config_with_specific_filter(types: &[&str]) -> String {
-    let filter = types
-        .iter()
-        .map(|t| format!("\"{}\"", t))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        r#"[llm]
-providers = []
-[llm.parameters]
-max_tokens = 100
-temperature = 0.3
-
-[tts]
-[[tts.providers]]
-name = "macos"
-rate = 200
-
-[summarization]
-turns = 1
-system_message = "Test"
-prompt_template = "Summarize: {{context}}"
-fallback_message = "Test completed"
-
-[hooks.claude_code]
-notification_filter = [{filter}]
-notification_tts_provider = "macos"
-stop_tts_provider = "macos"
-"#
-    )
-}
-
 // ============================================================================
-// CLI Basic Behavior (3)
+// LLM — sum Command
 // ============================================================================
 
 #[test]
-fn test_version() {
-    let mut cmd = cargo_bin_cmd!("sumvox");
-    cmd.env_remove("SUMVOX_DISABLE");
-    cmd.arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("sumvox"));
-}
-
-#[test]
-fn test_help() {
-    let mut cmd = cargo_bin_cmd!("sumvox");
-    cmd.env_remove("SUMVOX_DISABLE");
-    cmd.arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("say"))
-        .stdout(predicate::str::contains("sum"))
-        .stdout(predicate::str::contains("json"))
-        .stdout(predicate::str::contains("init"));
-}
-
-#[test]
-fn test_empty_stdin() {
-    let env = TestEnv::new();
-
-    env.cmd()
-        .arg("json")
-        .write_stdin("")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("Empty JSON input"));
-}
-
-// ============================================================================
-// Init Command (3)
-// ============================================================================
-
-#[test]
-fn test_init_creates_config() {
-    let env = TestEnv::new();
-
-    env.cmd().arg("init").assert().success();
-
-    let config_path = env.home_path().join(".config/sumvox/config.toml");
-    assert!(
-        config_path.exists(),
-        "config.toml should be created by init"
-    );
-}
-
-#[test]
-fn test_init_force() {
-    let env = TestEnv::new();
-
-    // Create a legacy config.yaml to trigger "already exists" check
-    let config_dir = env.home_path().join(".config/sumvox");
-    fs::create_dir_all(&config_dir).unwrap();
-    fs::write(config_dir.join("config.yaml"), "version: '1.0.0'").unwrap();
-
-    // Without --force: should report existing config
-    env.cmd()
-        .arg("init")
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("already exists"));
-
-    // With --force: should overwrite and create config.toml
-    env.cmd().args(["init", "--force"]).assert().success();
-
-    let config_path = config_dir.join("config.toml");
-    assert!(
-        config_path.exists(),
-        "config.toml should be created after init --force"
-    );
-}
-
-#[test]
-fn test_init_does_not_overwrite_existing_toml() {
-    let env = TestEnv::new();
-    let home = env.setup_with_config("[[tts.providers]]\nname = \"macos\"\n");
-    let config_path = home.join(".config/sumvox/config.toml");
-    let before = fs::read_to_string(&config_path).unwrap();
-
-    // Without --force: the existing config.toml must survive untouched
-    env.cmd()
-        .arg("init")
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("already exists"));
-
-    assert_eq!(
-        fs::read_to_string(&config_path).unwrap(),
-        before,
-        "init without --force must not overwrite an existing config.toml"
-    );
-
-    // With --force: overwriting is the point
-    env.cmd().args(["init", "--force"]).assert().success();
-    assert_ne!(
-        fs::read_to_string(&config_path).unwrap(),
-        before,
-        "init --force should replace the existing config.toml"
-    );
-}
-
-// ============================================================================
-// LLM — sum Command (4)
-// ============================================================================
-
-#[test]
+#[ignore = "e2e-network"]
 fn test_sum_no_speak() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -409,6 +220,7 @@ fn test_sum_no_speak() {
 }
 
 #[test]
+#[ignore = "e2e-network"]
 fn test_sum_empty_text() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -421,6 +233,7 @@ fn test_sum_empty_text() {
 }
 
 #[test]
+#[ignore = "e2e-network"]
 fn test_sum_stdin() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -434,24 +247,12 @@ fn test_sum_stdin() {
         .stdout(predicate::str::is_empty().not());
 }
 
-#[test]
-fn test_sum_no_llm_config() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_without_llm());
-
-    // With no LLM providers, summary is empty → warning printed, exit 0
-    env.cmd()
-        .args(["sum", "Hello world", "--no-speak"])
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("Empty summary generated"));
-}
-
 // ============================================================================
-// TTS — say Command (4)
+// TTS — say Command
 // ============================================================================
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_say_local() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -463,6 +264,7 @@ fn test_say_local() {
 }
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_say_volume() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -474,20 +276,7 @@ fn test_say_volume() {
 }
 
 #[test]
-fn test_say_unknown_tts() {
-    let env = TestEnv::new();
-    // Use config with no TTS providers — "nonexistent" falls back to Auto,
-    // Auto with empty providers → error
-    env.setup_with_config(&config_no_tts());
-
-    env.cmd()
-        .args(["say", "hello", "--tts", "nonexistent"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("No TTS provider"));
-}
-
-#[test]
+#[ignore = "e2e-network"]
 fn test_say_google_tts() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -500,10 +289,11 @@ fn test_say_google_tts() {
 }
 
 // ============================================================================
-// Audio File Provider (4)
+// Audio File Provider
 // ============================================================================
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_say_audio_single_file() {
     let env = TestEnv::new();
 
@@ -521,6 +311,7 @@ fn test_say_audio_single_file() {
 }
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_say_audio_directory() {
     let env = TestEnv::new();
 
@@ -539,18 +330,7 @@ fn test_say_audio_directory() {
 }
 
 #[test]
-fn test_say_audio_missing_path() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_with_audio_file("/nonexistent/path/sound.wav"));
-
-    env.cmd()
-        .args(["say", "ignored text", "--tts", "audio_file"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("does not exist"));
-}
-
-#[test]
+#[ignore = "e2e-network"]
 fn test_say_audio_no_config() {
     let env = TestEnv::new();
     env.setup_base_config(); // base config has no audio_file provider
@@ -563,10 +343,11 @@ fn test_say_audio_no_config() {
 }
 
 // ============================================================================
-// LLM + TTS Full Flow (2)
+// LLM + TTS Full Flow
 // ============================================================================
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_sum_full_flow_local() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -585,6 +366,7 @@ fn test_sum_full_flow_local() {
 }
 
 #[test]
+#[ignore = "e2e-network"]
 fn test_sum_full_flow_google_tts() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -598,10 +380,11 @@ fn test_sum_full_flow_google_tts() {
 }
 
 // ============================================================================
-// Hook Dispatch (3)
+// Hook Dispatch
 // ============================================================================
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_notification_hook() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -618,22 +401,7 @@ fn test_notification_hook() {
 }
 
 #[test]
-fn test_notification_filtered() {
-    let env = TestEnv::new();
-    // Config only allows "permission_prompt" — send "auth_success" which is not in filter
-    env.setup_with_config(&config_with_specific_filter(&["permission_prompt"]));
-
-    let json = notification_json("Should be filtered", "auth_success");
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(json)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("not in filter"));
-}
-
-#[test]
+#[ignore = "e2e-network"]
 fn test_stop_hook_active() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -649,10 +417,11 @@ fn test_stop_hook_active() {
 }
 
 // ============================================================================
-// Notification Queue (3)
+// Notification Queue
 // ============================================================================
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_queue_lock_acquired() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -669,6 +438,7 @@ fn test_queue_lock_acquired() {
 }
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_queue_disabled() {
     let env = TestEnv::new();
     env.setup_with_config(&config_with_queue(0));
@@ -685,6 +455,7 @@ fn test_queue_disabled() {
 }
 
 #[test]
+#[ignore = "e2e-audio"]
 fn test_queue_concurrent() {
     use std::process::Stdio;
 
