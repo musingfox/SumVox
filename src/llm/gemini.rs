@@ -325,47 +325,20 @@ mod tests {
 
     // ── C3: GeminiRequestSerialization ──────────────────────────────────
 
-    fn make_generation_config(disable_thinking: bool) -> GenerationConfig {
-        let thinking_config = if disable_thinking {
-            Some(ThinkingConfig { thinking_budget: 0 })
-        } else {
-            None
-        };
-        GenerationConfig {
+    #[test]
+    fn test_c3_thinking_config_wire_format() {
+        let config = |thinking_config| GenerationConfig {
             temperature: 0.3,
             max_output_tokens: 100,
             thinking_config,
-        }
-    }
+        };
 
-    #[test]
-    fn test_c3_disable_thinking_true_sets_thinking_budget_zero() {
-        let config = make_generation_config(true);
-        let val = serde_json::to_value(&config).unwrap();
-        assert_eq!(val["thinkingConfig"]["thinkingBudget"], 0);
-    }
+        let disabled =
+            serde_json::to_value(config(Some(ThinkingConfig { thinking_budget: 0 }))).unwrap();
+        assert_eq!(disabled["thinkingConfig"]["thinkingBudget"], 0);
 
-    #[test]
-    fn test_c3_disable_thinking_false_omits_thinking_config() {
-        let config = make_generation_config(false);
-        let val = serde_json::to_value(&config).unwrap();
-        assert!(val.get("thinkingConfig").is_none());
-    }
-
-    /// Past heuristic would exclude gemini-1.5-flash from thinking params.
-    /// Now disable_thinking=true always sets thinkingConfig regardless of model name.
-    #[test]
-    fn test_c3_gemini_1_5_flash_disable_thinking_true() {
-        let config = make_generation_config(true);
-        let val = serde_json::to_value(&config).unwrap();
-        assert_eq!(val["thinkingConfig"]["thinkingBudget"], 0);
-    }
-
-    #[test]
-    fn test_c3_gemini_1_5_flash_disable_thinking_false() {
-        let config = make_generation_config(false);
-        let val = serde_json::to_value(&config).unwrap();
-        assert!(val.get("thinkingConfig").is_none());
+        let omitted = serde_json::to_value(config(None)).unwrap();
+        assert!(omitted.get("thinkingConfig").is_none());
     }
 
     // Integration test - requires actual API key

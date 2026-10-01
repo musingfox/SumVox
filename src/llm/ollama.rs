@@ -202,64 +202,28 @@ mod tests {
 
     // ── C2: OllamaRequestSerialization ──────────────────────────────────
 
-    fn make_request(disable_thinking: bool) -> GenerationRequest {
-        GenerationRequest {
-            system_message: None,
+    #[test]
+    fn test_c2_think_wire_format() {
+        let request = |think| OllamaRequest {
+            model: "llama3.2".to_string(),
             prompt: "Hello".to_string(),
-            max_tokens: 100,
-            temperature: 0.3,
-            disable_thinking,
-        }
-    }
-
-    #[test]
-    fn test_c2_disable_thinking_true_sets_top_level_think_false() {
-        let request = make_request(true);
-        let ollama_req = OllamaRequest {
-            model: "llama3.2".to_string(),
-            prompt: request.prompt.clone(),
             stream: false,
             options: OllamaOptions {
-                temperature: request.temperature,
-                num_predict: request.max_tokens,
+                temperature: 0.3,
+                num_predict: 100,
             },
-            system: request.system_message.clone(),
-            think: if request.disable_thinking {
-                Some(false)
-            } else {
-                None
-            },
+            system: None,
+            think,
         };
 
-        let val = serde_json::to_value(&ollama_req).unwrap();
-        assert_eq!(val["think"], serde_json::Value::Bool(false));
-        // Must NOT appear inside options
-        assert!(val["options"].get("think").is_none());
-    }
+        let disabled = serde_json::to_value(request(Some(false))).unwrap();
+        assert_eq!(disabled["think"], serde_json::Value::Bool(false));
+        // think sits at the top level, never inside options
+        assert!(disabled["options"].get("think").is_none());
 
-    #[test]
-    fn test_c2_disable_thinking_false_omits_think_key() {
-        let request = make_request(false);
-        let ollama_req = OllamaRequest {
-            model: "llama3.2".to_string(),
-            prompt: request.prompt.clone(),
-            stream: false,
-            options: OllamaOptions {
-                temperature: request.temperature,
-                num_predict: request.max_tokens,
-            },
-            system: request.system_message.clone(),
-            think: if request.disable_thinking {
-                Some(false)
-            } else {
-                None
-            },
-        };
-
-        let val = serde_json::to_value(&ollama_req).unwrap();
-        // think key must be absent at all levels
-        assert!(val.get("think").is_none());
-        assert!(val["options"].get("think").is_none());
+        let omitted = serde_json::to_value(request(None)).unwrap();
+        assert!(omitted.get("think").is_none());
+        assert!(omitted["options"].get("think").is_none());
     }
 
     // Integration test - requires actual Ollama service running

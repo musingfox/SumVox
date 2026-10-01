@@ -178,11 +178,17 @@ mod tests {
         assert_eq!(sa.private_key, "test-private-key-placeholder");
     }
 
-    #[test]
-    fn test_invalid_json() {
-        let auth = CloudTtsAuth::new("not json".to_string());
-        let result = serde_json::from_str::<ServiceAccountKey>(&auth.service_account_json);
-        assert!(result.is_err());
+    #[tokio::test]
+    async fn test_get_token_rejects_malformed_service_account() {
+        let err = CloudTtsAuth::new("not json".to_string())
+            .get_token()
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Invalid service account JSON"));
+
+        // Valid JSON with a non-PEM key fails while signing, before any HTTP call
+        let sa = r#"{"client_email":"a@b.c","private_key":"not a pem key"}"#;
+        assert!(CloudTtsAuth::new(sa.to_string()).get_token().await.is_err());
     }
 
     #[test]

@@ -248,20 +248,4 @@ mod tests {
         assert!(!p.speak("").await.unwrap());
         assert!(!p.speak("   ").await.unwrap());
     }
-
-    #[test]
-    fn test_truncation_respects_char_boundaries() {
-        // 4096-char limit is characters, not bytes: a multibyte string longer
-        // than the limit must slice on a char boundary without panicking.
-        let text: String = "測".repeat(MAX_TEXT_LENGTH + 10);
-        let truncated = match text.char_indices().nth(MAX_TEXT_LENGTH) {
-            Some((byte_idx, _)) => &text[..byte_idx],
-            None => &text,
-        };
-        assert_eq!(truncated.chars().count(), MAX_TEXT_LENGTH);
-
-        // A string at or under the limit passes through untouched.
-        let short: String = "測".repeat(MAX_TEXT_LENGTH);
-        assert!(short.char_indices().nth(MAX_TEXT_LENGTH).is_none());
-    }
 }
