@@ -18,7 +18,7 @@ use crate::tts::{
 pub struct TtsOptions {
     pub engine: String,
     pub voice: Option<String>,
-    pub rate: u32,
+    pub rate: Option<u32>,
     pub volume: Option<u32>,
 }
 
@@ -27,7 +27,7 @@ impl Default for TtsOptions {
         Self {
             engine: "auto".to_string(),
             voice: None,
-            rate: 200,
+            rate: None,
             volume: None,
         }
     }
