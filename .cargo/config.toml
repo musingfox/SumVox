@@ -1,4 +1,0 @@
-# Cross-compilation configuration
-# Note: This file is intentionally minimal. The cross tool handles
-# most configuration via Docker containers. macOS targets use native
-# compilation without custom linkers.
