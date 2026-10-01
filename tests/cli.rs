@@ -244,28 +244,20 @@ fn test_init_creates_config() {
 }
 
 #[test]
-fn test_init_force() {
+fn test_init_replaces_legacy_config() {
     let env = TestEnv::new();
 
-    // Create a legacy config.yaml to trigger "already exists" check
+    // A legacy config.yaml no longer counts as an existing config: init writes the TOML
     let config_dir = env.home_path().join(".config/sumvox");
     fs::create_dir_all(&config_dir).unwrap();
     fs::write(config_dir.join("config.yaml"), "version: '1.0.0'").unwrap();
 
-    // Without --force: should report existing config
-    env.cmd()
-        .arg("init")
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("already exists"));
-
-    // With --force: should overwrite and create config.toml
-    env.cmd().args(["init", "--force"]).assert().success();
+    env.cmd().arg("init").assert().success();
 
     let config_path = config_dir.join("config.toml");
     assert!(
         config_path.exists(),
-        "config.toml should be created after init --force"
+        "config.toml should be created by init next to a legacy config.yaml"
     );
 }
 
@@ -296,6 +288,23 @@ fn test_init_does_not_overwrite_existing_toml() {
         before,
         "init --force should replace the existing config.toml"
     );
+}
+
+#[test]
+fn test_legacy_config_without_toml_is_rejected() {
+    for legacy in ["config.yaml", "config.yml", "config.json"] {
+        let env = TestEnv::new();
+        let config_dir = env.home_path().join(".config/sumvox");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join(legacy), "{}").unwrap();
+
+        env.cmd()
+            .args(["say", "hi"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(legacy))
+            .stderr(predicate::str::contains("sumvox init"));
+    }
 }
 
 #[test]

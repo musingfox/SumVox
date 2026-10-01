@@ -224,27 +224,14 @@ async fn handle_json(args: JsonArgs) -> Result<()> {
 // ============================================================================
 
 async fn handle_init(args: InitArgs) -> Result<()> {
-    // Check for an existing config: the TOML we write, or a legacy YAML/JSON one
     let toml_path = SumvoxConfig::toml_config_path()?;
-    let yaml_path = SumvoxConfig::yaml_config_path()?;
-    let json_path = SumvoxConfig::config_path()?;
 
-    if !args.force {
-        if let Some(existing_path) = [&toml_path, &yaml_path, &json_path]
-            .into_iter()
-            .find(|path| path.exists())
-        {
-            eprintln!("Config file already exists at: {:?}", existing_path);
-            eprintln!();
-            eprintln!("To reset to defaults, use --force:");
-            eprintln!("  sumvox init --force");
-            return Ok(());
-        }
-    }
-
-    // Remove the old JSON config when --force rewrites it as TOML
-    if args.force && json_path.exists() {
-        std::fs::remove_file(&json_path).ok();
+    if toml_path.exists() && !args.force {
+        eprintln!("Config file already exists at: {:?}", toml_path);
+        eprintln!();
+        eprintln!("To reset to defaults, use --force:");
+        eprintln!("  sumvox init --force");
+        return Ok(());
     }
 
     // Create default config with recommended settings
