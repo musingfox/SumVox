@@ -249,33 +249,14 @@ async fn handle_init(args: InitArgs) -> Result<()> {
     config.tts.providers = vec![
         TtsProviderConfig {
             name: "macos".to_string(),
-            model: None,
-            voice: None, // Use system default voice
-            api_key: None,
             rate: Some(200),
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         },
         TtsProviderConfig {
             name: "google".to_string(),
             model: Some("gemini-2.5-flash-preview-tts".to_string()),
             voice: Some("Aoede".to_string()),
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         },
     ];
 
