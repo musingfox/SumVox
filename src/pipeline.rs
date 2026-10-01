@@ -272,75 +272,26 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
         // An explicitly selected engine overrides which configured provider to use;
         // all attributes come from that config entry, with only explicit CLI/hook
         // voice/volume layered on top. Nothing is hardcoded.
-        EngineChoice::Engine(TtsEngine::MacOS) => resolve_tts_provider(
-            &config.tts.providers,
-            &["macos", "say"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::Google) => resolve_tts_provider(
-            &config.tts.providers,
-            &["google", "google_tts", "gcloud", "gemini"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::CloudTts) => resolve_tts_provider(
-            &config.tts.providers,
-            &[
-                engine_name.as_str(),
-                "cloud_tts",
-                "gcp_tts",
-                "google_cloud",
-                "gemini_tts",
-            ],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::AudioFile) => resolve_tts_provider(
-            &config.tts.providers,
-            &["audio_file", "audio", "file"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::Xai) => resolve_tts_provider(
-            &config.tts.providers,
-            &["xai", "xai_tts", "grok"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::ElevenLabs) => resolve_tts_provider(
-            &config.tts.providers,
-            &["elevenlabs", "eleven_labs", "11labs"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::OpenAi) => resolve_tts_provider(
-            &config.tts.providers,
-            &["openai", "openai_tts"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::Espeak) => resolve_tts_provider(
-            &config.tts.providers,
-            &["espeak", "espeak_ng", "espeak-ng"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
-        EngineChoice::Engine(TtsEngine::Piper) => resolve_tts_provider(
-            &config.tts.providers,
-            &["piper", "piper_tts"],
-            tts_opts.voice.as_deref(),
-            tts_opts.rate,
-            tts_opts.volume,
-        )?,
+        EngineChoice::Engine(engine) => {
+            // The spelling the user typed goes first so it wins over other aliases
+            // (cloud_tts vs gemini_tts) when the config holds both.
+            let aliases: Vec<&str> = std::iter::once(engine_name.as_str())
+                .chain(
+                    engine
+                        .aliases()
+                        .iter()
+                        .copied()
+                        .filter(|alias| *alias != engine_name),
+                )
+                .collect();
+            resolve_tts_provider(
+                &config.tts.providers,
+                &aliases,
+                tts_opts.voice.as_deref(),
+                tts_opts.rate,
+                tts_opts.volume,
+            )?
+        }
     };
 
     if !provider.is_available() {
@@ -377,10 +328,7 @@ async fn speak_with_provider_fallback(
     let mut candidates = providers.iter().filter_map(|provider_config| {
         // Skip audio_file providers - they play sound effects,
         // not speech synthesis, and cannot render arbitrary text.
-        if matches!(
-            provider_config.name.to_lowercase().as_str(),
-            "audio_file" | "audio" | "file"
-        ) {
+        if provider_config.name.parse::<TtsEngine>().ok() == Some(TtsEngine::AudioFile) {
             tracing::debug!(
                 "Skipping audio_file provider in fallback chain (not a speech synthesizer)"
             );
