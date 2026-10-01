@@ -17,7 +17,7 @@ disable_thinking = false  # Set true to reduce token usage
 # Uncomment and configure the providers you want to use
 # Edit api_key = "${PROVIDER_API_KEY}" with your actual API key
 
-# Google Gemini (Recommended: fast, cheap, reliable)
+# Google Gemini (Recommended: fast and reliable)
 [[llm.providers]]
 name = "google"
 model = "gemini-3.1-flash-lite"
@@ -41,7 +41,7 @@ api_key = "${PROVIDER_API_KEY}"  # Get from: https://platform.openai.com
 # base_url = "https://api.openai.com/v1"  # Optional: for Azure OpenAI or compatible APIs
 timeout = 10
 
-# xAI Grok (OpenAI-compatible API; very cheap)
+# xAI Grok (OpenAI-compatible API)
 # Get API key: https://console.x.ai
 # Uncomment to enable:
 # [[llm.providers]]
@@ -70,7 +70,7 @@ timeout = 60  # Local inference needs more time
 name = "macos"
 # api_key not required - macOS TTS is built-in, no API key needed
 # voice = "Daniel"  # Optional: specify voice (run 'say -v ?' to list available voices)
-rate = 200      # Speech rate (90-300, default: 200)
+rate = 200      # Speech rate in words per minute (default: 200)
 # volume = 100  # Playback volume (0-100); synthesis is rendered to a file and
                 # played by the platform player, so the knob applies here too
 
@@ -125,36 +125,30 @@ rate = 200      # Speech rate (90-300, default: 200)
 # volume = 50   # Playback volume (0-100, default: 100)
 #               # Gemini TTS output is loud by default, 40-60 is recommended
 
-# xAI TTS (Natural speech, 5 voices, requires API key)
-# Pricing: $4.20 per 1M characters (Beta)
-# Voices: eve (default), ara, rex, sal, leo
+# xAI TTS (requires API key; `voice` is required, there is no default)
 # Get API key: https://console.x.ai
 # Uncomment to enable:
 # [[tts.providers]]
 # name = "xai"
-# voice = "eve"           # Options: eve, ara, rex, sal, leo
+# voice = "eve"           # Required. Options: eve, ara, rex, sal, leo
 # language_code = "auto"  # Language: "auto", "en", "zh", "ja", etc.
 # api_key = "${XAI_API_KEY}"
 # volume = 100  # Playback volume (0-100, default: 100)
 
-# ElevenLabs TTS (Premium voices, very natural, requires API key)
-# Pricing:
-#   Flash v2.5 / Turbo v2.5: $0.06 per 1K characters (~75ms latency)
-#   Multilingual v2 / v3:    $0.12 per 1K characters (~300ms latency, higher quality)
+# ElevenLabs TTS (requires API key; `model` and `voice` are both required)
 # Get API key: https://elevenlabs.io/app/settings/api-keys
 # Browse voices:  https://elevenlabs.io/app/voice-library
 # Uncomment to enable:
 # [[tts.providers]]
 # name = "elevenlabs"
-# model = "eleven_flash_v2_5"  # Options: eleven_flash_v2_5, eleven_turbo_v2_5, eleven_multilingual_v2, eleven_multilingual_v3
-# voice = "21m00Tcm4TlvDq8ikWAM"  # Voice ID (default: Rachel). Other stock voices:
+# model = "eleven_flash_v2_5"  # Options: eleven_flash_v2_5, eleven_turbo_v2_5, eleven_multilingual_v2, eleven_v3
+# voice = "21m00Tcm4TlvDq8ikWAM"  # Voice ID (required; Rachel here). Other stock voices:
 #                                  #   JBFqnCBsd6RMkjVDRZzb (George), TX3LPaxmHKxFdv7VOQHJ (Liam),
 #                                  #   pNInz6obpgDQGcFmaJgB (Adam), EXAVITQu4vr4xnSDxMaL (Bella)
 # api_key = "${ELEVENLABS_API_KEY}"
 # volume = 100  # Playback volume (0-100, default: 100)
 
 # OpenAI TTS (gpt-4o-mini-tts, steerable style via instructions, requires API key)
-# Pricing: ~$0.015 per minute of audio (gpt-4o-mini-tts)
 # Voices: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer
 # Get API key: https://platform.openai.com
 # Uncomment to enable:
@@ -169,9 +163,6 @@ rate = 200      # Speech rate (90-300, default: 200)
 # api_key = "${OPENAI_API_KEY}"
 
 # Google Cloud TTS (Professional-grade, requires service account)
-# Pricing:
-#   Standard voices: $4 per 1M characters (first 4M/month free)
-#   WaveNet voices: $16 per 1M characters (first 1M/month free)
 # Setup: https://cloud.google.com/text-to-speech/docs/before-you-begin
 # Uncomment to enable:
 # [[tts.providers]]
@@ -185,9 +176,6 @@ rate = 200      # Speech rate (90-300, default: 200)
 # Gemini-TTS (expressive voices via the same Cloud TTS endpoint)
 # Set `model` to switch cloud_tts into Gemini-TTS mode: bare voice names
 # (Kore, Charon, Puck, ...) plus an optional `style_prompt` for tone control.
-# Pricing:
-#   Token-based, NOT per-character: $10 per 1M audio output tokens
-#   (25 tokens/sec of audio). No free tier. Coarsely ~4x the cost of Standard.
 # Setup: https://cloud.google.com/text-to-speech/docs/gemini-tts
 # Uncomment to enable:
 # [[tts.providers]]
