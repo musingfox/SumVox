@@ -48,15 +48,15 @@ pub struct SayArgs {
     #[arg(long)]
     pub voice: Option<String>,
 
-    /// Speech rate in words per minute
+    /// Speech rate in words per minute (overrides the configured rate)
     ///
     /// macos: passed to `say -r`.
     /// espeak: passed to `espeak-ng -s` (clamped to 80-450).
     /// piper: mapped onto --length-scale, where 200 is piper's default speed and
     /// a higher value speaks faster.
     /// Ignored by the cloud engines (google, cloud_tts, xai, elevenlabs, openai).
-    #[arg(long, default_value = "200")]
-    pub rate: u32,
+    #[arg(long)]
+    pub rate: Option<u32>,
 
     /// Volume level (0-100)
     #[arg(long)]
@@ -99,15 +99,15 @@ pub struct SumArgs {
     #[arg(long)]
     pub voice: Option<String>,
 
-    /// Speech rate in words per minute
+    /// Speech rate in words per minute (overrides the configured rate)
     ///
     /// macos: passed to `say -r`.
     /// espeak: passed to `espeak-ng -s` (clamped to 80-450).
     /// piper: mapped onto --length-scale, where 200 is piper's default speed and
     /// a higher value speaks faster.
     /// Ignored by the cloud engines (google, cloud_tts, xai, elevenlabs, openai).
-    #[arg(long, default_value = "200")]
-    pub rate: u32,
+    #[arg(long)]
+    pub rate: Option<u32>,
 
     /// Volume level (0-100)
     #[arg(long)]

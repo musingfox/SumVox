@@ -344,7 +344,7 @@ pub fn resolve_tts_provider(
     providers: &[TtsProviderConfig],
     aliases: &[&str],
     voice: Option<&str>,
-    rate: u32,
+    rate: Option<u32>,
     volume: Option<u32>,
 ) -> Result<Box<dyn TtsProvider>> {
     // Prefer the entry whose name exactly matches what the user asked for
@@ -362,6 +362,19 @@ pub fn resolve_tts_provider(
             VoiceError::Config(format!("{} provider not found in config", aliases[0]))
         })?;
 
+    let resolved = apply_overrides(base, voice, rate, volume);
+    create_single_tts(&resolved)
+}
+
+/// Layer explicit caller overrides on a configured entry; anything the caller
+/// left unset keeps the configured value (and the engine's neutral default if
+/// the config has none either).
+fn apply_overrides(
+    base: &TtsProviderConfig,
+    voice: Option<&str>,
+    rate: Option<u32>,
+    volume: Option<u32>,
+) -> TtsProviderConfig {
     let mut resolved = base.clone();
     if let Some(v) = voice {
         resolved.voice = Some(v.to_string());
@@ -369,13 +382,27 @@ pub fn resolve_tts_provider(
     if let Some(vol) = volume {
         resolved.volume = Some(vol);
     }
-    resolved.rate = Some(rate);
-    create_single_tts(&resolved)
+    if let Some(r) = rate {
+        resolved.rate = Some(r);
+    }
+    resolved
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_apply_overrides_rate_precedence() {
+        let mut base = espeak_config("espeak", None, Some(150));
+        assert_eq!(apply_overrides(&base, None, None, None).rate, Some(150));
+        assert_eq!(
+            apply_overrides(&base, None, Some(300), None).rate,
+            Some(300)
+        );
+        base.rate = None;
+        assert_eq!(apply_overrides(&base, None, None, None).rate, None);
+    }
 
     #[test]
     fn test_strip_leading_audio_tag() {
@@ -505,7 +532,7 @@ mod tests {
             &providers,
             &["gemini_tts", "cloud_tts", "gcp_tts", "google_cloud"],
             None,
-            200,
+            Some(200),
             None,
         );
         assert!(
@@ -518,7 +545,7 @@ mod tests {
     #[test]
     fn test_dispatch_espeak_errors_when_absent_from_config() {
         let providers: Vec<TtsProviderConfig> = vec![];
-        let err = resolve_tts_provider(&providers, &["espeak"], None, 200, None)
+        let err = resolve_tts_provider(&providers, &["espeak"], None, Some(200), None)
             .err()
             .expect("an unconfigured engine must error")
             .to_string();
@@ -789,7 +816,7 @@ mod tests {
             &providers,
             &["macos", "say"],
             Some("Tingting"),
-            250,
+            Some(250),
             Some(80),
         );
         assert!(result.is_ok());
@@ -797,13 +824,13 @@ mod tests {
 
         // Other engines resolve from config the same way
         let espeak = vec![espeak_config("espeak", Some("cmn+f3"), Some(175))];
-        let provider = resolve_tts_provider(&espeak, &["espeak"], None, 200, None)
+        let provider = resolve_tts_provider(&espeak, &["espeak"], None, Some(200), None)
             .expect("configured espeak entry should resolve");
         assert_eq!(provider.name(), "espeak");
 
         // The CLI `--voice` overlay reaches piper's model knob
         let piper = vec![piper_config(None, Some("/m/a.onnx"), None)];
-        let provider = resolve_tts_provider(&piper, &["piper"], Some("/m/b.onnx"), 200, None)
+        let provider = resolve_tts_provider(&piper, &["piper"], Some("/m/b.onnx"), Some(200), None)
             .expect("configured piper entry should resolve");
         assert_eq!(provider.name(), "piper");
     }
