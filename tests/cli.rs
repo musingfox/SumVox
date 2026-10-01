@@ -5,7 +5,11 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use tempfile::TempDir;
 
 /// The local TTS engine for the platform under test (configs below name `macos`).
@@ -438,4 +442,265 @@ fn test_queue_disabled() {
         .assert()
         .success()
         .stdout(predicate::str::contains("queue disabled"));
+}
+
+/// Std-only fake Ollama: answers every POST with `reply` as the generated text and
+/// records each request body. Returns (base_url, recorded bodies).
+fn fake_ollama(reply: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let recorded = bodies.clone();
+    thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let body_start = loop {
+                let n = stream.read(&mut chunk).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let Some(body_start) = body_start else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&buf[..body_start]).to_lowercase();
+            let content_length: usize = headers
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            while buf.len() < body_start + content_length {
+                let n = stream.read(&mut chunk).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            recorded
+                .lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(&buf[body_start..]).into_owned());
+
+            let payload = serde_json::json!({
+                "response": reply,
+                "prompt_eval_count": 1,
+                "eval_count": 1
+            })
+            .to_string();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                payload.len(),
+                payload
+            );
+        }
+    });
+    (base_url, bodies)
+}
+
+/// A base_url nothing listens on, so the LLM call fails fast with connection refused.
+fn dead_ollama_url() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    format!("http://{}", listener.local_addr().unwrap())
+}
+
+fn config_with_ollama(base_url: &str, content_source: &str) -> String {
+    format!(
+        r#"[llm]
+[[llm.providers]]
+name = "ollama"
+model = "fake-model"
+base_url = "{base_url}"
+timeout = 5
+
+[llm.parameters]
+max_tokens = 100
+temperature = 0.3
+
+[tts]
+[[tts.providers]]
+name = "macos"
+rate = 200
+
+[summarization]
+turns = 1
+content_source = "{content_source}"
+system_message = "Test"
+prompt_template = "Summarize: {{context}}"
+fallback_message = "Test completed"
+
+[hooks.claude_code]
+notification_filter = ["*"]
+queue_timeout = 0
+"#
+    )
+}
+
+fn stop_json(transcript_path: &Path, last_assistant_message: Option<&str>) -> String {
+    let mut json = serde_json::json!({
+        "session_id": "e2e-test",
+        "transcript_path": transcript_path,
+        "hook_event_name": "Stop",
+    });
+    if let Some(msg) = last_assistant_message {
+        json["last_assistant_message"] = msg.into();
+    }
+    json.to_string()
+}
+
+fn write_transcript(dir: &Path, assistant_text: &str) -> std::path::PathBuf {
+    let path = dir.join("transcript.jsonl");
+    let lines = [
+        serde_json::json!({"type":"user","message":{"role":"user","content":"please do it"}}),
+        serde_json::json!({"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":assistant_text}]}}),
+    ];
+    let body: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    fs::write(&path, body.join("\n")).unwrap();
+    path
+}
+
+fn history(env: &TestEnv) -> String {
+    fs::read_to_string(env.home_path().join(".config/sumvox/history.log")).unwrap_or_default()
+}
+
+#[test]
+fn test_stop_hook_summarizes_transcript_and_speaks_summary() {
+    let env = TestEnv::new();
+    let (url, bodies) = fake_ollama("CANNED SUMMARY");
+    env.setup_with_config(&config_with_ollama(&url, "transcript"));
+    env.mute();
+    let transcript = write_transcript(env.home_path(), "I refactored the parser");
+
+    env.cmd()
+        .arg("json")
+        .write_stdin(stop_json(&transcript, None))
+        .assert()
+        .success();
+
+    let bodies = bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 1, "LLM should be called once");
+    assert!(
+        bodies[0].contains("I refactored the parser"),
+        "transcript text must reach the LLM prompt: {}",
+        bodies[0]
+    );
+    assert!(
+        history(&env).contains("CANNED SUMMARY"),
+        "summary must reach the TTS step"
+    );
+}
+
+#[test]
+fn test_stop_hook_last_message_source_skips_transcript() {
+    let env = TestEnv::new();
+    let (url, bodies) = fake_ollama("CANNED SUMMARY");
+    env.setup_with_config(&config_with_ollama(&url, "last_message"));
+    env.mute();
+    let missing = env.home_path().join("no-such-transcript.jsonl");
+
+    env.cmd()
+        .arg("json")
+        .write_stdin(stop_json(&missing, Some("message from hook input")))
+        .assert()
+        .success();
+
+    let bodies = bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 1, "LLM should be called once");
+    assert!(bodies[0].contains("message from hook input"));
+    assert!(history(&env).contains("CANNED SUMMARY"));
+}
+
+#[test]
+fn test_stop_hook_llm_failure_speaks_fallback_message() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_with_ollama(&dead_ollama_url(), "last_message"));
+    env.mute();
+    let missing = env.home_path().join("no-such-transcript.jsonl");
+
+    env.cmd()
+        .arg("json")
+        .write_stdin(stop_json(&missing, Some("anything")))
+        .assert()
+        .success();
+
+    assert!(history(&env).contains("Test completed"));
+}
+
+#[test]
+fn test_stop_hook_unreadable_transcript_fails() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_with_ollama(&dead_ollama_url(), "transcript"));
+    env.mute();
+    let missing = env.home_path().join("no-such-transcript.jsonl");
+
+    env.cmd()
+        .arg("json")
+        .write_stdin(stop_json(&missing, None))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to open transcript"));
+    assert_eq!(history(&env), "", "nothing should be spoken");
+}
+
+#[test]
+fn test_sumvox_disable_short_circuits() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    env.cmd()
+        .env("SUMVOX_DISABLE", "1")
+        .args(["say", "should not be recorded"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        history(&env),
+        "",
+        "disabled run must not reach the pipeline"
+    );
+}
+
+#[test]
+fn test_muted_say_records_history_without_playing() {
+    let env = TestEnv::new();
+    let sound = env.home_path().join("sound.wav");
+    fs::write(&sound, b"not real audio").unwrap();
+    env.setup_with_config(&config_with_audio_file(sound.to_str().unwrap()));
+    env.mute();
+
+    env.cmd()
+        .args(["say", "quiet please", "--tts", "audio_file"])
+        .assert()
+        .success();
+
+    assert!(history(&env).contains("quiet please"));
+    assert!(
+        !env.home_path().join(".config/sumvox/now_playing").exists(),
+        "muted run must not start playback"
+    );
+}
+
+#[test]
+fn test_bare_invocation_autodetects_generic_json_on_stdin() {
+    let env = TestEnv::new();
+    let (url, bodies) = fake_ollama("GENERIC SUMMARY");
+    env.setup_with_config(&config_with_ollama(&url, "transcript"));
+    env.mute();
+
+    env.cmd()
+        .write_stdin(r#"{"text":"some tool output"}"#)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GENERIC SUMMARY"));
+
+    let bodies = bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 1, "LLM should be called once");
+    assert!(bodies[0].contains("some tool output"));
+    assert!(history(&env).contains("GENERIC SUMMARY"));
 }
