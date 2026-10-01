@@ -154,6 +154,25 @@ pub fn create_tts_from_config(providers: &[TtsProviderConfig]) -> Result<Box<dyn
     )))
 }
 
+fn build_piper(config: &TtsProviderConfig, volume: u32) -> Result<PiperProvider> {
+    // For piper, the voice IS a downloaded .onnx model file. `voice`
+    // takes precedence because it is the field the CLI overlays, so
+    // `--voice ~/voices/zh.onnx` can select one.
+    let model_path = piper::resolve_model_path(
+        config.voice.as_deref(),
+        config.model.as_deref(),
+        config.path.as_deref(),
+    )
+    .ok_or_else(|| {
+        VoiceError::Config(
+            "piper model is required. Set `model` (or `voice`) to a downloaded .onnx voice path."
+                .into(),
+        )
+    })?;
+    let rate = config.rate.unwrap_or(piper::DEFAULT_RATE);
+    Ok(PiperProvider::new(model_path, rate, volume))
+}
+
 /// Create a single TTS provider from config
 pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvider>> {
     let volume = config.volume.unwrap_or(100);
@@ -294,24 +313,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
             let rate = config.rate.unwrap_or(espeak::DEFAULT_RATE);
             Ok(Box::new(EspeakProvider::new(voice, rate, volume)))
         }
-        "piper" | "piper_tts" => {
-            // For piper, the voice IS a downloaded .onnx model file. `voice`
-            // takes precedence because it is the field the CLI overlays, so
-            // `--voice ~/voices/zh.onnx` can select one.
-            let model_path = piper::resolve_model_path(
-                config.voice.as_deref(),
-                config.model.as_deref(),
-                config.path.as_deref(),
-            )
-            .ok_or_else(|| {
-                VoiceError::Config(
-                    "piper model is required. Set `model` (or `voice`) to a downloaded .onnx voice path."
-                        .into(),
-                )
-            })?;
-            let rate = config.rate.unwrap_or(piper::DEFAULT_RATE);
-            Ok(Box::new(PiperProvider::new(model_path, rate, volume)))
-        }
+        "piper" | "piper_tts" => Ok(Box::new(build_piper(config, volume)?)),
         "audio_file" | "audio" | "file" => {
             let path_str = config.path.as_ref().ok_or_else(|| {
                 VoiceError::Config(
@@ -513,16 +515,10 @@ mod tests {
         );
     }
 
-    // The alias arrays below are exactly the ones the dispatch arms in
-    // main.rs and hooks/claude_code.rs pass; the arms' existence is enforced by
-    // the compiler (both `match tts_engine` blocks are exhaustive).
-    const ESPEAK_ALIASES: &[&str] = &["espeak", "espeak_ng", "espeak-ng"];
-    const PIPER_ALIASES: &[&str] = &["piper", "piper_tts"];
-
     #[test]
     fn test_dispatch_espeak_errors_when_absent_from_config() {
         let providers: Vec<TtsProviderConfig> = vec![];
-        let err = resolve_tts_provider(&providers, ESPEAK_ALIASES, None, 200, None)
+        let err = resolve_tts_provider(&providers, &["espeak"], None, 200, None)
             .err()
             .expect("an unconfigured engine must error")
             .to_string();
@@ -583,19 +579,13 @@ mod tests {
         }
     }
 
-    /// The `.onnx` path a built piper provider resolved to.
+    /// The `.onnx` path the factory's piper provider was actually built with.
     fn built_model_path(config: &TtsProviderConfig) -> String {
-        let provider = create_single_tts(config).expect("piper entry should build");
-        assert_eq!(provider.name(), "piper");
-        // Rebuild concretely to inspect the resolved model path.
-        piper::resolve_model_path(
-            config.voice.as_deref(),
-            config.model.as_deref(),
-            config.path.as_deref(),
-        )
-        .expect("a model path must have resolved")
-        .to_string_lossy()
-        .to_string()
+        build_piper(config, 100)
+            .expect("piper entry should build")
+            .model_path()
+            .to_string_lossy()
+            .to_string()
     }
 
     #[test]
@@ -805,16 +795,15 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "macos");
 
-        // Other engines resolve from config the same way (aliases are the ones
-        // the dispatch arms pass)
+        // Other engines resolve from config the same way
         let espeak = vec![espeak_config("espeak", Some("cmn+f3"), Some(175))];
-        let provider = resolve_tts_provider(&espeak, ESPEAK_ALIASES, None, 200, None)
+        let provider = resolve_tts_provider(&espeak, &["espeak"], None, 200, None)
             .expect("configured espeak entry should resolve");
         assert_eq!(provider.name(), "espeak");
 
         // The CLI `--voice` overlay reaches piper's model knob
         let piper = vec![piper_config(None, Some("/m/a.onnx"), None)];
-        let provider = resolve_tts_provider(&piper, PIPER_ALIASES, Some("/m/b.onnx"), 200, None)
+        let provider = resolve_tts_provider(&piper, &["piper"], Some("/m/b.onnx"), 200, None)
             .expect("configured piper entry should resolve");
         assert_eq!(provider.name(), "piper");
     }

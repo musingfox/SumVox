@@ -113,6 +113,11 @@ impl PiperProvider {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn model_path(&self) -> &Path {
+        &self.model_path
+    }
+
     /// Swap the spawned program, so tests can inject `true`/`false` stand-ins.
     #[cfg(test)]
     fn with_binary(mut self, binary: &str) -> Self {
