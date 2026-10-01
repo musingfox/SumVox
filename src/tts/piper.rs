@@ -267,32 +267,19 @@ mod tests {
                 "1.00"
             ]
         );
-    }
 
-    #[test]
-    fn test_piper_args_faster_rate_shortens_phonemes() {
-        assert_scale(&args(400), "0.50");
-    }
-
-    #[test]
-    fn test_piper_args_slower_rate_lengthens_phonemes() {
-        assert_scale(&args(100), "2.00");
-    }
-
-    #[test]
-    fn test_piper_args_clamps_very_slow_rate() {
-        assert_scale(&args(50), "2.00");
-    }
-
-    #[test]
-    fn test_piper_args_clamps_very_fast_rate() {
-        assert_scale(&args(1000), "0.50");
-    }
-
-    #[test]
-    fn test_piper_args_zero_rate_does_not_panic() {
-        // 200/0 is infinity, which must clamp rather than blow up.
-        assert_scale(&args(0), "2.00");
+        // (rate, length-scale): 300 is an in-range point, 400/100 sit on the clamp
+        // edges, beyond them the scale clamps, and 0 (200/0 = inf) must clamp, not panic
+        for (rate, scale) in [
+            (300, "0.67"),
+            (400, "0.50"),
+            (100, "2.00"),
+            (50, "2.00"),
+            (1000, "0.50"),
+            (0, "2.00"),
+        ] {
+            assert_scale(&args(rate), scale);
+        }
     }
 
     // Synthesis tests inject `true`/`false` as the "engine": they exercise the
@@ -327,12 +314,7 @@ mod tests {
         // so Ok(false) proves the guard runs before the spawn.
         let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("false");
         assert!(!provider.speak("").await.expect("empty text must not error"));
-    }
-
-    #[tokio::test]
-    async fn test_speak_ideographic_space_is_a_no_op() {
-        // U+3000 is whitespace, so a "blank" CJK message must not speak.
-        let provider = PiperProvider::new("/m/zh.onnx", 200, 80).with_binary("false");
+        // U+3000 is whitespace, so a "blank" CJK message must not speak
         assert!(!provider
             .speak("\u{3000}")
             .await
@@ -343,7 +325,7 @@ mod tests {
     fn test_is_available_false_when_model_missing() {
         // Deterministic whether or not piper itself is installed: a voice model
         // that isn't there means piper cannot speak.
-        let provider = PiperProvider::new("/nonexistent/zh.onnx", 200, 100);
+        let provider = PiperProvider::new("/nonexistent/zh.onnx", 200, 100).with_binary("sh");
         assert!(!provider.is_available());
     }
 

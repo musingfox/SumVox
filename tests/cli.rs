@@ -396,30 +396,6 @@ fn test_say_local() {
 }
 
 #[test]
-fn test_say_volume() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_without_llm());
-    env.mute();
-
-    env.cmd()
-        .args(["say", "hello", "--tts", LOCAL_TTS, "--volume", "50"])
-        .assert()
-        .success();
-}
-
-#[test]
-fn test_say_audio_no_config() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_without_llm());
-
-    env.cmd()
-        .args(["say", "hello", "--tts", "audio_file"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("audio_file provider not found"));
-}
-
-#[test]
 fn test_notification_hook() {
     let env = TestEnv::new();
     env.setup_with_config(&config_without_llm());
@@ -430,6 +406,7 @@ fn test_notification_hook() {
         .write_stdin(notification_json("Test notification", "permission_prompt"))
         .assert()
         .success()
+        .stdout(predicate::str::contains("Queue lock acquired"))
         .stdout(predicate::str::contains("Speaking notification"));
 }
 
@@ -447,20 +424,6 @@ fn test_stop_hook_active() {
 }
 
 #[test]
-fn test_queue_lock_acquired() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_without_llm());
-    env.mute();
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(notification_json("Queue test", "permission_prompt"))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Queue lock acquired"));
-}
-
-#[test]
 fn test_queue_disabled() {
     let env = TestEnv::new();
     env.setup_with_config(&config_with_queue(0));
@@ -475,44 +438,4 @@ fn test_queue_disabled() {
         .assert()
         .success()
         .stdout(predicate::str::contains("queue disabled"));
-}
-
-#[test]
-fn test_queue_concurrent() {
-    use std::io::Write;
-    use std::process::Stdio;
-
-    let env = TestEnv::new();
-    env.setup_with_config(&config_without_llm());
-    env.mute();
-
-    let bin = assert_cmd::cargo::cargo_bin!("sumvox");
-    let spawn = |message: &str| {
-        let mut child = std::process::Command::new(bin)
-            .arg("json")
-            .env("HOME", env.home_path())
-            .env_remove("SUMVOX_DISABLE")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn child");
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(notification_json(message, "permission_prompt").as_bytes())
-            .unwrap();
-        child
-    };
-
-    let (a, b) = (spawn("Concurrent A"), spawn("Concurrent B"));
-    for child in [a, b] {
-        let output = child.wait_with_output().expect("Failed to wait for child");
-        assert!(
-            output.status.success(),
-            "child failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
 }

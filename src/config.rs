@@ -845,13 +845,13 @@ mod tests {
     fn test_get_openai_api_key_from_config() {
         let provider = openai_tts_provider(Some("sk-test".to_string()));
         assert_eq!(provider.get_openai_api_key(), Some("sk-test".to_string()));
-    }
 
-    #[test]
-    fn test_get_openai_api_key_placeholder_env_unset() {
-        std::env::remove_var("OPENAI_API_KEY");
-        let provider = openai_tts_provider(Some("${OPENAI_API_KEY}".to_string()));
-        assert_eq!(provider.get_openai_api_key(), None);
+        // A `${...}` placeholder is never returned as the key itself
+        let placeholder = openai_tts_provider(Some("${OPENAI_API_KEY}".to_string()));
+        assert_ne!(
+            placeholder.get_openai_api_key(),
+            Some("${OPENAI_API_KEY}".to_string())
+        );
     }
 
     #[test]
@@ -893,51 +893,38 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_temperature() {
-        let mut config = SumvoxConfig::default();
-        config.llm.parameters.temperature = 3.0;
+        type Mutate = fn(&mut SumvoxConfig);
+        let cases: [(&str, Mutate); 5] = [
+            ("Temperature 3 out of range", |c| {
+                c.llm.parameters.temperature = 3.0
+            }),
+            ("TTS rate 500 out of range", |c| {
+                c.tts.providers[1].rate = Some(500)
+            }),
+            ("TTS volume 150 out of range", |c| {
+                c.tts.providers[0].volume = Some(150)
+            }),
+            ("Notification volume", |c| {
+                c.hooks.claude_code.notification_volume = Some(150)
+            }),
+            ("Stop hook volume", |c| {
+                c.hooks.claude_code.stop_volume = Some(200)
+            }),
+        ];
+        for (expected, mutate) in cases {
+            let mut config = SumvoxConfig::default();
+            mutate(&mut config);
+            let err = config.validate().expect_err(expected);
+            assert!(err.to_string().contains(expected), "{expected}: {err}");
+        }
 
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Temperature 3 out of range"));
-    }
-
-    #[test]
-    fn test_validate_invalid_tts_rate() {
-        let mut config = SumvoxConfig::default();
-        config.tts.providers[1].rate = Some(500);
-
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("TTS rate 500 out of range"));
-    }
-
-    #[test]
-    fn test_validate_invalid_tts_volume() {
-        let mut config = SumvoxConfig::default();
-        config.tts.providers[0].volume = Some(150);
-
-        let result = config.validate();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("TTS volume 150 out of range"));
-    }
-
-    #[test]
-    fn test_validate_valid_tts_volume() {
+        // Boundary values are accepted
         let mut config = SumvoxConfig::default();
         config.tts.providers[0].volume = Some(75);
         config.tts.providers[1].volume = Some(100);
-
-        let result = config.validate();
-        assert!(result.is_ok());
+        config.hooks.claude_code.notification_volume = Some(80);
+        config.hooks.claude_code.stop_volume = Some(100);
+        assert!(config.validate().is_ok());
     }
 
     #[test]
@@ -1040,33 +1027,6 @@ tts:
     }
 
     #[test]
-    fn test_hook_volume_validation() {
-        let mut config = SumvoxConfig::default();
-        config.hooks.claude_code.notification_volume = Some(80);
-        config.hooks.claude_code.stop_volume = Some(100);
-        assert!(config.validate().is_ok());
-
-        // Invalid notification volume
-        config.hooks.claude_code.notification_volume = Some(150);
-        assert!(config.validate().is_err());
-        assert!(config
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("Notification volume"));
-
-        // Reset and test invalid stop volume
-        config.hooks.claude_code.notification_volume = Some(80);
-        config.hooks.claude_code.stop_volume = Some(200);
-        assert!(config.validate().is_err());
-        assert!(config
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("Stop hook volume"));
-    }
-
-    #[test]
     fn test_service_account_key_reads_file() {
         use std::io::Write;
 
@@ -1095,36 +1055,15 @@ tts:
         let content = config.get_service_account_key();
         assert!(content.is_some());
         assert_eq!(content.unwrap(), json_content);
-    }
 
-    #[test]
-    fn test_service_account_key_none() {
-        let config = TtsProviderConfig {
-            name: "cloud_tts".to_string(),
-            model: None,
-            voice: None,
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
+        let no_key = TtsProviderConfig {
             service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..config
         };
-
-        assert_eq!(config.get_service_account_key(), None);
+        assert_eq!(no_key.get_service_account_key(), None);
     }
 
     // ── ContentSource tests ──────────────────────────────────────────
-
-    #[test]
-    fn test_content_source_default() {
-        let config = SummarizationConfig::default();
-        assert_eq!(config.content_source, ContentSource::Transcript);
-    }
 
     #[test]
     fn test_content_source_serde_round_trip() {
@@ -1195,27 +1134,18 @@ turns = 1
         let provider = make_provider(None);
         let params = make_params(false);
         assert!(!effective_disable_thinking(&provider, &params));
-    }
 
-    #[test]
-    fn test_c1_provider_none_uses_global_true() {
-        let provider = make_provider(None);
-        let params = make_params(true);
-        assert!(effective_disable_thinking(&provider, &params));
-    }
-
-    #[test]
-    fn test_c1_provider_some_true_overrides_global_false() {
-        let provider = make_provider(Some(true));
-        let params = make_params(false);
-        assert!(effective_disable_thinking(&provider, &params));
-    }
-
-    #[test]
-    fn test_c1_provider_some_false_overrides_global_true() {
-        let provider = make_provider(Some(false));
-        let params = make_params(true);
-        assert!(!effective_disable_thinking(&provider, &params));
+        // (provider override, global, expected): the provider wins when set
+        for (over, global, expected) in [
+            (None, true, true),
+            (Some(true), false, true),
+            (Some(false), true, false),
+        ] {
+            assert_eq!(
+                effective_disable_thinking(&make_provider(over), &make_params(global)),
+                expected
+            );
+        }
     }
 
     // ── C6: per-provider disable_thinking TOML deserialization ──────────

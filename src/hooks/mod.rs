@@ -98,6 +98,11 @@ mod tests {
         });
 
         assert_eq!(detect_format(&json), HookFormat::ClaudeCode);
+
+        let (json, format) =
+            parse_input(r#"{"session_id": "test", "hook_event_name": "Stop"}"#).unwrap();
+        assert_eq!(format, HookFormat::ClaudeCode);
+        assert_eq!(json["session_id"], "test");
     }
 
     #[test]
@@ -129,23 +134,13 @@ mod tests {
 
     #[test]
     fn test_parse_generic_with_text() {
-        let input = r#"{"text": "Hello world"}"#;
-        let generic = parse_generic(input).unwrap();
-        assert_eq!(generic.get_text(), Some("Hello world"));
-    }
-
-    #[test]
-    fn test_parse_generic_with_message() {
-        let input = r#"{"message": "Hello from message"}"#;
-        let generic = parse_generic(input).unwrap();
-        assert_eq!(generic.get_text(), Some("Hello from message"));
-    }
-
-    #[test]
-    fn test_parse_generic_with_content() {
-        let input = r#"{"content": "Hello from content"}"#;
-        let generic = parse_generic(input).unwrap();
-        assert_eq!(generic.get_text(), Some("Hello from content"));
+        for (input, expected) in [
+            (r#"{"text": "Hello world"}"#, "Hello world"),
+            (r#"{"message": "Hello from message"}"#, "Hello from message"),
+            (r#"{"content": "Hello from content"}"#, "Hello from content"),
+        ] {
+            assert_eq!(parse_generic(input).unwrap().get_text(), Some(expected));
+        }
     }
 
     #[test]
@@ -153,14 +148,5 @@ mod tests {
         let input = r#"{}"#;
         let result = parse_generic(input);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_input() {
-        let input = r#"{"session_id": "test", "hook_event_name": "Stop"}"#;
-        let (json, format) = parse_input(input).unwrap();
-
-        assert_eq!(format, HookFormat::ClaudeCode);
-        assert_eq!(json["session_id"], "test");
     }
 }

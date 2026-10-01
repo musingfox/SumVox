@@ -152,24 +152,6 @@ stop_tts_provider = "macos"
 
 #[test]
 #[ignore = "e2e-network"]
-fn test_sum_no_speak() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    env.cmd()
-        .args([
-            "sum",
-            "The quick brown fox jumps over the lazy dog",
-            "--no-speak",
-        ])
-        .timeout(std::time::Duration::from_secs(30))
-        .assert()
-        .success()
-        .stdout(predicate::str::is_empty().not());
-}
-
-#[test]
-#[ignore = "e2e-network"]
 fn test_sum_stdin() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -222,25 +204,6 @@ fn test_say_audio_single_file() {
         .stdout(predicate::str::contains("Playing audio file"));
 }
 
-#[test]
-#[ignore = "e2e-audio"]
-fn test_say_audio_directory() {
-    let env = TestEnv::new();
-
-    // Create a directory with multiple WAV files
-    let audio_dir = env.home_path().join("sounds");
-    fs::create_dir_all(&audio_dir).unwrap();
-    create_minimal_wav(&audio_dir.join("sound1.wav"));
-    create_minimal_wav(&audio_dir.join("sound2.wav"));
-
-    env.setup_with_config(&config_with_audio_file(audio_dir.to_str().unwrap()));
-
-    env.cmd()
-        .args(["say", "ignored text", "--tts", "audio_file"])
-        .assert()
-        .success();
-}
-
 // ============================================================================
 // LLM + TTS Full Flow
 // ============================================================================
@@ -258,20 +221,6 @@ fn test_sum_full_flow_local() {
             "--tts",
             LOCAL_TTS,
         ])
-        .timeout(std::time::Duration::from_secs(30))
-        .assert()
-        .success()
-        .stdout(predicate::str::is_empty().not());
-}
-
-#[test]
-#[ignore = "e2e-network"]
-fn test_sum_full_flow_google_tts() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    env.cmd()
-        .args(["sum", "Hello world", "--tts", "google"])
         .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success()

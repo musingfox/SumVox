@@ -227,63 +227,37 @@ mod tests {
 
     #[test]
     fn test_is_available_with_key() {
-        let provider = OpenAIProvider::with_base_url(
-            "sk-test-key".to_string(),
-            "gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.name(), "openai");
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_without_key() {
-        let provider = OpenAIProvider::with_base_url(
-            "".to_string(),
-            "gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_with_placeholder() {
-        let provider = OpenAIProvider::with_base_url(
-            "${OPENAI_API_KEY}".to_string(),
-            "gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
+        // (api key, expected): empty and `${...}` placeholder keys are unusable
+        for (key, expected) in [
+            ("sk-test-key", true),
+            ("", false),
+            ("${OPENAI_API_KEY}", false),
+        ] {
+            let provider = OpenAIProvider::with_base_url(
+                key.to_string(),
+                "gpt-4o-mini".to_string(),
+                OPENAI_API_BASE.to_string(),
+                Duration::from_secs(10),
+            );
+            assert_eq!(provider.is_available(), expected, "key={key:?}");
+            assert_eq!(provider.name(), "openai");
+        }
     }
 
     #[test]
     fn test_extract_model_name() {
-        let provider = OpenAIProvider::with_base_url(
-            "test-key".to_string(),
-            "openai/gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.extract_model_name(), "gpt-4o-mini");
-    }
-
-    #[test]
-    fn test_extract_model_name_without_prefix() {
-        let provider = OpenAIProvider::with_base_url(
-            "test-key".to_string(),
-            "gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.extract_model_name(), "gpt-4o-mini");
+        for (model, expected) in [
+            ("openai/gpt-4o-mini", "gpt-4o-mini"),
+            ("gpt-4o-mini", "gpt-4o-mini"),
+        ] {
+            let provider = OpenAIProvider::with_base_url(
+                "test-key".to_string(),
+                model.to_string(),
+                OPENAI_API_BASE.to_string(),
+                Duration::from_secs(10),
+            );
+            assert_eq!(provider.extract_model_name(), expected);
+        }
     }
 
     #[tokio::test]

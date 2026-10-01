@@ -241,64 +241,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_gemini_provider_creation() {
-        let provider = GeminiProvider::with_base_url(
-            "test-key".to_string(),
-            "gemini/gemini-2.0-flash-exp".to_string(),
-            GEMINI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.name(), "gemini");
-        assert!(provider.is_available());
-    }
-
-    #[test]
     fn test_is_available_with_empty_key() {
-        let provider = GeminiProvider::with_base_url(
-            "".to_string(),
-            "gemini/gemini-2.0-flash-exp".to_string(),
-            GEMINI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_is_available_with_env_var_placeholder() {
-        let provider = GeminiProvider::with_base_url(
-            "${GEMINI_API_KEY}".to_string(),
-            "gemini/gemini-2.0-flash-exp".to_string(),
-            GEMINI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert!(!provider.is_available());
+        // (api key, expected): empty and `${...}` placeholder keys are unusable
+        for (key, expected) in [
+            ("test-key", true),
+            ("", false),
+            ("${GEMINI_API_KEY}", false),
+        ] {
+            let provider = GeminiProvider::with_base_url(
+                key.to_string(),
+                "gemini/gemini-2.0-flash-exp".to_string(),
+                GEMINI_API_BASE.to_string(),
+                Duration::from_secs(10),
+            );
+            assert_eq!(provider.is_available(), expected, "key={key:?}");
+            assert_eq!(provider.name(), "gemini");
+        }
     }
 
     #[test]
     fn test_extract_model_name() {
-        let provider = GeminiProvider::with_base_url(
-            "test-key".to_string(),
-            "gemini/gemini-2.0-flash-exp".to_string(),
-            GEMINI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.extract_model_name(), "gemini-2.0-flash-exp");
-    }
-
-    #[test]
-    fn test_extract_model_name_without_prefix() {
-        let provider = GeminiProvider::with_base_url(
-            "test-key".to_string(),
-            "gemini-2.0-flash-exp".to_string(),
-            GEMINI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.extract_model_name(), "gemini-2.0-flash-exp");
+        for model in ["gemini/gemini-2.0-flash-exp", "gemini-2.0-flash-exp"] {
+            let provider = GeminiProvider::with_base_url(
+                "test-key".to_string(),
+                model.to_string(),
+                GEMINI_API_BASE.to_string(),
+                Duration::from_secs(10),
+            );
+            assert_eq!(provider.extract_model_name(), "gemini-2.0-flash-exp");
+        }
     }
 
     #[tokio::test]

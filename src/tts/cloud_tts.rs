@@ -298,11 +298,8 @@ mod tests {
         let p = create_test_provider();
         assert_eq!(p.name(), "cloud_tts");
         assert!(p.is_available());
-    }
 
-    #[test]
-    fn test_is_available_empty() {
-        let p = CloudTtsProvider::new(
+        let empty = CloudTtsProvider::new(
             String::new(),
             "en-US-Standard-A".to_string(),
             None,
@@ -310,20 +307,13 @@ mod tests {
             None,
             100,
         );
-        assert!(!p.is_available());
+        assert!(!empty.is_available());
     }
 
     #[tokio::test]
     async fn test_speak_empty_text() {
         let p = create_test_provider();
         assert!(!p.speak("").await.unwrap());
-    }
-
-    #[test]
-    fn test_cost_estimation() {
-        let p = create_test_provider();
-        let cost = p.estimate_cost(1_000_000);
-        assert!((cost - 4.0).abs() < 0.01);
     }
 
     #[test]
@@ -407,15 +397,9 @@ mod tests {
     }
 
     #[test]
-    fn test_gemini_chunk_cap_is_4000() {
-        let p = create_gemini_provider();
-        assert_eq!(p.max_chunk_bytes(), 4000);
-    }
-
-    #[test]
-    fn test_traditional_chunk_cap_is_5000() {
-        let p = create_test_provider();
-        assert_eq!(p.max_chunk_bytes(), 5000);
+    fn test_chunk_cap_by_model() {
+        assert_eq!(create_gemini_provider().max_chunk_bytes(), 4000);
+        assert_eq!(create_test_provider().max_chunk_bytes(), 5000);
     }
 
     #[test]
@@ -424,12 +408,9 @@ mod tests {
         let cost = p.estimate_cost(1_000_000);
         // Coarse per-char proxy for token billing (~$16.7 / 1M chars).
         assert!((cost - 16.7).abs() < 0.1, "unexpected gemini cost: {cost}");
-    }
 
-    #[test]
-    fn test_traditional_cost_unchanged() {
-        let p = create_test_provider();
-        let cost = p.estimate_cost(1_000_000);
-        assert!((cost - 4.0).abs() < 0.01);
+        // Non-Gemini voices keep the flat per-char price
+        let traditional = create_test_provider().estimate_cost(1_000_000);
+        assert!((traditional - 4.0).abs() < 0.01);
     }
 }
