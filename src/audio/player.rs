@@ -9,6 +9,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -17,6 +18,8 @@ use crate::error::{Result, VoiceError};
 /// Wall-clock cap on a single playback. The cap exists to break a wedged
 /// player, not to police latency, so it is deliberately generous: any realistic
 /// notification or read-aloud summary finishes far inside it.
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
 const PLAYBACK_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Players we try, in descending order of "likely installed AND honours
@@ -334,6 +337,16 @@ pub fn play_bytes(audio_data: &[u8], volume: u32, temp_file_prefix: &str) -> Res
     )
 }
 
+/// A temp path unique to this call, so concurrent playbacks (threads or
+/// processes) never overwrite each other's audio.
+pub(crate) fn unique_temp_path(prefix: &str, ext: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "{prefix}_{}_{}.{ext}",
+        std::process::id(),
+        TEMP_SEQ.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 /// [`play_bytes`] with the candidate list and timeout injected, for tests.
 pub fn play_bytes_with(
     candidates: &[&str],
@@ -351,7 +364,7 @@ pub fn play_bytes_with(
         temp_file_prefix
     );
 
-    let tmp_path = std::env::temp_dir().join(format!("{}.wav", temp_file_prefix));
+    let tmp_path = unique_temp_path(temp_file_prefix, "wav");
     std::fs::File::create(&tmp_path)
         .and_then(|mut f| f.write_all(audio_data))
         .map_err(|e| VoiceError::Voice(format!("Failed to write temp WAV: {}", e)))?;
@@ -598,13 +611,30 @@ mod tests {
         crate::audio::wav_header::create_wav_file(&[0x00, 0x00], 24000, 1, 16)
     }
 
+    fn leftover_temp_files(prefix: &str) -> usize {
+        std::fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(prefix))
+            .count()
+    }
+
+    #[test]
+    fn test_unique_temp_path_differs_per_call() {
+        let a = unique_temp_path("sumvox_test_unique", "wav");
+        let b = unique_temp_path("sumvox_test_unique", "wav");
+        assert_ne!(a, b);
+        assert_eq!(a.extension().unwrap(), "wav");
+    }
+
     #[test]
     fn test_play_bytes_with_removes_temp_file_on_success() {
         let prefix = "sumvox_test_bytes_ok";
         let result = play_bytes_with(&["true"], &create_test_wav(), 50, prefix, FIVE_SECONDS);
         assert!(result.is_ok(), "unexpected error: {:?}", result.err());
-        assert!(
-            !std::env::temp_dir().join(format!("{prefix}.wav")).exists(),
+        assert_eq!(
+            leftover_temp_files(prefix),
+            0,
             "temp file must not survive a successful playback"
         );
     }
@@ -616,8 +646,9 @@ mod tests {
             .expect_err("a player exiting non-zero must never report success")
             .to_string();
         assert!(err.contains("Audio playback failed"), "unexpected: {err}");
-        assert!(
-            !std::env::temp_dir().join(format!("{prefix}.wav")).exists(),
+        assert_eq!(
+            leftover_temp_files(prefix),
+            0,
             "temp file must be removed on the error path too"
         );
     }
