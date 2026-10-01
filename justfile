@@ -5,9 +5,13 @@
 default:
     @just --list
 
-# Run all tests
+# Run unit and component tests (offline, silent)
 test:
     cargo test
+
+# Run e2e tests (needs config/e2e_test.toml, hits real APIs, plays audio)
+test-e2e:
+    cargo test --test e2e -- --ignored
 
 # Run tests with output
 test-verbose:
