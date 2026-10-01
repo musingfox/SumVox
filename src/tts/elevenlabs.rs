@@ -119,7 +119,7 @@ impl TtsProvider for ElevenLabsProvider {
     }
 
     fn is_available(&self) -> bool {
-        !self.api_key.is_empty() && !self.api_key.starts_with("${")
+        crate::config::is_usable_key(&self.api_key)
     }
 
     fn supports_audio_tags(&self) -> bool {
