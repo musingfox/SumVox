@@ -364,14 +364,14 @@ impl Default for TtsConfig {
         Self {
             providers: vec![
                 TtsProviderConfig {
-                    name: "google".to_string(),
-                    model: Some("gemini-2.5-flash-preview-tts".to_string()),
-                    voice: Some("Zephyr".to_string()),
+                    name: "macos".to_string(),
+                    rate: Some(200),
                     ..Default::default()
                 },
                 TtsProviderConfig {
-                    name: "macos".to_string(),
-                    rate: Some(200),
+                    name: "google".to_string(),
+                    model: Some("gemini-2.5-flash-preview-tts".to_string()),
+                    voice: Some("Aoede".to_string()),
                     ..Default::default()
                 },
             ],
@@ -474,7 +474,7 @@ impl Default for ClaudeCodeHookConfig {
     fn default() -> Self {
         Self {
             notification_filter: default_notification_filter(),
-            notification_tts_provider: default_auto_tts(),
+            notification_tts_provider: Some("macos".to_string()),
             stop_tts_provider: default_auto_tts(),
             notification_volume: None, // Will use 80 in runtime if None
             stop_volume: None,         // Will use 100 in runtime if None
@@ -756,6 +756,34 @@ mod tests {
 
         let json = serde_json::to_string(&provider).unwrap();
         assert!(json.contains("${PROVIDER_API_KEY}"));
+    }
+
+    #[test]
+    fn test_default_config_round_trips_through_toml() {
+        // `sumvox init` writes SumvoxConfig::default() and nothing else. Unset API keys
+        // serialize as a placeholder, so compare the canonical TOML, not the structs.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("config.toml");
+        let default = SumvoxConfig::default();
+
+        default.save_toml(path.clone()).unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, toml::to_string_pretty(&default).unwrap());
+        let loaded = SumvoxConfig::load_toml(path).unwrap();
+        assert_eq!(
+            toml::to_string_pretty(&loaded).unwrap(),
+            toml::to_string_pretty(&default).unwrap()
+        );
+        assert_eq!(loaded.tts.providers[0].name, "macos");
+        assert_eq!(
+            loaded
+                .hooks
+                .claude_code
+                .notification_tts_provider
+                .as_deref(),
+            Some("macos")
+        );
     }
 
     #[test]

@@ -21,7 +21,7 @@ use std::io::{IsTerminal, Read};
 
 use clap::Parser;
 use cli::{Cli, Commands, InitArgs, JsonArgs, SayArgs, SumArgs};
-use config::{SumvoxConfig, TtsProviderConfig};
+use config::SumvoxConfig;
 use error::{Result, VoiceError};
 use hooks::claude_code::ClaudeCodeInput;
 use hooks::HookFormat;
@@ -235,33 +235,9 @@ async fn handle_init(args: InitArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Create default config with recommended settings
-    let mut config = SumvoxConfig::default();
+    // The defaults are the recommended settings
+    let config = SumvoxConfig::default();
 
-    // Apply recommended settings
-    config.summarization.system_message =
-        "You are a voice notification assistant. Generate concise summaries suitable for voice playback.".to_string();
-    config.summarization.fallback_message = "Task completed".to_string();
-
-    // Set notification TTS to macos by default (fast and free)
-    config.hooks.claude_code.notification_tts_provider = Some("macos".to_string());
-
-    // Update default TTS to prefer macOS
-    config.tts.providers = vec![
-        TtsProviderConfig {
-            name: "macos".to_string(),
-            rate: Some(200),
-            ..Default::default()
-        },
-        TtsProviderConfig {
-            name: "google".to_string(),
-            model: Some("gemini-2.5-flash-preview-tts".to_string()),
-            voice: Some("Aoede".to_string()),
-            ..Default::default()
-        },
-    ];
-
-    // Save as TOML (preferred format)
     config.save_to_home()?;
 
     eprintln!("✓ Created config at: {:?}", toml_path);
