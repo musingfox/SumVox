@@ -142,10 +142,10 @@ impl TtsProvider for ElevenLabsProvider {
 
         let text = if text.len() > MAX_TEXT_LENGTH {
             tracing::warn!(
-                "Text exceeds {} chars, truncating to limit",
+                "Text exceeds {} bytes, truncating to limit",
                 MAX_TEXT_LENGTH
             );
-            &text[..MAX_TEXT_LENGTH]
+            truncate_to_limit(text, MAX_TEXT_LENGTH)
         } else {
             text
         };
@@ -223,8 +223,20 @@ impl TtsProvider for ElevenLabsProvider {
     }
 }
 
+fn truncate_to_limit(text: &str, limit: usize) -> &str {
+    &text[..text.floor_char_boundary(limit)]
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_truncate_to_limit_respects_char_boundary() {
+        let text = format!("a{}", "你好".repeat(MAX_TEXT_LENGTH));
+        let out = truncate_to_limit(&text, MAX_TEXT_LENGTH);
+        assert!(out.len() <= MAX_TEXT_LENGTH);
+        assert!(!out.is_empty());
+    }
+
     use super::*;
 
     #[test]
