@@ -226,19 +226,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_openai_provider_creation() {
-        let provider = OpenAIProvider::with_base_url(
-            "test-key".to_string(),
-            "gpt-4o-mini".to_string(),
-            OPENAI_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.name(), "openai");
-        assert!(provider.is_available());
-    }
-
-    #[test]
     fn test_is_available_with_key() {
         let provider = OpenAIProvider::with_base_url(
             "sk-test-key".to_string(),
@@ -247,6 +234,7 @@ mod tests {
             Duration::from_secs(10),
         );
 
+        assert_eq!(provider.name(), "openai");
         assert!(provider.is_available());
     }
 

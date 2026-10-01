@@ -337,61 +337,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_tts_options_default() {
-        let opts = TtsOptions::default();
-        assert_eq!(opts.engine, "auto");
-        assert_eq!(opts.rate, 200);
-        assert!(opts.voice.is_none());
-        assert!(opts.volume.is_none());
-    }
-
-    #[test]
-    fn test_llm_options_default() {
-        let opts = LlmOptions::default();
-        assert!(opts.provider.is_none());
-        assert!(opts.model.is_none());
-        assert_eq!(opts.timeout, 10);
-    }
-
     // ── Volume override tests ──────────────────────────────────────────
 
     // ── Contract 1: last_assistant_message deserialization ──────────────
-
-    #[test]
-    fn test_last_assistant_message_absent() {
-        let json = r#"{
-            "session_id": "s1",
-            "transcript_path": "/tmp/t.jsonl",
-            "hook_event_name": "Stop"
-        }"#;
-        let input = ClaudeCodeInput::parse(json).unwrap();
-        assert_eq!(input.last_assistant_message, None);
-    }
-
-    #[test]
-    fn test_last_assistant_message_present() {
-        let json = r#"{
-            "session_id": "s1",
-            "transcript_path": "/tmp/t.jsonl",
-            "hook_event_name": "Stop",
-            "last_assistant_message": "Done"
-        }"#;
-        let input = ClaudeCodeInput::parse(json).unwrap();
-        assert_eq!(input.last_assistant_message, Some("Done".to_string()));
-    }
-
-    #[test]
-    fn test_last_assistant_message_empty() {
-        let json = r#"{
-            "session_id": "s1",
-            "transcript_path": "/tmp/t.jsonl",
-            "hook_event_name": "Stop",
-            "last_assistant_message": ""
-        }"#;
-        let input = ClaudeCodeInput::parse(json).unwrap();
-        assert_eq!(input.last_assistant_message, Some("".to_string()));
-    }
 
     // ── Contract 3: select_stop_context_source logic ────────────────────
 

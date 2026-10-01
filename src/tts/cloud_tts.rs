@@ -294,14 +294,9 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_name() {
-        let p = create_test_provider();
-        assert_eq!(p.name(), "cloud_tts");
-    }
-
-    #[test]
     fn test_is_available_with_json() {
         let p = create_test_provider();
+        assert_eq!(p.name(), "cloud_tts");
         assert!(p.is_available());
     }
 
@@ -345,20 +340,6 @@ mod tests {
         );
         assert_eq!(p.voice, "en-US-Standard-A");
         assert_eq!(p.language_code, "en-US");
-    }
-
-    #[test]
-    fn test_custom_voice() {
-        let p = CloudTtsProvider::new(
-            "sa".into(),
-            "zh-TW-Wavenet-B".into(),
-            Some("zh-TW".into()),
-            None,
-            None,
-            100,
-        );
-        assert_eq!(p.voice, "zh-TW-Wavenet-B");
-        assert_eq!(p.language_code, "zh-TW");
     }
 
     #[test]

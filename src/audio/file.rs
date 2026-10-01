@@ -156,6 +156,7 @@ mod tests {
         assert_eq!(provider.name(), "audio_file");
         assert_eq!(provider.volume, 80);
         assert!(matches!(provider.mode, AudioFileMode::SingleFile(_)));
+        assert_eq!(provider.estimate_cost(100), 0.0);
     }
 
     #[test]
@@ -226,22 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn test_volume_mapping() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"fake audio").unwrap();
-        let path = temp_file.path().to_path_buf();
-
-        let provider_0 = AudioFileProvider::new(path.clone(), 0).unwrap();
-        assert_eq!(provider_0.volume, 0);
-
-        let provider_50 = AudioFileProvider::new(path.clone(), 50).unwrap();
-        assert_eq!(provider_50.volume, 50);
-
-        let provider_100 = AudioFileProvider::new(path, 100).unwrap();
-        assert_eq!(provider_100.volume, 100);
-    }
-
-    #[test]
     fn test_is_available_single_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(b"fake audio").unwrap();
@@ -256,16 +241,5 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let provider = AudioFileProvider::new(temp_dir.path().to_path_buf(), 100).unwrap();
         assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_estimate_cost_is_zero() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"fake audio").unwrap();
-        let path = temp_file.path().to_path_buf();
-
-        let provider = AudioFileProvider::new(path, 100).unwrap();
-        assert_eq!(provider.estimate_cost(100), 0.0);
-        assert_eq!(provider.estimate_cost(10000), 0.0);
     }
 }

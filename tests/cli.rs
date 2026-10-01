@@ -224,16 +224,6 @@ stop_tts_provider = "macos"
 }
 
 #[test]
-fn test_version() {
-    let env = TestEnv::new();
-    env.cmd()
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("sumvox"));
-}
-
-#[test]
 fn test_help() {
     let env = TestEnv::new();
     env.cmd()

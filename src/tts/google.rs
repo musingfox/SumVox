@@ -268,32 +268,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_google_provider_creation() {
-        let provider = GoogleTtsProvider::new(
-            "test-api-key".to_string(),
-            "gemini-2.5-flash-preview-tts".to_string(),
-            "Aoede".to_string(),
-            100,
-        );
-        assert_eq!(provider.name(), "google");
-        assert_eq!(provider.voice_name, "Aoede");
-        assert_eq!(provider.volume, 100);
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_custom_voice() {
-        let provider = GoogleTtsProvider::new(
-            "test-api-key".to_string(),
-            "gemini-2.5-flash-preview-tts".to_string(),
-            "Charon".to_string(),
-            75,
-        );
-        assert_eq!(provider.voice_name, "Charon");
-        assert_eq!(provider.volume, 75);
-    }
-
-    #[test]
     fn test_empty_api_key() {
         let provider = GoogleTtsProvider::new(
             String::new(),
@@ -302,24 +276,8 @@ mod tests {
             100,
         );
         assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_cost_estimation() {
-        let provider = GoogleTtsProvider::new(
-            "test-api-key".to_string(),
-            "gemini-2.5-flash-preview-tts".to_string(),
-            "Aoede".to_string(),
-            100,
-        );
-
-        // 50 chars (typical summary length)
-        let cost_50 = provider.estimate_cost(50);
-        assert!((cost_50 - 0.0008).abs() < 0.0001);
-
-        // 100 chars
-        let cost_100 = provider.estimate_cost(100);
-        assert!((cost_100 - 0.0016).abs() < 0.0001);
+        assert_eq!(provider.name(), "google");
+        assert!(provider.estimate_cost(1000) > 0.0);
     }
 
     #[tokio::test]

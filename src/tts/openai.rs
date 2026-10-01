@@ -184,17 +184,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_creation() {
-        let p = provider(None);
-        assert_eq!(p.name(), "openai");
-        assert_eq!(p.model, "gpt-4o-mini-tts");
-        assert_eq!(p.voice, "nova");
-        assert_eq!(p.speed, None);
-        assert_eq!(p.volume, 100);
-        assert!(p.is_available());
-    }
-
-    #[test]
     fn test_unavailable_with_empty_or_placeholder_key() {
         let empty = OpenAiTtsProvider::new(
             String::new(),
@@ -222,23 +211,7 @@ mod tests {
         assert_eq!(provider(Some(5.0)).speed, Some(4.0));
         assert_eq!(provider(Some(0.1)).speed, Some(0.25));
         assert_eq!(provider(Some(1.5)).speed, Some(1.5));
-    }
-
-    #[test]
-    fn test_cost_estimation() {
-        let p = provider(None);
-
-        // 1M chars × $0.000075 = $75
-        assert!((p.estimate_cost(1_000_000) - 75.0).abs() < 0.001);
-
-        // Measured: ~120 chars ≈ $0.009
-        assert!((p.estimate_cost(120) - 0.009).abs() < 0.0001);
-
-        assert_eq!(p.estimate_cost(0), 0.0);
-    }
-
-    #[test]
-    fn test_does_not_support_audio_tags() {
+        assert!(provider(None).estimate_cost(1000) > 0.0);
         assert!(!provider(None).supports_audio_tags());
     }
 

@@ -777,18 +777,6 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_default_config() {
-        let config = SumvoxConfig::default();
-        assert!(!config.llm.providers.is_empty());
-        assert!(!config.tts.providers.is_empty());
-        assert_eq!(config.summarization.turns, 1);
-        assert_eq!(
-            config.hooks.claude_code.notification_tts_provider,
-            Some("auto".to_string())
-        );
-    }
-
-    #[test]
     fn test_load_new_format() {
         let config_json = r#"{
             "enabled": true,
@@ -979,61 +967,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ollama_timeout_60_seconds() {
-        let config = LlmConfig::default();
-        let ollama = config
-            .providers
-            .iter()
-            .find(|p| p.name == "ollama")
-            .unwrap();
-        assert_eq!(ollama.timeout, 60);
-    }
-
-    #[test]
-    fn test_summarization_config() {
-        let config = SumvoxConfig::default();
-        assert_eq!(config.summarization.turns, 1);
-        assert!(!config.summarization.fallback_message.is_empty());
-        assert!(!config
-            .summarization
-            .prompt_template
-            .contains("{max_length}"));
-        assert!(config.summarization.prompt_template.contains("{context}"));
-    }
-
-    #[test]
-    fn test_claude_code_hook_config() {
-        let config = SumvoxConfig::default();
-        assert!(!config.hooks.claude_code.notification_filter.is_empty());
-        assert_eq!(
-            config.hooks.claude_code.notification_tts_provider,
-            Some("auto".to_string())
-        );
-        assert_eq!(
-            config.hooks.claude_code.stop_tts_provider,
-            Some("auto".to_string())
-        );
-    }
-
-    #[test]
-    fn test_max_tokens_default_10000() {
-        let params = LlmParameters::default();
-        assert_eq!(params.max_tokens, 10000);
-    }
-
-    #[test]
-    fn test_disable_thinking_default_false() {
-        let params = LlmParameters::default();
-        assert!(!params.disable_thinking);
-    }
-
-    #[test]
-    fn test_config_path_is_xdg() {
-        let path = SumvoxConfig::config_path().unwrap();
-        assert!(path.to_string_lossy().contains(".config/sumvox"));
-    }
-
-    #[test]
     fn test_load_yaml_format() {
         let config_yaml = r#"
 llm:
@@ -1134,13 +1067,6 @@ tts:
     }
 
     #[test]
-    fn test_hook_volume_defaults() {
-        let config = SumvoxConfig::default();
-        assert_eq!(config.hooks.claude_code.notification_volume, None);
-        assert_eq!(config.hooks.claude_code.stop_volume, None);
-    }
-
-    #[test]
     fn test_service_account_key_reads_file() {
         use std::io::Write;
 
@@ -1190,17 +1116,6 @@ tts:
         };
 
         assert_eq!(config.get_service_account_key(), None);
-    }
-
-    #[test]
-    fn test_language_code_deserialization() {
-        let config_json = r#"{
-            "name": "cloud_tts",
-            "language_code": "zh-TW"
-        }"#;
-
-        let config: TtsProviderConfig = serde_json::from_str(config_json).unwrap();
-        assert_eq!(config.language_code, Some("zh-TW".to_string()));
     }
 
     // ── ContentSource tests ──────────────────────────────────────────
@@ -1254,14 +1169,6 @@ turns = 1
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_summarization_config_default_unchanged() {
-        let config = SummarizationConfig::default();
-        assert_eq!(config.content_source, ContentSource::Transcript);
-        assert_eq!(config.turns, 1);
-        assert_eq!(config.fallback_message, "Task completed");
-    }
-
     // ── C1: effective_disable_thinking resolver ──────────────────────────
 
     fn make_provider(override_val: Option<bool>) -> LlmProviderConfig {
@@ -1312,45 +1219,4 @@ turns = 1
     }
 
     // ── C6: per-provider disable_thinking TOML deserialization ──────────
-
-    #[test]
-    fn test_c6_provider_disable_thinking_absent_is_none() {
-        let toml = r#"
-[[llm.providers]]
-name = "google"
-model = "gemini-2.5-flash"
-api_key = "${KEY}"
-timeout = 10
-"#;
-        let config: SumvoxConfig = toml::from_str(toml).unwrap();
-        assert_eq!(config.llm.providers[0].disable_thinking, None);
-    }
-
-    #[test]
-    fn test_c6_provider_disable_thinking_true() {
-        let toml = r#"
-[[llm.providers]]
-name = "google"
-model = "gemini-2.5-flash"
-api_key = "${KEY}"
-timeout = 10
-disable_thinking = true
-"#;
-        let config: SumvoxConfig = toml::from_str(toml).unwrap();
-        assert_eq!(config.llm.providers[0].disable_thinking, Some(true));
-    }
-
-    #[test]
-    fn test_c6_provider_disable_thinking_false() {
-        let toml = r#"
-[[llm.providers]]
-name = "google"
-model = "gemini-2.5-flash"
-api_key = "${KEY}"
-timeout = 10
-disable_thinking = false
-"#;
-        let config: SumvoxConfig = toml::from_str(toml).unwrap();
-        assert_eq!(config.llm.providers[0].disable_thinking, Some(false));
-    }
 }

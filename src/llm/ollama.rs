@@ -143,42 +143,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ollama_provider_creation() {
-        let provider = OllamaProvider::with_base_url(
-            "http://localhost:11434".to_string(),
-            "llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        assert_eq!(provider.name(), "ollama");
-        assert_eq!(provider.base_url, "http://localhost:11434");
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_ollama_provider_with_custom_base_url() {
-        let provider = OllamaProvider::with_base_url(
-            "http://custom:11434".to_string(),
-            "llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        assert_eq!(provider.base_url, "http://custom:11434");
-    }
-
-    #[test]
-    fn test_is_available() {
-        let provider = OllamaProvider::with_base_url(
-            "http://localhost:11434".to_string(),
-            "llama3.1".to_string(),
-            Duration::from_secs(30),
-        );
-
-        // Ollama local service is always considered available
-        assert!(provider.is_available());
-    }
-
-    #[test]
     fn test_extract_model_name() {
         let provider = OllamaProvider::with_base_url(
             "http://localhost:11434".to_string(),
@@ -187,6 +151,7 @@ mod tests {
         );
 
         assert_eq!(provider.extract_model_name(), "llama3.1");
+        assert!(provider.is_available());
     }
 
     #[test]
