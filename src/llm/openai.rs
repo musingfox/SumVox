@@ -164,7 +164,7 @@ impl LlmProvider for OpenAIProvider {
     }
 
     fn is_available(&self) -> bool {
-        !self.api_key.is_empty() && !self.api_key.starts_with("${")
+        crate::config::is_usable_key(&self.api_key)
     }
 
     async fn generate(&self, request: &GenerationRequest) -> LlmResult<GenerationResponse> {

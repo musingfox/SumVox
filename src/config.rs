@@ -6,6 +6,23 @@ use std::path::PathBuf;
 
 use crate::error::{Result, VoiceError};
 
+/// A key is usable when it is non-empty and not an unexpanded `${VAR}` placeholder.
+pub fn is_usable_key(key: &str) -> bool {
+    !key.is_empty() && !key.starts_with("${")
+}
+
+/// The configured key if usable, else the first non-empty value among `env_vars`.
+fn resolve_key(configured: Option<&str>, env_vars: &[&str]) -> Option<String> {
+    configured
+        .filter(|key| is_usable_key(key))
+        .map(str::to_string)
+        .or_else(|| {
+            env_vars
+                .iter()
+                .find_map(|var| std::env::var(var).ok().filter(|k| !k.is_empty()))
+        })
+}
+
 /// Default timeout in seconds for LLM requests
 fn default_timeout() -> u64 {
     10
@@ -23,7 +40,7 @@ where
 {
     use serde::Serialize;
     match key {
-        Some(k) if !k.is_empty() && !k.starts_with("${") => k.serialize(serializer),
+        Some(k) if is_usable_key(k) => k.serialize(serializer),
         _ => "${PROVIDER_API_KEY}".serialize(serializer),
     }
 }
@@ -126,16 +143,7 @@ pub fn effective_disable_thinking(provider: &LlmProviderConfig, params: &LlmPara
 impl LlmProviderConfig {
     /// Get API key from config or environment variable
     pub fn get_api_key(&self) -> Option<String> {
-        // Config value takes priority
-        if let Some(ref key) = self.api_key {
-            if !key.is_empty() && !key.starts_with("${") {
-                return Some(key.clone());
-            }
-        }
-
-        // Try environment variable
-        let env_var = Self::env_var_name(&self.name);
-        std::env::var(env_var).ok().filter(|k| !k.is_empty())
+        resolve_key(self.api_key.as_deref(), &[Self::env_var_name(&self.name)])
     }
 
     /// Get environment variable name for provider
@@ -310,55 +318,25 @@ pub struct TtsProviderConfig {
 impl TtsProviderConfig {
     /// Get ElevenLabs API key from config or environment
     pub fn get_elevenlabs_api_key(&self) -> Option<String> {
-        if let Some(ref key) = self.api_key {
-            if !key.is_empty() && !key.starts_with("${") {
-                return Some(key.clone());
-            }
-        }
-
-        std::env::var("ELEVENLABS_API_KEY")
-            .ok()
-            .filter(|k| !k.is_empty())
+        resolve_key(self.api_key.as_deref(), &["ELEVENLABS_API_KEY"])
     }
 
     /// Get Gemini API key from config or environment
     pub fn get_api_key(&self) -> Option<String> {
-        // Config value takes priority
-        if let Some(ref key) = self.api_key {
-            if !key.is_empty() && !key.starts_with("${") {
-                return Some(key.clone());
-            }
-        }
-
-        // Try environment variables
-        std::env::var("GEMINI_API_KEY")
-            .ok()
-            .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
-            .filter(|k| !k.is_empty())
+        resolve_key(
+            self.api_key.as_deref(),
+            &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        )
     }
 
     /// Get xAI API key from config or environment
     pub fn get_xai_api_key(&self) -> Option<String> {
-        if let Some(ref key) = self.api_key {
-            if !key.is_empty() && !key.starts_with("${") {
-                return Some(key.clone());
-            }
-        }
-
-        std::env::var("XAI_API_KEY").ok().filter(|k| !k.is_empty())
+        resolve_key(self.api_key.as_deref(), &["XAI_API_KEY"])
     }
 
     /// Get OpenAI API key from config or environment
     pub fn get_openai_api_key(&self) -> Option<String> {
-        if let Some(ref key) = self.api_key {
-            if !key.is_empty() && !key.starts_with("${") {
-                return Some(key.clone());
-            }
-        }
-
-        std::env::var("OPENAI_API_KEY")
-            .ok()
-            .filter(|k| !k.is_empty())
+        resolve_key(self.api_key.as_deref(), &["OPENAI_API_KEY"])
     }
 
     /// Get service account key file content
