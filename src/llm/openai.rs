@@ -116,6 +116,47 @@ fn is_reasoning_model(model_name: &str) -> bool {
         || model_name.starts_with("gpt-5")
 }
 
+/// Builds the wire request. `reasoning_effort` follows `disable_thinking` alone
+/// (no model-name heuristic): true sends "low", false omits the field. Reasoning
+/// models take `max_completion_tokens` and no temperature; standard models take
+/// `max_tokens` and temperature.
+fn build_request(model_name: &str, request: &GenerationRequest) -> OpenAIRequest {
+    let mut messages = Vec::new();
+
+    if let Some(ref system_msg) = request.system_message {
+        messages.push(Message {
+            role: "system".to_string(),
+            content: system_msg.clone(),
+        });
+    }
+
+    messages.push(Message {
+        role: "user".to_string(),
+        content: request.prompt.clone(),
+    });
+
+    let reasoning_effort = if request.disable_thinking {
+        Some("low".to_string())
+    } else {
+        None
+    };
+
+    let (max_completion_tokens, max_tokens, temperature) = if is_reasoning_model(model_name) {
+        (Some(request.max_tokens), None, None)
+    } else {
+        (None, Some(request.max_tokens), Some(request.temperature))
+    };
+
+    OpenAIRequest {
+        model: model_name.to_string(),
+        messages,
+        max_completion_tokens,
+        max_tokens,
+        temperature,
+        reasoning_effort,
+    }
+}
+
 #[async_trait]
 impl LlmProvider for OpenAIProvider {
     fn name(&self) -> &str {
@@ -136,45 +177,7 @@ impl LlmProvider for OpenAIProvider {
         let model_name = self.extract_model_name();
         let url = format!("{}/chat/completions", self.base_url);
 
-        let mut messages = Vec::new();
-
-        if let Some(ref system_msg) = request.system_message {
-            messages.push(Message {
-                role: "system".to_string(),
-                content: system_msg.clone(),
-            });
-        }
-
-        messages.push(Message {
-            role: "user".to_string(),
-            content: request.prompt.clone(),
-        });
-
-        // Set reasoning_effort based solely on disable_thinking flag (no model-name heuristic).
-        // disable_thinking=true  → "low" (minimize reasoning effort)
-        // disable_thinking=false → omit the field entirely
-        let reasoning_effort = if request.disable_thinking {
-            Some("low".to_string())
-        } else {
-            None
-        };
-
-        // Reasoning models (o1, o3, o4, gpt-5) use max_completion_tokens and no temperature.
-        // Standard models use max_tokens and temperature.
-        let (max_completion_tokens, max_tokens, temperature) = if is_reasoning_model(model_name) {
-            (Some(request.max_tokens), None, None)
-        } else {
-            (None, Some(request.max_tokens), Some(request.temperature))
-        };
-
-        let openai_request = OpenAIRequest {
-            model: model_name.to_string(),
-            messages,
-            max_completion_tokens,
-            max_tokens,
-            temperature,
-            reasoning_effort,
-        };
+        let openai_request = build_request(model_name, request);
 
         tracing::debug!("Sending request to OpenAI API: {}", model_name);
 
