@@ -13,11 +13,6 @@ use crate::error::{Result, VoiceError};
 /// OpenAI speech synthesis endpoint
 const OPENAI_TTS_API_URL: &str = "https://api.openai.com/v1/audio/speech";
 
-/// Cost per character for OpenAI TTS.
-/// Derived from user-measured billing (2026-07): $0.009 for 4 notifications
-/// (~120 chars total) => $0.000075/char.
-const COST_PER_CHAR: f64 = 0.000075;
-
 /// Maximum input length per request (OpenAI limit: 4096 chars)
 const MAX_TEXT_LENGTH: usize = 4_096;
 
@@ -162,10 +157,6 @@ impl TtsProvider for OpenAiTtsProvider {
         tracing::debug!("Voice playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, char_count: usize) -> f64 {
-        char_count as f64 * COST_PER_CHAR
-    }
 }
 
 #[cfg(test)]
@@ -211,7 +202,6 @@ mod tests {
         assert_eq!(provider(Some(5.0)).speed, Some(4.0));
         assert_eq!(provider(Some(0.1)).speed, Some(0.25));
         assert_eq!(provider(Some(1.5)).speed, Some(1.5));
-        assert!(provider(None).estimate_cost(1000) > 0.0);
         assert!(!provider(None).supports_audio_tags());
     }
 

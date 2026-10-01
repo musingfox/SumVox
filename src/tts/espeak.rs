@@ -209,11 +209,6 @@ impl TtsProvider for EspeakProvider {
         tracing::debug!("espeak-ng playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, _char_count: usize) -> f64 {
-        // Local engine: free.
-        0.0
-    }
 }
 
 #[cfg(test)]
@@ -311,6 +306,5 @@ mod tests {
             !provider.is_available(),
             "a missing engine must be skipped by the chain, not error"
         );
-        assert_eq!(provider.estimate_cost(1000), 0.0);
     }
 }

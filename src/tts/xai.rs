@@ -12,9 +12,6 @@ use crate::error::{Result, VoiceError};
 /// xAI TTS API endpoint
 const XAI_TTS_API_URL: &str = "https://api.x.ai/v1/tts";
 
-/// Cost per character for xAI TTS ($15.00 / 1M characters)
-const COST_PER_CHAR: f64 = 0.000015;
-
 /// Maximum text length per request
 const MAX_TEXT_LENGTH: usize = 15_000;
 
@@ -148,10 +145,6 @@ impl TtsProvider for XaiTtsProvider {
         tracing::debug!("Voice playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, char_count: usize) -> f64 {
-        char_count as f64 * COST_PER_CHAR
-    }
 }
 
 fn truncate_to_limit(text: &str, limit: usize) -> &str {
@@ -179,7 +172,6 @@ mod tests {
         assert_eq!(provider.language, "auto");
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
-        assert!(provider.estimate_cost(1000) > 0.0);
 
         let custom = XaiTtsProvider::new(
             "test-api-key".to_string(),

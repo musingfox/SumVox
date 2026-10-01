@@ -133,11 +133,6 @@ impl TtsProvider for AudioFileProvider {
 
         Ok(true)
     }
-
-    fn estimate_cost(&self, _char_count: usize) -> f64 {
-        // Audio file playback is free
-        0.0
-    }
 }
 
 #[cfg(test)]
@@ -156,7 +151,6 @@ mod tests {
         assert_eq!(provider.name(), "audio_file");
         assert_eq!(provider.volume, 80);
         assert!(matches!(provider.mode, AudioFileMode::SingleFile(_)));
-        assert_eq!(provider.estimate_cost(100), 0.0);
         assert!(provider.is_available());
         assert_eq!(provider.get_playback_file().unwrap(), temp_file.path());
     }

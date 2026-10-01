@@ -447,12 +447,6 @@ async fn speak_with_fallback(
 
         tracing::info!("Using TTS provider: {}", provider.name());
 
-        // Estimate and log cost for cloud providers
-        let cost = provider.estimate_cost(text.len());
-        if cost > 0.0 {
-            tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
-        }
-
         // Try to speak (strip audio tags for providers that would read them aloud)
         let provider_text = if provider.supports_audio_tags() {
             text
