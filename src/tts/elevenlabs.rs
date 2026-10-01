@@ -107,7 +107,7 @@ impl ElevenLabsProvider {
             self.volume
         );
 
-        let tmp_path = std::env::temp_dir().join("sumvox_elevenlabs.mp3");
+        let tmp_path = crate::audio::player::unique_temp_path("sumvox_elevenlabs", "mp3");
         std::fs::File::create(&tmp_path)
             .and_then(|mut f| f.write_all(audio_data))
             .map_err(|e| VoiceError::Voice(format!("Failed to write temp MP3: {}", e)))?;
