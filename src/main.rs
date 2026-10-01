@@ -6,6 +6,7 @@ mod cli;
 mod config;
 mod error;
 mod hooks;
+mod http;
 mod llm;
 mod notify_log;
 mod pipeline;

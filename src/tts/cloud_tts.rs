@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 use super::TtsProvider;
 use crate::error::{Result, VoiceError};
@@ -102,11 +101,7 @@ impl CloudTtsProvider {
 
     /// Create HTTP client
     fn create_client() -> Result<Client> {
-        Client::builder()
-            .no_proxy()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))
+        crate::http::tts_client()
     }
 
     /// Split text into chunks at sentence boundaries, capped at `max_bytes`.

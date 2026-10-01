@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 use super::TtsProvider;
 use crate::error::{Result, VoiceError};
@@ -113,13 +112,7 @@ impl GoogleTtsProvider {
 
     /// Create HTTP client lazily (avoids issues in parallel tests)
     fn create_client() -> Result<Client> {
-        Client::builder()
-            .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| {
-                crate::error::VoiceError::Voice(format!("Failed to create HTTP client: {}", e))
-            })
+        crate::http::tts_client()
     }
 
     /// Play audio data through the platform player

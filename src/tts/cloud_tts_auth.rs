@@ -2,7 +2,6 @@
 // Generates JWT and exchanges for access token
 
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -100,11 +99,7 @@ impl CloudTtsAuth {
 
         // Exchange JWT for access token
         let token_uri = sa.token_uri.as_deref().unwrap_or(TOKEN_URI);
-        let client = Client::builder()
-            .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))?;
+        let client = crate::http::tts_client()?;
 
         let params = [
             ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
