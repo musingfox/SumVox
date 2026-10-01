@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: the built-in defaults now match `sumvox init`.** The default TTS chain is `macos` then `google` (voice `Aoede`, was `Zephyr`), and the Notification hook speaks through `macos` by default. `sumvox init` writes exactly these defaults. A config with no `[tts]` table, or no `[hooks.claude_code]` table, picks them up.
+- `--tts gemini` is now accepted as an alias for the `google` engine, matching the provider-name alias.
+- A set-but-empty `GEMINI_API_KEY` no longer hides `GOOGLE_API_KEY`.
+
+### Removed
+- **BREAKING: legacy `config.yaml` / `config.yml` / `config.json` are no longer read or migrated.** If one of them exists without a `config.toml`, sumvox now fails with an error telling you to convert it to `config.toml` or run `sumvox init`. `sumvox init` no longer treats them as an existing config.
+- The `TTS cost estimate` info log line is gone.
+
 ### Fixed
 - Over-long text for ElevenLabs and xAI TTS no longer crashes sumvox when it contains Chinese or other multi-byte characters; it is cut at a character boundary.
 - `--rate` is now optional: when omitted, the `rate` from your config (or the engine default) is used instead of being overwritten with 200.
