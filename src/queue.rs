@@ -146,6 +146,26 @@ mod tests {
         assert!(lock2.is_ok());
     }
 
+    #[tokio::test]
+    async fn test_contended_lock_times_out_then_succeeds_after_release() {
+        let temp_dir = tempdir().unwrap();
+        let mut queue = NotificationQueue::new(Some(Duration::from_millis(200))).unwrap();
+        queue.lock_file_path = temp_dir.path().join("test.lock");
+
+        let held = QueueLock::acquire(&queue).await.unwrap();
+
+        let started = Instant::now();
+        let err = QueueLock::acquire(&queue)
+            .await
+            .err()
+            .expect("must time out");
+        assert!(err.to_string().contains("timeout"), "got: {err}");
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        drop(held);
+        assert!(QueueLock::acquire(&queue).await.is_ok());
+    }
+
     #[test]
     fn test_ensure_lock_dir_creates_directory() {
         let temp_dir = tempdir().unwrap();
