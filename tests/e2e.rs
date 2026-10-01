@@ -115,29 +115,6 @@ fn create_minimal_wav(path: &Path) {
     fs::write(path, &wav).unwrap();
 }
 
-fn notification_json(message: &str, notification_type: &str) -> String {
-    serde_json::json!({
-        "session_id": "e2e-test",
-        "transcript_path": "/tmp/fake-transcript.jsonl",
-        "hook_event_name": "Notification",
-        "message": message,
-        "notification_type": notification_type
-    })
-    .to_string()
-}
-
-fn notification_json_stop_active() -> String {
-    serde_json::json!({
-        "session_id": "e2e-test",
-        "transcript_path": "/tmp/fake-transcript.jsonl",
-        "hook_event_name": "Notification",
-        "stop_hook_active": true,
-        "message": "Should be ignored",
-        "notification_type": "permission_prompt"
-    })
-    .to_string()
-}
-
 fn config_with_audio_file(path: &str) -> String {
     format!(
         r#"[llm]
@@ -169,34 +146,6 @@ stop_tts_provider = "macos"
     )
 }
 
-fn config_with_queue(timeout: u64) -> String {
-    format!(
-        r#"[llm]
-providers = []
-[llm.parameters]
-max_tokens = 100
-temperature = 0.3
-
-[tts]
-[[tts.providers]]
-name = "macos"
-rate = 200
-
-[summarization]
-turns = 1
-system_message = "Test"
-prompt_template = "Summarize: {{context}}"
-fallback_message = "Test completed"
-
-[hooks.claude_code]
-notification_filter = ["*"]
-queue_timeout = {timeout}
-notification_tts_provider = "macos"
-stop_tts_provider = "macos"
-"#
-    )
-}
-
 // ============================================================================
 // LLM — sum Command
 // ============================================================================
@@ -221,19 +170,6 @@ fn test_sum_no_speak() {
 
 #[test]
 #[ignore = "e2e-network"]
-fn test_sum_empty_text() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    env.cmd()
-        .args(["sum", ""])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("Empty text provided"));
-}
-
-#[test]
-#[ignore = "e2e-network"]
 fn test_sum_stdin() {
     let env = TestEnv::new();
     env.setup_base_config();
@@ -250,30 +186,6 @@ fn test_sum_stdin() {
 // ============================================================================
 // TTS — say Command
 // ============================================================================
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_say_local() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    env.cmd()
-        .args(["say", "hello", "--tts", LOCAL_TTS])
-        .assert()
-        .success();
-}
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_say_volume() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    env.cmd()
-        .args(["say", "hello", "--tts", LOCAL_TTS, "--volume", "50"])
-        .assert()
-        .success();
-}
 
 #[test]
 #[ignore = "e2e-network"]
@@ -329,19 +241,6 @@ fn test_say_audio_directory() {
         .success();
 }
 
-#[test]
-#[ignore = "e2e-network"]
-fn test_say_audio_no_config() {
-    let env = TestEnv::new();
-    env.setup_base_config(); // base config has no audio_file provider
-
-    env.cmd()
-        .args(["say", "hello", "--tts", "audio_file"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("audio_file provider not found"));
-}
-
 // ============================================================================
 // LLM + TTS Full Flow
 // ============================================================================
@@ -377,148 +276,4 @@ fn test_sum_full_flow_google_tts() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty().not());
-}
-
-// ============================================================================
-// Hook Dispatch
-// ============================================================================
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_notification_hook() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    let json = notification_json("Test notification", "permission_prompt");
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(json)
-        .timeout(std::time::Duration::from_secs(15))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Speaking notification"));
-}
-
-#[test]
-#[ignore = "e2e-network"]
-fn test_stop_hook_active() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    let json = notification_json_stop_active();
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(json)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("preventing infinite loop"));
-}
-
-// ============================================================================
-// Notification Queue
-// ============================================================================
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_queue_lock_acquired() {
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    let json = notification_json("Queue test", "permission_prompt");
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(json)
-        .timeout(std::time::Duration::from_secs(15))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Queue lock acquired"));
-}
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_queue_disabled() {
-    let env = TestEnv::new();
-    env.setup_with_config(&config_with_queue(0));
-
-    let json = notification_json("Queue disabled test", "permission_prompt");
-
-    env.cmd_debug()
-        .arg("json")
-        .write_stdin(json)
-        .timeout(std::time::Duration::from_secs(15))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("queue disabled"));
-}
-
-#[test]
-#[ignore = "e2e-audio"]
-fn test_queue_concurrent() {
-    use std::process::Stdio;
-
-    let env = TestEnv::new();
-    env.setup_base_config();
-
-    let json1 = notification_json("Concurrent A", "permission_prompt");
-    let json2 = notification_json("Concurrent B", "permission_prompt");
-    let home = env.home_path().to_path_buf();
-    let bin = assert_cmd::cargo::cargo_bin!("sumvox");
-
-    // Spawn two child processes sharing the same HOME (same queue lock file)
-    let mut child1 = std::process::Command::new(bin)
-        .arg("json")
-        .env("HOME", &home)
-        .env("RUST_LOG", "debug")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn child 1");
-
-    let mut child2 = std::process::Command::new(bin)
-        .arg("json")
-        .env("HOME", &home)
-        .env("RUST_LOG", "debug")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn child 2");
-
-    // Write JSON to both processes' stdin
-    use std::io::Write;
-    child1
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(json1.as_bytes())
-        .unwrap();
-    child2
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(json2.as_bytes())
-        .unwrap();
-
-    // Wait for both to complete
-    let output1 = child1
-        .wait_with_output()
-        .expect("Failed to wait for child 1");
-    let output2 = child2
-        .wait_with_output()
-        .expect("Failed to wait for child 2");
-
-    assert!(
-        output1.status.success(),
-        "Child 1 failed: {}",
-        String::from_utf8_lossy(&output1.stderr)
-    );
-    assert!(
-        output2.status.success(),
-        "Child 2 failed: {}",
-        String::from_utf8_lossy(&output2.stderr)
-    );
 }

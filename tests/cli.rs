@@ -36,6 +36,13 @@ impl TestEnv {
         self.home_dir.path()
     }
 
+    /// Create the mute flag so playback short-circuits before any audio device is touched.
+    fn mute(&self) {
+        let config_dir = self.home_dir.path().join(".config/sumvox");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("muted"), "").unwrap();
+    }
+
     fn cmd(&self) -> Command {
         let mut cmd = cargo_bin_cmd!("sumvox");
         cmd.env("HOME", self.home_dir.path());
@@ -88,6 +95,46 @@ notification_filter = ["*"]
 notification_tts_provider = "macos"
 stop_tts_provider = "macos"
 "#
+    .to_string()
+}
+
+fn config_with_queue(timeout: u64) -> String {
+    format!(
+        r#"[llm]
+providers = []
+[llm.parameters]
+max_tokens = 100
+temperature = 0.3
+
+[tts]
+[[tts.providers]]
+name = "macos"
+rate = 200
+
+[summarization]
+turns = 1
+system_message = "Test"
+prompt_template = "Summarize: {{context}}"
+fallback_message = "Test completed"
+
+[hooks.claude_code]
+notification_filter = ["*"]
+queue_timeout = {timeout}
+notification_tts_provider = "macos"
+stop_tts_provider = "macos"
+"#
+    )
+}
+
+fn notification_json_stop_active() -> String {
+    serde_json::json!({
+        "session_id": "e2e-test",
+        "transcript_path": "/tmp/fake-transcript.jsonl",
+        "hook_event_name": "Notification",
+        "stop_hook_active": true,
+        "message": "Should be ignored",
+        "notification_type": "permission_prompt"
+    })
     .to_string()
 }
 
@@ -332,4 +379,150 @@ fn test_notification_filtered() {
         .assert()
         .success()
         .stdout(predicate::str::contains("not in filter"));
+}
+
+#[test]
+fn test_sum_empty_text() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+
+    env.cmd()
+        .args(["sum", ""])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Empty text provided"));
+}
+
+#[test]
+fn test_say_local() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    env.cmd()
+        .args(["say", "hello", "--tts", LOCAL_TTS])
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_say_volume() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    env.cmd()
+        .args(["say", "hello", "--tts", LOCAL_TTS, "--volume", "50"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_say_audio_no_config() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+
+    env.cmd()
+        .args(["say", "hello", "--tts", "audio_file"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("audio_file provider not found"));
+}
+
+#[test]
+fn test_notification_hook() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    env.cmd_debug()
+        .arg("json")
+        .write_stdin(notification_json("Test notification", "permission_prompt"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Speaking notification"));
+}
+
+#[test]
+fn test_stop_hook_active() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+
+    env.cmd_debug()
+        .arg("json")
+        .write_stdin(notification_json_stop_active())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preventing infinite loop"));
+}
+
+#[test]
+fn test_queue_lock_acquired() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    env.cmd_debug()
+        .arg("json")
+        .write_stdin(notification_json("Queue test", "permission_prompt"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Queue lock acquired"));
+}
+
+#[test]
+fn test_queue_disabled() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_with_queue(0));
+    env.mute();
+
+    env.cmd_debug()
+        .arg("json")
+        .write_stdin(notification_json(
+            "Queue disabled test",
+            "permission_prompt",
+        ))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("queue disabled"));
+}
+
+#[test]
+fn test_queue_concurrent() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let env = TestEnv::new();
+    env.setup_with_config(&config_without_llm());
+    env.mute();
+
+    let bin = assert_cmd::cargo::cargo_bin!("sumvox");
+    let spawn = |message: &str| {
+        let mut child = std::process::Command::new(bin)
+            .arg("json")
+            .env("HOME", env.home_path())
+            .env_remove("SUMVOX_DISABLE")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn child");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(notification_json(message, "permission_prompt").as_bytes())
+            .unwrap();
+        child
+    };
+
+    let (a, b) = (spawn("Concurrent A"), spawn("Concurrent B"));
+    for child in [a, b] {
+        let output = child.wait_with_output().expect("Failed to wait for child");
+        assert!(
+            output.status.success(),
+            "child failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
