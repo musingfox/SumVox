@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+reviews:
+  profile: "chill"
+  path_instructions:
+    - path: "src/**/*.rs"
+      instructions: |
+        - Correctness bugs and edge cases, especially error handling and the provider fallback chains.
+        - Idiomatic Rust and clippy-level issues.
+        - Security: no leaked secrets, safe subprocess usage.
+        - Performance considerations.
