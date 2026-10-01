@@ -69,11 +69,11 @@ pub struct SumArgs {
     /// Text to summarize (use "-" to read from stdin)
     pub text: String,
 
-    /// LLM provider: google, anthropic, openai, ollama
+    /// LLM provider: google, anthropic, openai, xai, ollama
     #[arg(long)]
     pub provider: Option<String>,
 
-    /// Model name (e.g., gemini-2.5-flash, gpt-4o-mini)
+    /// Model name; replaces the model configured for the chosen provider
     #[arg(long)]
     pub model: Option<String>,
 
