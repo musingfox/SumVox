@@ -68,40 +68,58 @@ pub enum TtsEngine {
     Auto,
 }
 
+impl TtsEngine {
+    /// Every engine except Auto, with all spellings it is selected by. The one
+    /// place that knows which names mean which engine; the first is canonical.
+    const NAMES: &'static [(TtsEngine, &'static [&'static str])] = &[
+        (TtsEngine::MacOS, &["macos", "say"]),
+        (
+            TtsEngine::Google,
+            &["google", "google_tts", "gcloud", "gemini"],
+        ),
+        (
+            TtsEngine::CloudTts,
+            &["cloud_tts", "gcp_tts", "google_cloud", "gemini_tts"],
+        ),
+        (TtsEngine::Xai, &["xai", "xai_tts", "grok"]),
+        (
+            TtsEngine::ElevenLabs,
+            &["elevenlabs", "eleven_labs", "11labs"],
+        ),
+        (TtsEngine::OpenAi, &["openai", "openai_tts"]),
+        (TtsEngine::AudioFile, &["audio_file", "audio", "file"]),
+        (TtsEngine::Espeak, &["espeak", "espeak_ng", "espeak-ng"]),
+        (TtsEngine::Piper, &["piper", "piper_tts"]),
+    ];
+
+    /// All spellings of this engine, canonical first; empty for Auto.
+    pub fn aliases(self) -> &'static [&'static str] {
+        Self::NAMES
+            .iter()
+            .find(|(engine, _)| *engine == self)
+            .map_or(&[], |(_, names)| names)
+    }
+}
+
 impl FromStr for TtsEngine {
     type Err = VoiceError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "macos" | "say" => Ok(TtsEngine::MacOS),
-            "google" | "google_tts" | "gcloud" => Ok(TtsEngine::Google),
-            "cloud_tts" | "gcp_tts" | "google_cloud" | "gemini_tts" => Ok(TtsEngine::CloudTts),
-            "xai" | "xai_tts" | "grok" => Ok(TtsEngine::Xai),
-            "elevenlabs" | "eleven_labs" | "11labs" => Ok(TtsEngine::ElevenLabs),
-            "openai" | "openai_tts" => Ok(TtsEngine::OpenAi),
-            "audio_file" | "audio" | "file" => Ok(TtsEngine::AudioFile),
-            "espeak" | "espeak_ng" | "espeak-ng" => Ok(TtsEngine::Espeak),
-            "piper" | "piper_tts" => Ok(TtsEngine::Piper),
-            "auto" => Ok(TtsEngine::Auto),
-            _ => Err(VoiceError::Config(format!("Unknown TTS engine: {}", s))),
+        let name = s.to_lowercase();
+        if name == "auto" {
+            return Ok(TtsEngine::Auto);
         }
+        Self::NAMES
+            .iter()
+            .find(|(_, names)| names.contains(&name.as_str()))
+            .map(|(engine, _)| *engine)
+            .ok_or_else(|| VoiceError::Config(format!("Unknown TTS engine: {}", s)))
     }
 }
 
 impl std::fmt::Display for TtsEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TtsEngine::MacOS => write!(f, "macos"),
-            TtsEngine::Google => write!(f, "google"),
-            TtsEngine::CloudTts => write!(f, "cloud_tts"),
-            TtsEngine::Xai => write!(f, "xai"),
-            TtsEngine::ElevenLabs => write!(f, "elevenlabs"),
-            TtsEngine::OpenAi => write!(f, "openai"),
-            TtsEngine::AudioFile => write!(f, "audio_file"),
-            TtsEngine::Espeak => write!(f, "espeak"),
-            TtsEngine::Piper => write!(f, "piper"),
-            TtsEngine::Auto => write!(f, "auto"),
-        }
+        write!(f, "{}", self.aliases().first().copied().unwrap_or("auto"))
     }
 }
 
@@ -138,13 +156,14 @@ fn build_piper(config: &TtsProviderConfig, volume: u32) -> Result<PiperProvider>
 pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvider>> {
     let volume = config.volume.unwrap_or(100);
 
-    match config.name.to_lowercase().as_str() {
-        "macos" | "say" => {
+    let engine = config.name.parse::<TtsEngine>().ok();
+    match engine {
+        Some(TtsEngine::MacOS) => {
             let voice = config.voice.clone();
             let rate = config.rate.unwrap_or(200);
             Ok(Box::new(MacOsTtsProvider::new(voice, rate, volume)))
         }
-        "google" | "google_tts" | "gcloud" | "gemini" => {
+        Some(TtsEngine::Google) => {
             let api_key = config.get_api_key().ok_or_else(|| {
                 VoiceError::Config(
                     "Gemini API key not found. Set in config or env var GEMINI_API_KEY".into(),
@@ -168,7 +187,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 api_key, model, voice, volume,
             )))
         }
-        "cloud_tts" | "gcp_tts" | "google_cloud" | "gemini_tts" => {
+        Some(TtsEngine::CloudTts) => {
             let sa_json = config.get_service_account_key().ok_or_else(|| {
                 VoiceError::Config("Cloud TTS requires service_account_key".into())
             })?;
@@ -193,7 +212,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 volume,
             )))
         }
-        "xai" | "xai_tts" | "grok" => {
+        Some(TtsEngine::Xai) => {
             let api_key = config.get_xai_api_key().ok_or_else(|| {
                 VoiceError::Config(
                     "xAI API key not found. Set in config or env var XAI_API_KEY".into(),
@@ -211,7 +230,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 api_key, voice, language, volume,
             )))
         }
-        "elevenlabs" | "eleven_labs" | "11labs" => {
+        Some(TtsEngine::ElevenLabs) => {
             let api_key = config.get_elevenlabs_api_key().ok_or_else(|| {
                 VoiceError::Config(
                     "ElevenLabs API key not found. Set in config or env var ELEVENLABS_API_KEY"
@@ -238,7 +257,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 api_key, voice, model, speed, stability, style, volume,
             )))
         }
-        "openai" | "openai_tts" => {
+        Some(TtsEngine::OpenAi) => {
             let api_key = config.get_openai_api_key().ok_or_else(|| {
                 VoiceError::Config(
                     "OpenAI API key not found. Set in config or env var OPENAI_API_KEY".into(),
@@ -268,14 +287,14 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 volume,
             )))
         }
-        "espeak" | "espeak_ng" | "espeak-ng" => {
+        Some(TtsEngine::Espeak) => {
             // No required field: espeak-ng ships its own default voice.
             let voice = config.voice.clone();
             let rate = config.rate.unwrap_or(espeak::DEFAULT_RATE);
             Ok(Box::new(EspeakProvider::new(voice, rate, volume)))
         }
-        "piper" | "piper_tts" => Ok(Box::new(build_piper(config, volume)?)),
-        "audio_file" | "audio" | "file" => {
+        Some(TtsEngine::Piper) => Ok(Box::new(build_piper(config, volume)?)),
+        Some(TtsEngine::AudioFile) => {
             let path_str = config.path.as_ref().ok_or_else(|| {
                 VoiceError::Config(
                     "Audio file provider requires 'path' field. Set to a file or directory path."
@@ -288,7 +307,7 @@ pub fn create_single_tts(config: &TtsProviderConfig) -> Result<Box<dyn TtsProvid
                 path, volume,
             )?))
         }
-        _ => Err(VoiceError::Config(format!(
+        Some(TtsEngine::Auto) | None => Err(VoiceError::Config(format!(
             "Unknown TTS provider: {}",
             config.name
         ))),
@@ -424,6 +443,65 @@ mod tests {
             TtsEngine::Auto,
         ] {
             assert_eq!(engine.to_string().parse::<TtsEngine>().ok(), Some(engine));
+        }
+    }
+
+    /// Every spelling any engine-name path accepted before the alias table was unified
+    const ACCEPTED_NAMES: &[&str] = &[
+        "macos",
+        "say",
+        "google",
+        "google_tts",
+        "gcloud",
+        "gemini",
+        "cloud_tts",
+        "gcp_tts",
+        "google_cloud",
+        "gemini_tts",
+        "xai",
+        "xai_tts",
+        "grok",
+        "elevenlabs",
+        "eleven_labs",
+        "11labs",
+        "openai",
+        "openai_tts",
+        "audio_file",
+        "audio",
+        "file",
+        "espeak",
+        "espeak_ng",
+        "espeak-ng",
+        "piper",
+        "piper_tts",
+        "auto",
+    ];
+
+    fn is_unknown_provider_error(name: &str) -> bool {
+        let config = TtsProviderConfig {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        create_single_tts(&config)
+            .err()
+            .is_some_and(|e| e.to_string().contains("Unknown TTS provider"))
+    }
+
+    #[test]
+    fn test_accepted_engine_names_are_pinned() {
+        let _env = crate::test_support::env_guard();
+        for name in ACCEPTED_NAMES {
+            let parsed = name.parse::<TtsEngine>().is_ok();
+            let built = !is_unknown_provider_error(name);
+            assert!(parsed, "{name} no longer parses as an engine");
+            assert!(
+                *name == "auto" || built,
+                "{name} is no longer built by the factory"
+            );
+        }
+        for name in ["unknown", "espeakng", "", "macos2"] {
+            assert!(name.parse::<TtsEngine>().is_err(), "{name}");
+            assert!(is_unknown_provider_error(name), "{name}");
         }
     }
 
