@@ -58,7 +58,6 @@ body:
       value: |
         - SumVox version: (run `sumvox --version`)
         - OS: (e.g., macOS 14.1, Ubuntu 22.04)
-        - Rust version: (run `rustc --version`)
         - LLM provider: (e.g., Gemini, Claude)
         - TTS provider: (e.g., Google TTS, macOS say)
     validations:
@@ -70,11 +69,13 @@ body:
       label: Configuration
       description: Please paste your config file (remove API keys!)
       placeholder: |
-        {
-          "version": "1.0.0",
-          "llm": { ... }
-        }
-      render: json
+        [[llm.providers]]
+        name = "google"
+        model = "..."
+
+        [[tts.providers]]
+        name = "macos"
+      render: toml
 
   - type: textarea
     id: logs
