@@ -233,3 +233,30 @@ async fn tts_audio_tag_stripped_only_for_providers_without_tag_support() {
         ["eleven:[satisfied] done", "plain:done"]
     );
 }
+
+fn provider_named(name: &str) -> TtsProviderConfig {
+    toml::from_str(&format!("name = \"{name}\"")).unwrap()
+}
+
+#[test]
+fn test_select_engine() {
+    let providers = vec![provider_named("my_voice")];
+    assert!(matches!(
+        select_engine("", &providers),
+        Ok(EngineChoice::Engine(TtsEngine::Auto))
+    ));
+    assert!(matches!(
+        select_engine("auto", &providers),
+        Ok(EngineChoice::Engine(TtsEngine::Auto))
+    ));
+    assert!(matches!(
+        select_engine("say", &providers),
+        Ok(EngineChoice::Engine(TtsEngine::MacOS))
+    ));
+    assert!(matches!(
+        select_engine("my_voice", &providers),
+        Ok(EngineChoice::Named(p)) if p.name == "my_voice"
+    ));
+    let err = select_engine("nonsense", &providers).err().unwrap();
+    assert!(err.to_string().contains("nonsense"));
+}
