@@ -127,22 +127,42 @@ impl ProviderFactory {
         }
     }
 
-    /// Create a provider by name (for CLI override)
+    /// Create a provider by name (for CLI override). When `matching` is the
+    /// configured entry for `name`, its base_url, timeout and other settings are
+    /// kept and only the model is replaced.
     pub fn create_by_name(
         name: &str,
         model: &str,
         timeout: Duration,
         api_key: Option<&str>,
+        matching: Option<&LlmProviderConfig>,
     ) -> Result<Box<dyn LlmProvider>> {
-        let config = LlmProviderConfig {
-            name: name.to_string(),
-            model: model.to_string(),
-            api_key: api_key.map(|s| s.to_string()),
-            base_url: None,
-            timeout: timeout.as_secs(),
-            disable_thinking: None,
-        };
-        Self::create_single(&config)
+        Self::create_single(&override_config(name, model, timeout, api_key, matching))
+    }
+}
+
+fn override_config(
+    name: &str,
+    model: &str,
+    timeout: Duration,
+    api_key: Option<&str>,
+    matching: Option<&LlmProviderConfig>,
+) -> LlmProviderConfig {
+    if let Some(entry) = matching {
+        let mut config = entry.clone();
+        config.model = model.to_string();
+        if let Some(key) = api_key {
+            config.api_key = Some(key.to_string());
+        }
+        return config;
+    }
+    LlmProviderConfig {
+        name: name.to_string(),
+        model: model.to_string(),
+        api_key: api_key.map(|s| s.to_string()),
+        base_url: None,
+        timeout: timeout.as_secs(),
+        disable_thinking: None,
     }
 }
 
@@ -210,6 +230,7 @@ mod tests {
             "gemini-2.5-flash",
             Duration::from_secs(10),
             Some("test-key"),
+            None,
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "gemini");
@@ -222,6 +243,7 @@ mod tests {
             "llama3.2",
             Duration::from_secs(10),
             None, // Ollama doesn't need API key
+            None,
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name(), "ollama");
@@ -237,9 +259,46 @@ mod tests {
             "gemini-2.5-flash",
             Duration::from_secs(10),
             None, // No API key
+            None,
         );
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(err.to_string().contains("No API key"));
+    }
+
+    #[test]
+    fn test_override_config_keeps_configured_entry() {
+        let entry = LlmProviderConfig {
+            name: "ollama".to_string(),
+            model: "llama3.2".to_string(),
+            api_key: None,
+            base_url: Some("http://gpu-box:11434".to_string()),
+            timeout: 45,
+            disable_thinking: Some(true),
+        };
+        let kept = override_config(
+            "ollama",
+            "llama3.2",
+            Duration::from_secs(10),
+            None,
+            Some(&entry),
+        );
+        assert_eq!(kept.base_url.as_deref(), Some("http://gpu-box:11434"));
+        assert_eq!(kept.timeout, 45);
+        assert_eq!(kept.model, "llama3.2");
+
+        let remodeled = override_config(
+            "ollama",
+            "qwen3",
+            Duration::from_secs(10),
+            None,
+            Some(&entry),
+        );
+        assert_eq!(remodeled.model, "qwen3");
+        assert_eq!(remodeled.base_url.as_deref(), Some("http://gpu-box:11434"));
+
+        let unconfigured = override_config("ollama", "m", Duration::from_secs(10), None, None);
+        assert_eq!(unconfigured.base_url, None);
+        assert_eq!(unconfigured.timeout, 10);
     }
 }
