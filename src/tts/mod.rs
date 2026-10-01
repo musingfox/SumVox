@@ -682,6 +682,40 @@ mod tests {
     }
 
     #[test]
+    fn test_required_fields_per_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let sa_path = dir.path().join("sa.json");
+        std::fs::write(&sa_path, "{}").unwrap();
+        let sa = sa_path.to_str();
+
+        // (provider, model, voice, service_account_key, expected error fragment).
+        // Each case supplies every other required field, so only one is missing.
+        let cases = [
+            ("google", None, Some("Aoede"), None, "model is required"),
+            ("google", Some("m"), None, None, "voice is required"),
+            ("cloud_tts", None, None, sa, "voice is required"),
+            ("cloud_tts", None, Some("v"), None, "service_account_key"),
+            ("xai", None, None, None, "voice is required"),
+            ("elevenlabs", Some("m"), None, None, "voice is required"),
+            ("elevenlabs", None, Some("v"), None, "model is required"),
+        ];
+        for (name, model, voice, service_account_key, expected) in cases {
+            let config = TtsProviderConfig {
+                name: name.to_string(),
+                model: model.map(str::to_string),
+                voice: voice.map(str::to_string),
+                service_account_key: service_account_key.map(str::to_string),
+                ..openai_config(None, None)
+            };
+            let err = create_single_tts(&config)
+                .err()
+                .unwrap_or_else(|| panic!("{name}: expected error containing {expected:?}"))
+                .to_string();
+            assert!(err.contains(expected), "{name}: unexpected error: {err}");
+        }
+    }
+
+    #[test]
     fn test_openai_fully_specified_config() {
         let provider = create_single_tts(&openai_config(Some("gpt-4o-mini-tts"), Some("nova")))
             .expect("fully specified openai entry should build");
