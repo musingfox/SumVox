@@ -11,6 +11,8 @@ mod notify_log;
 mod pipeline;
 mod provider_factory;
 mod queue;
+#[cfg(test)]
+mod test_support;
 mod transcript;
 mod tts;
 

@@ -468,6 +468,7 @@ mod tests {
 
     #[test]
     fn test_factory_recognizes_gemini_tts_alias() {
+        let _env = crate::test_support::env_guard();
         // gemini_tts routes through the cloud_tts branch; missing service
         // account surfaces the cloud_tts error, proving the alias is wired in
         // (not the "Unknown TTS provider" fallthrough).
@@ -682,6 +683,7 @@ mod tests {
 
     #[test]
     fn test_openai_requires_voice() {
+        let _env = crate::test_support::env_guard();
         let err = create_single_tts(&openai_config(Some("gpt-4o-mini-tts"), None))
             .err()
             .expect("expected error without voice")
@@ -691,6 +693,7 @@ mod tests {
 
     #[test]
     fn test_openai_requires_model() {
+        let _env = crate::test_support::env_guard();
         let err = create_single_tts(&openai_config(None, Some("nova")))
             .err()
             .expect("expected error without model")
@@ -700,6 +703,7 @@ mod tests {
 
     #[test]
     fn test_required_fields_per_provider() {
+        let _env = crate::test_support::env_guard();
         let dir = tempfile::tempdir().unwrap();
         let sa_path = dir.path().join("sa.json");
         std::fs::write(&sa_path, "{}").unwrap();
@@ -734,6 +738,7 @@ mod tests {
 
     #[test]
     fn test_openai_fully_specified_config() {
+        let _env = crate::test_support::env_guard();
         let provider = create_single_tts(&openai_config(Some("gpt-4o-mini-tts"), Some("nova")))
             .expect("fully specified openai entry should build");
         assert_eq!(provider.name(), "openai");
@@ -743,6 +748,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_create_tts_fallback() {
+        let _env = crate::test_support::env_guard();
         // Google TTS without API key should fallback to macOS
         let providers = vec![
             TtsProviderConfig {
