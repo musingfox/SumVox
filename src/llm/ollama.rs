@@ -264,7 +264,7 @@ mod tests {
 
     // Integration test - requires actual Ollama service running
     #[tokio::test]
-    #[ignore]
+    #[ignore = "e2e-network"]
     async fn test_generate_with_real_ollama() {
         let provider = OllamaProvider::with_base_url(
             "http://localhost:11434".to_string(),
