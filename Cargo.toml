@@ -32,7 +32,6 @@ rand = "0.8"
 jsonwebtoken = "9"
 
 [dev-dependencies]
-mockito = "1"
 tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
