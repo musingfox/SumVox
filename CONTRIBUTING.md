@@ -45,7 +45,6 @@ Be respectful, constructive, and collaborative. We're all here to build better t
 sumvox/
 ├── src/
 │   ├── main.rs           # Entry point and hook orchestration
-│   ├── lib.rs            # Library surface shared with the integration tests
 │   ├── cli.rs            # CLI argument parsing
 │   ├── config.rs         # Configuration loading, migration and saving
 │   ├── pipeline.rs       # Shared summarize -> speak flow (say / sum / json / hooks)
