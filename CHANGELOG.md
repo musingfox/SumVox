@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Over-long text for ElevenLabs and xAI TTS no longer crashes sumvox when it contains Chinese or other multi-byte characters; it is cut at a character boundary.
+- `--rate` is now optional: when omitted, the `rate` from your config (or the engine default) is used instead of being overwritten with 200.
+- An unknown `--tts` value now fails with an error naming it, instead of silently running the whole fallback chain.
+- `--provider` now keeps the matching config entry's `base_url` and `timeout`; `--model` only replaces the model.
+- Concurrent playbacks no longer overwrite each other's temporary audio file.
+- The Google Cloud TTS token request no longer uses system proxy detection, avoiding the macOS CoreFoundation crash.
+
 ## [1.9.0] - 2026-09-04
 
 ### Added
