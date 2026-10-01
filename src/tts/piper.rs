@@ -13,16 +13,13 @@
 // player, exactly as for espeak and macOS `say`.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
 
+use super::render::render_then_play;
 use super::TtsProvider;
 use crate::audio::player;
-use crate::error::{Result, VoiceError};
+use crate::error::Result;
 
 /// SumVox's own default rate, chosen so it lands exactly on piper's default
 /// length-scale of 1.0.
@@ -30,12 +27,6 @@ pub const DEFAULT_RATE: u32 = 200;
 
 /// The program we invoke. Overridable in tests only.
 const BINARY: &str = "piper";
-
-/// Wall-clock cap on synthesis. piper needs ~690 ms, so this is ~40x headroom.
-const SYNTH_TIMEOUT: Duration = Duration::from_secs(30);
-
-// Per-call counter so concurrent calls sharing a PID get distinct temp paths.
-static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Resolve which `.onnx` model to speak with, from a config entry's three
 /// candidate fields.
@@ -152,13 +143,6 @@ impl TtsProvider for PiperProvider {
     }
 
     async fn speak(&self, text: &str) -> Result<bool> {
-        // Guard before any temp-path or spawn work: nothing to say is a
-        // deliberate no-op, not a failure. Matches every other provider.
-        if text.trim().is_empty() {
-            tracing::warn!("Empty message, skipping voice notification");
-            return Ok(false);
-        }
-
         tracing::info!(
             "Speaking with piper: model={:?}, rate={}, volume={}",
             self.model_path,
@@ -166,76 +150,14 @@ impl TtsProvider for PiperProvider {
             self.volume
         );
 
-        let wav_path = std::env::temp_dir().join(format!(
-            "sumvox_piper_{}_{}.wav",
-            std::process::id(),
-            CALL_SEQ.fetch_add(1, Ordering::Relaxed)
-        ));
-
-        let args = piper_args(&self.model_path, self.rate, &wav_path);
-        tracing::debug!("piper argv: {:?}", args);
-
-        let spawned = Command::new(&self.binary)
-            .args(&args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut child = spawned.map_err(|e| {
-            VoiceError::Voice(format!("piper synthesis failed: could not run: {}", e))
-        })?;
-
-        // Text goes to stdin, never onto the command line. A write failure is
-        // not fatal on its own — the exit status decides.
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(text.as_bytes()).await {
-                tracing::debug!("piper: failed writing text to stdin: {}", e);
-            }
-            let _ = stdin.shutdown().await;
-        }
-
-        let output = match tokio::time::timeout(SYNTH_TIMEOUT, child.wait_with_output()).await {
-            Ok(Ok(output)) => output,
-            Ok(Err(e)) => {
-                let _ = std::fs::remove_file(&wav_path);
-                return Err(VoiceError::Voice(format!("piper synthesis failed: {}", e)));
-            }
-            Err(_) => {
-                let _ = std::fs::remove_file(&wav_path);
-                return Err(VoiceError::Voice(format!(
-                    "piper synthesis failed: timed out after {}s",
-                    SYNTH_TIMEOUT.as_secs()
-                )));
-            }
-        };
-
-        if !output.status.success() {
-            let _ = std::fs::remove_file(&wav_path);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(VoiceError::Voice(format!(
-                "piper synthesis failed: {}",
-                stderr.trim()
-            )));
-        }
-
-        // Exit zero with no audio must not reach the player.
-        let rendered = std::fs::metadata(&wav_path).map(|m| m.len()).unwrap_or(0);
-        if rendered == 0 {
-            let _ = std::fs::remove_file(&wav_path);
-            return Err(VoiceError::Voice(
-                "piper synthesis failed: produced no audio".to_string(),
-            ));
-        }
-
-        // Clean up on every path, including the playback-error path.
-        let result = player::play_file(&wav_path, self.volume);
-        let _ = std::fs::remove_file(&wav_path);
-        result?;
-
-        tracing::debug!("piper playback completed");
-        Ok(true)
+        render_then_play(
+            "piper",
+            &self.binary,
+            |wav| piper_args(&self.model_path, self.rate, wav),
+            text,
+            self.volume,
+        )
+        .await
     }
 }
 
