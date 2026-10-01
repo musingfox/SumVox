@@ -1147,6 +1147,4 @@ turns = 1
             );
         }
     }
-
-    // ── C6: per-provider disable_thinking TOML deserialization ──────────
 }
