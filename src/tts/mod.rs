@@ -119,41 +119,6 @@ pub use openai::OpenAiTtsProvider;
 pub use piper::PiperProvider;
 pub use xai::XaiTtsProvider;
 
-/// Create TTS provider from config array with automatic fallback
-///
-/// Tries each provider in order until one is available.
-/// Returns an error if no provider can be created.
-pub fn create_tts_from_config(providers: &[TtsProviderConfig]) -> Result<Box<dyn TtsProvider>> {
-    let mut errors = Vec::new();
-
-    for config in providers {
-        match create_single_tts(config) {
-            Ok(provider) => {
-                if provider.is_available() {
-                    tracing::info!(
-                        "Using TTS provider: {} (voice: {})",
-                        config.name,
-                        config.voice.as_deref().unwrap_or("default")
-                    );
-                    return Ok(provider);
-                } else {
-                    tracing::debug!("TTS {} created but not available, trying next", config.name);
-                    errors.push(format!("{}: not available", config.name));
-                }
-            }
-            Err(e) => {
-                tracing::debug!("Failed to create TTS {}: {}", config.name, e);
-                errors.push(format!("{}: {}", config.name, e));
-            }
-        }
-    }
-
-    Err(VoiceError::Config(format!(
-        "No TTS provider available. Tried: {}",
-        errors.join("; ")
-    )))
-}
-
 fn build_piper(config: &TtsProviderConfig, volume: u32) -> Result<PiperProvider> {
     // For piper, the voice IS a downloaded .onnx model file. `voice`
     // takes precedence because it is the field the CLI overlays, so
@@ -746,60 +711,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
-    fn test_create_tts_fallback() {
-        let _env = crate::test_support::env_guard();
-        // Google TTS without API key should fallback to macOS
-        let providers = vec![
-            TtsProviderConfig {
-                name: "google".to_string(),
-                model: Some("gemini-2.5-flash-preview-tts".to_string()),
-                voice: Some("Zephyr".to_string()),
-                api_key: None, // No API key
-                rate: None,
-                volume: None,
-                path: None,
-                service_account_key: None,
-                language_code: None,
-                speed: None,
-                stability: None,
-                style: None,
-                style_prompt: None,
-            },
-            TtsProviderConfig {
-                name: "macos".to_string(),
-                model: None,
-                voice: Some("Tingting".to_string()),
-                api_key: None,
-                rate: Some(200),
-                volume: None,
-                path: None,
-                service_account_key: None,
-                language_code: None,
-                speed: None,
-                stability: None,
-                style: None,
-                style_prompt: None,
-            },
-        ];
-
-        // Every env var the google provider's key lookup reads. Only removed, never
-        // set, anywhere in the suite, so concurrent tests cannot observe a flip.
-        for var in [
-            "GOOGLE_CLOUD_PROJECT",
-            "GCP_PROJECT",
-            "GEMINI_API_KEY",
-            "GOOGLE_API_KEY",
-        ] {
-            std::env::remove_var(var);
-        }
-
-        let result = create_tts_from_config(&providers);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().name(), "macos");
-    }
-
-    #[test]
     fn test_resolve_tts_provider_uses_config_and_cli_override() {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
@@ -839,15 +750,5 @@ mod tests {
         let provider = resolve_tts_provider(&piper, &["piper"], Some("/m/b.onnx"), Some(200), None)
             .expect("configured piper entry should resolve");
         assert_eq!(provider.name(), "piper");
-    }
-
-    #[test]
-    fn test_create_tts_empty_providers() {
-        let providers: Vec<TtsProviderConfig> = vec![];
-
-        let result = create_tts_from_config(&providers);
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.to_string().contains("No TTS provider"));
     }
 }

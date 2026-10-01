@@ -652,6 +652,57 @@ fn test_sumvox_disable_short_circuits() {
     );
 }
 
+fn config_tts_only(tts: &str) -> String {
+    format!(
+        r#"[llm]
+providers = []
+[llm.parameters]
+max_tokens = 100
+temperature = 0.3
+
+[tts]
+{tts}
+
+[summarization]
+turns = 1
+system_message = "Test"
+prompt_template = "Summarize: {{context}}"
+"#
+    )
+}
+
+#[test]
+fn test_auto_chain_with_only_audio_file_usable_stays_silent() {
+    let env = TestEnv::new();
+    let sound = env.home_path().join("sound.wav");
+    fs::write(&sound, b"not real audio").unwrap();
+    env.setup_with_config(&config_tts_only(&format!(
+        "[[tts.providers]]\nname = \"audio_file\"\npath = \"{}\"\n\n[[tts.providers]]\nname = \"elevenlabs\"\nvoice = \"v\"\nmodel = \"m\"",
+        sound.display()
+    )));
+
+    env.cmd()
+        .env_remove("ELEVENLABS_API_KEY")
+        .args(["say", "hi"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_auto_chain_with_nothing_usable_fails() {
+    let env = TestEnv::new();
+    env.setup_with_config(&config_tts_only(
+        "[[tts.providers]]\nname = \"elevenlabs\"\nvoice = \"v\"\nmodel = \"m\"",
+    ));
+
+    env.cmd()
+        .env_remove("ELEVENLABS_API_KEY")
+        .args(["say", "hi"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No TTS provider available"));
+}
+
 #[test]
 fn test_muted_say_records_history_without_playing() {
     let env = TestEnv::new();

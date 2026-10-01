@@ -202,6 +202,27 @@ async fn tts_unavailable_and_uncreatable_providers_are_skipped() {
 }
 
 #[tokio::test]
+async fn tts_nothing_available_is_an_error() {
+    let spoken = Calls::default();
+    let err = run_tts(
+        vec![
+            Err("a: bad config".to_string()),
+            tts("b", false, true, false, &spoken),
+        ],
+        "hi",
+    )
+    .await
+    .expect_err("a chain with nothing to try must not succeed silently")
+    .to_string();
+    assert!(
+        err.contains("No TTS provider available"),
+        "unexpected: {err}"
+    );
+    assert!(err.contains("a: bad config") && err.contains("b: not available"));
+    assert!(spoken.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn tts_total_failure_is_silent_ok() {
     let spoken = Calls::default();
     let result = run_tts(

@@ -9,8 +9,7 @@ use crate::llm::{GenerationRequest, LlmProvider};
 use crate::notify_log;
 use crate::provider_factory::ProviderFactory;
 use crate::tts::{
-    create_single_tts, create_tts_from_config, resolve_tts_provider, strip_leading_audio_tag,
-    TtsEngine, TtsProvider,
+    create_single_tts, resolve_tts_provider, strip_leading_audio_tag, TtsEngine, TtsProvider,
 };
 
 /// TTS options
@@ -266,8 +265,9 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
             tts_opts.volume,
         )?,
         EngineChoice::Engine(TtsEngine::Auto) => {
-            // Use config fallback chain
-            create_tts_from_config(&config.tts.providers)?
+            // Config fallback chain; the hook-level volume overrides each provider's own
+            return speak_with_provider_fallback(&config.tts.providers, text, tts_opts.volume)
+                .await;
         }
         // An explicitly selected engine overrides which configured provider to use;
         // all attributes come from that config entry, with only explicit CLI/hook
@@ -348,36 +348,19 @@ pub async fn speak_text(config: &SumvoxConfig, tts_opts: &TtsOptions, text: &str
         return Ok(());
     }
 
-    // Estimate and log cost for cloud providers
-    let cost = provider.estimate_cost(text.len());
-    if cost > 0.0 {
-        tracing::info!("TTS cost estimate: ${:.6} for {} chars", cost, text.len());
-    }
-
-    // Speak with error handling and fallback for Auto mode
-    match choice {
-        EngineChoice::Engine(TtsEngine::Auto) => {
-            // For Auto mode, try all providers in config order
-            // Pass volume override so hook-level volume (stop_volume/notification_volume) is applied
-            speak_with_provider_fallback(&config.tts.providers, text, tts_opts.volume).await
+    let text = if provider.supports_audio_tags() {
+        text
+    } else {
+        strip_leading_audio_tag(text)
+    };
+    match provider.speak(text).await {
+        Ok(_) => {
+            tracing::debug!("TTS playback completed");
+            Ok(())
         }
-        _ => {
-            // Single provider mode - just try once
-            let text = if provider.supports_audio_tags() {
-                text
-            } else {
-                strip_leading_audio_tag(text)
-            };
-            match provider.speak(text).await {
-                Ok(_) => {
-                    tracing::debug!("TTS playback completed");
-                    Ok(())
-                }
-                Err(e) => {
-                    tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
-                    Ok(())
-                }
-            }
+        Err(e) => {
+            tracing::warn!("TTS playback failed: {}. Notification will be silent.", e);
+            Ok(())
         }
     }
 }
@@ -416,23 +399,38 @@ async fn speak_with_provider_fallback(
         )
     });
 
-    speak_with_fallback(&mut candidates, text).await
+    let result = speak_with_fallback(&mut candidates, text).await;
+
+    // A usable audio_file entry is never spoken through, but it still counts as an
+    // available TTS: such a chain stays silent instead of erroring.
+    if result.is_err()
+        && providers.iter().any(|c| {
+            c.name.parse::<TtsEngine>().ok() == Some(TtsEngine::AudioFile)
+                && create_single_tts(c).is_ok_and(|p| p.is_available())
+        })
+    {
+        tracing::warn!("No speech TTS providers available. Notification will be silent.");
+        return Ok(());
+    }
+    result
 }
 
 /// Speak with the first provider that is available and succeeds. An `Err` entry is a
-/// provider that could not be created. Always `Ok`: total failure is only logged.
+/// provider that could not be created. Total failure of tried providers is only
+/// logged; `Err` means no provider could be tried at all.
 async fn speak_with_fallback(
     providers: &mut dyn Iterator<Item = TtsCandidate>,
     text: &str,
 ) -> Result<()> {
     let mut last_error = None;
+    let mut skipped = Vec::new();
 
     for provider in providers {
         let provider = match provider {
             Ok(p) => p,
             Err(e) => {
                 tracing::debug!("Failed to create TTS provider {}", e);
-                last_error = Some(e);
+                skipped.push(e);
                 continue;
             }
         };
@@ -443,7 +441,7 @@ async fn speak_with_fallback(
                 "TTS provider {} not available, trying next",
                 provider.name()
             );
-            last_error = Some(format!("{}: not available", provider.name()));
+            skipped.push(format!("{}: not available", provider.name()));
             continue;
         }
 
@@ -478,17 +476,21 @@ async fn speak_with_fallback(
         }
     }
 
-    // All providers failed
-    if let Some(err) = last_error {
-        tracing::warn!(
-            "All TTS providers failed. Last error: {}. Notification will be silent.",
-            err
-        );
-    } else {
-        tracing::warn!("No TTS providers available. Notification will be silent.");
+    // A provider that was tried and failed degrades to silence; a chain where
+    // nothing could even be tried is a configuration error worth surfacing.
+    match last_error {
+        Some(err) => {
+            tracing::warn!(
+                "All TTS providers failed. Last error: {}. Notification will be silent.",
+                err
+            );
+            Ok(())
+        }
+        None => Err(VoiceError::Config(format!(
+            "No TTS provider available. Tried: {}",
+            skipped.join("; ")
+        ))),
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
