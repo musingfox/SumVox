@@ -858,9 +858,16 @@ mod tests {
             },
         ];
 
-        // Clear env vars to ensure fallback
-        std::env::remove_var("GOOGLE_CLOUD_PROJECT");
-        std::env::remove_var("GCP_PROJECT");
+        // Every env var the google provider's key lookup reads. Only removed, never
+        // set, anywhere in the suite, so concurrent tests cannot observe a flip.
+        for var in [
+            "GOOGLE_CLOUD_PROJECT",
+            "GCP_PROJECT",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+        ] {
+            std::env::remove_var(var);
+        }
 
         let result = create_tts_from_config(&providers);
         assert!(result.is_ok());
