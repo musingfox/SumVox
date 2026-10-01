@@ -75,11 +75,7 @@ impl AnthropicProvider {
     }
 
     fn client(&self) -> Client {
-        Client::builder()
-            .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
-            .timeout(self.timeout)
-            .build()
-            .unwrap_or_else(|_| Client::new())
+        crate::http::client(self.timeout).unwrap_or_else(|_| Client::new())
     }
 }
 
