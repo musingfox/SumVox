@@ -19,9 +19,6 @@ pub enum VoiceError {
     #[error("Voice engine error: {0}")]
     Voice(String),
 
-    #[error("LLM error: {0}")]
-    Llm(#[from] LlmError),
-
     #[error("Queue error: {0}")]
     Queue(String),
 }
