@@ -57,7 +57,8 @@ under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
 just release X.Y.Z
 ```
 
-Update `CHANGELOG.md` and commit it first: the recipe refuses to run on a dirty tree. It then
+Run it on macOS: the recipe edits files with BSD `sed -i ''`. Update `CHANGELOG.md` and commit
+it first: the recipe refuses to run on a dirty tree. It then
 sets the version in `Cargo.toml` and `homebrew/sumvox.rb`, runs `cargo test`, commits
 `chore: bump version to X.Y.Z` and creates the tag `vX.Y.Z`. It pushes nothing; push the two refs
 yourself:
