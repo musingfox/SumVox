@@ -437,16 +437,8 @@ mod tests {
             name: "gemini_tts".to_string(),
             model: Some("gemini-2.5-flash-tts".to_string()),
             voice: Some("Kore".to_string()),
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
             style_prompt: Some("Say it warmly.".to_string()),
+            ..Default::default()
         };
         let err = match create_single_tts(&config) {
             Ok(_) => panic!("expected error without service account key"),
@@ -466,21 +458,11 @@ mod tests {
         // must still pick the gemini_tts entry, not the first alias match.
         let base = TtsProviderConfig {
             name: "cloud_tts".to_string(),
-            model: None,
             // No voice: selecting this entry fails with "voice is required",
             // which discriminates it from the gemini_tts entry below.
-            voice: None,
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
             // /dev/null reads as empty content, passing the sa-key lookup.
             service_account_key: Some("/dev/null".to_string()),
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         };
         let gemini = TtsProviderConfig {
             name: "gemini_tts".to_string(),
@@ -520,18 +502,9 @@ mod tests {
     fn espeak_config(name: &str, voice: Option<&str>, rate: Option<u32>) -> TtsProviderConfig {
         TtsProviderConfig {
             name: name.to_string(),
-            model: None,
             voice: voice.map(str::to_string),
-            path: None,
-            api_key: None,
             rate,
-            volume: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         }
     }
 
@@ -556,15 +529,7 @@ mod tests {
             model: model.map(str::to_string),
             voice: voice.map(str::to_string),
             path: path.map(str::to_string),
-            api_key: None,
-            rate: None,
-            volume: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         }
     }
 
@@ -630,15 +595,7 @@ mod tests {
             model: model.map(str::to_string),
             voice: voice.map(str::to_string),
             api_key: Some("test-api-key".to_string()),
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         }
     }
 
@@ -710,18 +667,9 @@ mod tests {
     fn test_resolve_tts_provider_uses_config_and_cli_override() {
         let providers = vec![TtsProviderConfig {
             name: "macos".to_string(),
-            model: None,
             voice: Some("Meijia".to_string()),
-            api_key: None,
             rate: Some(200),
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         }];
 
         // CLI voice override wins over config voice; engine sourced from config.

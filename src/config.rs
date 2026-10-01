@@ -232,7 +232,7 @@ impl Default for LlmConfig {
 // ============================================================================
 
 /// Individual TTS provider configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct TtsProviderConfig {
     /// Provider name: google, macos
     pub name: String,
@@ -389,31 +389,12 @@ impl Default for TtsConfig {
                     name: "google".to_string(),
                     model: Some("gemini-2.5-flash-preview-tts".to_string()),
                     voice: Some("Zephyr".to_string()),
-                    api_key: None,
-                    rate: None,
-                    volume: None,
-                    path: None,
-                    service_account_key: None,
-                    language_code: None,
-                    speed: None,
-                    stability: None,
-                    style: None,
-                    style_prompt: None,
+                    ..Default::default()
                 },
                 TtsProviderConfig {
                     name: "macos".to_string(),
-                    model: None,
-                    voice: None,
-                    api_key: None,
                     rate: Some(200),
-                    volume: None,
-                    path: None,
-                    service_account_key: None,
-                    language_code: None,
-                    speed: None,
-                    stability: None,
-                    style: None,
-                    style_prompt: None,
+                    ..Default::default()
                 },
             ],
         }
@@ -690,18 +671,8 @@ mod tests {
     fn openai_tts_provider(api_key: Option<String>) -> TtsProviderConfig {
         TtsProviderConfig {
             name: "openai".to_string(),
-            model: None,
-            voice: None,
             api_key,
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         }
     }
 
@@ -733,18 +704,10 @@ mod tests {
         // The same cast applies to the optional per-provider knobs.
         let provider = TtsProviderConfig {
             name: "elevenlabs".to_string(),
-            model: None,
-            voice: None,
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
-            service_account_key: None,
-            language_code: None,
             speed: Some(0.9),
             stability: Some(0.4),
             style: Some(0.2),
-            style_prompt: None,
+            ..Default::default()
         };
         let toml_str = toml::to_string_pretty(&provider).unwrap();
         for expected in ["speed = 0.9\n", "stability = 0.4\n", "style = 0.2\n"] {
@@ -846,18 +809,8 @@ mod tests {
 
         let config = TtsProviderConfig {
             name: "cloud_tts".to_string(),
-            model: None,
-            voice: None,
-            api_key: None,
-            rate: None,
-            volume: None,
-            path: None,
             service_account_key: Some(temp_file.path().to_string_lossy().to_string()),
-            language_code: None,
-            speed: None,
-            stability: None,
-            style: None,
-            style_prompt: None,
+            ..Default::default()
         };
 
         let content = config.get_service_account_key();
