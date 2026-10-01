@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **BREAKING: the built-in defaults now match `sumvox init`.** The default TTS chain is `macos` then `google` (voice `Aoede`, was `Zephyr`), and the Notification hook speaks through `macos` by default. `sumvox init` writes exactly these defaults. A config with no `[tts]` table, or no `[hooks.claude_code]` table, picks them up.
+- **BREAKING: the built-in defaults now match `sumvox init`.** The default TTS chain is the platform's local engine (`macos` on macOS, `espeak` elsewhere) then `google` (voice `Aoede`, was `Zephyr`), and the Notification hook speaks through that local engine by default. `sumvox init` writes exactly these defaults. A config with no `[tts]` table, or no `[hooks.claude_code]` table, picks them up.
 - `--tts gemini` is now accepted as an alias for the `google` engine, matching the provider-name alias.
 - A set-but-empty `GEMINI_API_KEY` no longer hides `GOOGLE_API_KEY`.
 

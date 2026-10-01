@@ -359,12 +359,20 @@ pub struct TtsConfig {
     pub providers: Vec<TtsProviderConfig>,
 }
 
+/// The local TTS engine `init` and the defaults use on this platform: macOS
+/// `say` where it exists, espeak-ng elsewhere.
+pub(crate) const LOCAL_TTS: &str = if cfg!(target_os = "macos") {
+    "macos"
+} else {
+    "espeak"
+};
+
 impl Default for TtsConfig {
     fn default() -> Self {
         Self {
             providers: vec![
                 TtsProviderConfig {
-                    name: "macos".to_string(),
+                    name: LOCAL_TTS.to_string(),
                     rate: Some(200),
                     ..Default::default()
                 },
@@ -474,7 +482,7 @@ impl Default for ClaudeCodeHookConfig {
     fn default() -> Self {
         Self {
             notification_filter: default_notification_filter(),
-            notification_tts_provider: Some("macos".to_string()),
+            notification_tts_provider: Some(LOCAL_TTS.to_string()),
             stop_tts_provider: default_auto_tts(),
             notification_volume: None, // Will use 80 in runtime if None
             stop_volume: None,         // Will use 100 in runtime if None
@@ -775,14 +783,14 @@ mod tests {
             toml::to_string_pretty(&loaded).unwrap(),
             toml::to_string_pretty(&default).unwrap()
         );
-        assert_eq!(loaded.tts.providers[0].name, "macos");
+        assert_eq!(loaded.tts.providers[0].name, LOCAL_TTS);
         assert_eq!(
             loaded
                 .hooks
                 .claude_code
                 .notification_tts_provider
                 .as_deref(),
-            Some("macos")
+            Some(LOCAL_TTS)
         );
     }
 
