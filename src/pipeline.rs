@@ -119,6 +119,7 @@ pub async fn generate_summary(
             model_name,
             timeout,
             api_key.as_deref(),
+            matching_provider,
         ) {
             Ok(provider) => {
                 if !provider.is_available() {
