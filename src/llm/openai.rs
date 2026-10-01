@@ -285,33 +285,43 @@ mod tests {
         assert!(matches!(result.unwrap_err(), LlmError::Unavailable(_)));
     }
 
-    // ── C5: OpenAIRequestSerialization ───────────────────────────────────
-
     #[test]
-    fn test_c5_request_wire_format() {
-        let request = |reasoning: bool| OpenAIRequest {
-            model: "m".to_string(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: "Test".to_string(),
-            }],
-            max_completion_tokens: reasoning.then_some(100u32),
-            max_tokens: (!reasoning).then_some(100u32),
-            temperature: (!reasoning).then_some(0.3f32),
-            reasoning_effort: reasoning.then(|| "low".to_string()),
-        };
+    fn test_request_wire_format() {
+        // (model, disable_thinking, reasoning_model): reasoning_effort follows
+        // the flag, token fields follow the model family.
+        for (model, disable_thinking, reasoning_model) in [
+            ("o3-mini", true, true),
+            ("o3-mini", false, true),
+            ("gpt-4o-mini", true, false),
+            ("gpt-4o-mini", false, false),
+        ] {
+            let request = GenerationRequest {
+                system_message: None,
+                prompt: "Test".to_string(),
+                max_tokens: 100,
+                temperature: 0.3,
+                disable_thinking,
+            };
+            let json = serde_json::to_value(build_request(model, &request)).unwrap();
+            let ctx = format!("{model} disable_thinking={disable_thinking}");
 
-        let reasoning = serde_json::to_value(request(true)).unwrap();
-        assert_eq!(reasoning["reasoning_effort"], "low");
-        assert!(reasoning.get("max_completion_tokens").is_some());
-        assert!(reasoning.get("max_tokens").is_none());
-        assert!(reasoning.get("temperature").is_none());
-
-        let standard = serde_json::to_value(request(false)).unwrap();
-        assert!(standard.get("reasoning_effort").is_none());
-        assert!(standard.get("max_tokens").is_some());
-        assert!(standard.get("temperature").is_some());
-        assert!(standard.get("max_completion_tokens").is_none());
+            assert_eq!(json["model"], model, "{ctx}");
+            assert_eq!(
+                json.get("reasoning_effort").is_some(),
+                disable_thinking,
+                "{ctx}"
+            );
+            if disable_thinking {
+                assert_eq!(json["reasoning_effort"], "low", "{ctx}");
+            }
+            assert_eq!(
+                json.get("max_completion_tokens").is_some(),
+                reasoning_model,
+                "{ctx}"
+            );
+            assert_eq!(json.get("max_tokens").is_some(), !reasoning_model, "{ctx}");
+            assert_eq!(json.get("temperature").is_some(), !reasoning_model, "{ctx}");
+        }
     }
 
     #[test]
