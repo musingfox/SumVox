@@ -5,7 +5,6 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;
-use std::io::Write;
 use std::time::Duration;
 
 use super::TtsProvider;
@@ -107,10 +106,8 @@ impl ElevenLabsProvider {
             self.volume
         );
 
-        let tmp_path = crate::audio::player::unique_temp_path("sumvox_elevenlabs", "mp3");
-        std::fs::File::create(&tmp_path)
-            .and_then(|mut f| f.write_all(audio_data))
-            .map_err(|e| VoiceError::Voice(format!("Failed to write temp MP3: {}", e)))?;
+        let tmp_path =
+            crate::audio::player::write_temp_audio("sumvox_elevenlabs", "mp3", audio_data)?;
 
         // Capture the result before cleanup so the temp file is removed on
         // every path, including a spawn failure (the pre-refactor `?` skipped it).
