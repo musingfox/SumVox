@@ -343,6 +343,15 @@ When upgrading to v1.1.0:
 - Homebrew tap: `musingfox/sumvox`
 - Configuration: Edit YAML file directly instead of using environment variables
 
+[Unreleased]: https://github.com/musingfox/sumvox/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/musingfox/sumvox/releases/tag/v1.9.0
+[1.8.0]: https://github.com/musingfox/sumvox/releases/tag/v1.8.0
+[1.7.1]: https://github.com/musingfox/sumvox/releases/tag/v1.7.1
+[1.7.0]: https://github.com/musingfox/sumvox/releases/tag/v1.7.0
+[1.6.0]: https://github.com/musingfox/sumvox/releases/tag/v1.6.0
+[1.5.1]: https://github.com/musingfox/sumvox/releases/tag/v1.5.1
+[1.5.0]: https://github.com/musingfox/sumvox/releases/tag/v1.5.0
+[1.4.1]: https://github.com/musingfox/sumvox/releases/tag/v1.4.1
 [1.4.0]: https://github.com/musingfox/sumvox/releases/tag/v1.4.0
 [1.3.1]: https://github.com/musingfox/sumvox/releases/tag/v1.3.1
 [1.3.0]: https://github.com/musingfox/sumvox/releases/tag/v1.3.0
