@@ -44,10 +44,6 @@ panic = "abort"
 strip = true
 opt-level = "z"  # Optimize for size
 
-[lib]
-name = "sumvox"
-path = "src/lib.rs"
-
 [[bin]]
 name = "sumvox"
 path = "src/main.rs"
