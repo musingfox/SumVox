@@ -101,6 +101,7 @@ impl CloudTtsAuth {
         // Exchange JWT for access token
         let token_uri = sa.token_uri.as_deref().unwrap_or(TOKEN_URI);
         let client = Client::builder()
+            .no_proxy() // Disable system proxy detection to avoid CoreFoundation crash
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| VoiceError::Voice(format!("Failed to create HTTP client: {}", e)))?;
