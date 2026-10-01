@@ -12,9 +12,6 @@ use crate::error::{Result, VoiceError};
 /// Gemini TTS API base URL
 const GEMINI_TTS_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-/// Cost per character for Gemini TTS (estimated)
-const COST_PER_CHAR: f64 = 0.000016;
-
 /// Gemini TTS provider using Google AI Studio API
 pub struct GoogleTtsProvider {
     api_key: String,
@@ -257,10 +254,6 @@ impl TtsProvider for GoogleTtsProvider {
         tracing::debug!("Voice playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, char_count: usize) -> f64 {
-        char_count as f64 * COST_PER_CHAR
-    }
 }
 
 #[cfg(test)]
@@ -277,7 +270,6 @@ mod tests {
         );
         assert!(!provider.is_available());
         assert_eq!(provider.name(), "google");
-        assert!(provider.estimate_cost(1000) > 0.0);
     }
 
     #[tokio::test]

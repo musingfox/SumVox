@@ -103,11 +103,6 @@ impl TtsProvider for MacOsTtsProvider {
 
         Ok(true)
     }
-
-    fn estimate_cost(&self, _char_count: usize) -> f64 {
-        // macOS say is free
-        0.0
-    }
 }
 
 #[cfg(test)]
@@ -120,7 +115,6 @@ mod tests {
         let result = provider.speak("").await.unwrap();
         assert!(!result);
         assert!(!provider.speak("   ").await.unwrap());
-        assert_eq!(provider.estimate_cost(100), 0.0);
     }
 
     // Exercises the full render-to-file + playback path at a low volume; fails

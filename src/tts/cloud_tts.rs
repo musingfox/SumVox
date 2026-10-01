@@ -12,14 +12,9 @@ use crate::error::{Result, VoiceError};
 use crate::tts::cloud_tts_auth::CloudTtsAuth;
 
 const API_ENDPOINT: &str = "https://texttospeech.googleapis.com/v1/text:synthesize";
-const COST_PER_CHAR: f64 = 0.000004; // $4 per 1M chars (Standard voices)
 const MAX_TEXT_BYTES: usize = 5000;
 // Gemini-TTS caps input `text` at 4000 bytes (prompt is billed separately).
 const MAX_TEXT_BYTES_GEMINI: usize = 4000;
-// Gemini-TTS is billed per audio token, not per character. Rough estimate:
-//   $10 / 1M audio tokens × 25 tokens/sec ÷ ~15 chars/sec ≈ 0.0000167 / char.
-// Coarse approximation — real cost depends on synthesized audio duration.
-const COST_PER_CHAR_GEMINI: f64 = 0.0000167;
 
 /// Google Cloud TTS provider
 pub struct CloudTtsProvider {
@@ -94,13 +89,6 @@ impl CloudTtsProvider {
             style_prompt,
             volume,
         }
-    }
-
-    /// Whether this provider is configured for a Gemini-TTS model.
-    fn is_gemini(&self) -> bool {
-        self.model
-            .as_deref()
-            .is_some_and(|m| m.to_lowercase().contains("gemini"))
     }
 
     /// Byte cap for a single synthesis chunk (Gemini-TTS is stricter).
@@ -254,17 +242,6 @@ impl TtsProvider for CloudTtsProvider {
         tracing::debug!("Voice playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, char_count: usize) -> f64 {
-        // Gemini-TTS bills per audio token; use a coarse per-char proxy.
-        // Traditional voices keep the exact $4/1M-char rate.
-        let rate = if self.is_gemini() {
-            COST_PER_CHAR_GEMINI
-        } else {
-            COST_PER_CHAR
-        };
-        char_count as f64 * rate
-    }
 }
 
 #[cfg(test)]
@@ -400,17 +377,5 @@ mod tests {
     fn test_chunk_cap_by_model() {
         assert_eq!(create_gemini_provider().max_chunk_bytes(), 4000);
         assert_eq!(create_test_provider().max_chunk_bytes(), 5000);
-    }
-
-    #[test]
-    fn test_gemini_cost_uses_token_estimate() {
-        let p = create_gemini_provider();
-        let cost = p.estimate_cost(1_000_000);
-        // Coarse per-char proxy for token billing (~$16.7 / 1M chars).
-        assert!((cost - 16.7).abs() < 0.1, "unexpected gemini cost: {cost}");
-
-        // Non-Gemini voices keep the flat per-char price
-        let traditional = create_test_provider().estimate_cost(1_000_000);
-        assert!((traditional - 4.0).abs() < 0.01);
     }
 }

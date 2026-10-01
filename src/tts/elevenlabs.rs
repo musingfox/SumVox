@@ -18,11 +18,6 @@ const DEFAULT_OUTPUT_FORMAT: &str = "mp3_44100_128";
 /// Maximum characters per request (ElevenLabs limit)
 const MAX_TEXT_LENGTH: usize = 5_000;
 
-/// Per-character cost for Flash v2.5 ($0.05 per 1K chars).
-/// Multilingual models cost ~2x; this is a coarse estimate.
-const COST_PER_CHAR_FLASH: f64 = 0.00005;
-const COST_PER_CHAR_MULTILINGUAL: f64 = 0.0001;
-
 pub struct ElevenLabsProvider {
     api_key: String,
     voice_id: String,
@@ -209,15 +204,6 @@ impl TtsProvider for ElevenLabsProvider {
         tracing::debug!("Voice playback completed");
         Ok(true)
     }
-
-    fn estimate_cost(&self, char_count: usize) -> f64 {
-        let per_char = if self.model_id.contains("multilingual") {
-            COST_PER_CHAR_MULTILINGUAL
-        } else {
-            COST_PER_CHAR_FLASH
-        };
-        char_count as f64 * per_char
-    }
 }
 
 fn truncate_to_limit(text: &str, limit: usize) -> &str {
@@ -283,27 +269,6 @@ mod tests {
             100,
         );
         assert!(!placeholder.is_available());
-    }
-
-    #[test]
-    fn test_cost_estimation_flash() {
-        // (model, expected cost for 1M chars): flash is half the multilingual price
-        for (model, expected) in [
-            ("eleven_flash_v2_5", 50.0),
-            ("eleven_multilingual_v2", 100.0),
-        ] {
-            let provider = ElevenLabsProvider::new(
-                "test-key".to_string(),
-                "21m00Tcm4TlvDq8ikWAM".to_string(),
-                model.to_string(),
-                None,
-                None,
-                None,
-                100,
-            );
-            assert_eq!(provider.name(), "elevenlabs");
-            assert!((provider.estimate_cost(1_000_000) - expected).abs() < 0.001);
-        }
     }
 
     #[tokio::test]

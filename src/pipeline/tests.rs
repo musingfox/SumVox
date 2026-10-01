@@ -145,9 +145,6 @@ impl TtsProvider for FakeTts {
             Err(VoiceError::Config("tts boom".into()))
         }
     }
-    fn estimate_cost(&self, _char_count: usize) -> f64 {
-        0.0
-    }
     fn supports_audio_tags(&self) -> bool {
         self.tags
     }

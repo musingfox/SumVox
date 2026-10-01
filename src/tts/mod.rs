@@ -30,10 +30,6 @@ pub trait TtsProvider: Send + Sync {
     /// Returns true if speech was initiated successfully
     async fn speak(&self, text: &str) -> Result<bool>;
 
-    /// Estimate cost per character (for cloud providers)
-    /// Returns 0.0 for local engines
-    fn estimate_cost(&self, char_count: usize) -> f64;
-
     /// Whether this provider interprets `[tag]`-style audio/emotion tags
     /// (e.g. ElevenLabs eleven_v3). Providers that don't must have such
     /// tags stripped before speaking, or they get read aloud literally.
