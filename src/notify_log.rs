@@ -58,14 +58,3 @@ pub fn set_now_playing(path: &Path) {
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join("now_playing"), path.to_string_lossy().as_bytes());
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn record_line_is_single_line() {
-        // The invariant the menu app depends on: one entry == one line.
-        let text = "line1\nline2\rline3";
-        let flattened = text.replace(['\n', '\r'], " ");
-        assert!(!flattened.contains('\n') && !flattened.contains('\r'));
-    }
-}

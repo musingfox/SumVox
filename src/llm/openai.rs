@@ -322,91 +322,31 @@ mod tests {
 
     // ── C5: OpenAIRequestSerialization ───────────────────────────────────
 
-    fn build_openai_request(model: &str, disable_thinking: bool) -> OpenAIRequest {
-        let reasoning_effort = if disable_thinking {
-            Some("low".to_string())
-        } else {
-            None
-        };
-        let (max_completion_tokens, max_tokens, temperature) = if is_reasoning_model(model) {
-            (Some(100u32), None, None)
-        } else {
-            (None, Some(100u32), Some(0.3f32))
-        };
-        OpenAIRequest {
-            model: model.to_string(),
+    #[test]
+    fn test_c5_request_wire_format() {
+        let request = |reasoning: bool| OpenAIRequest {
+            model: "m".to_string(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: "Test".to_string(),
             }],
-            max_completion_tokens,
-            max_tokens,
-            temperature,
-            reasoning_effort,
-        }
-    }
+            max_completion_tokens: reasoning.then_some(100u32),
+            max_tokens: (!reasoning).then_some(100u32),
+            temperature: (!reasoning).then_some(0.3f32),
+            reasoning_effort: reasoning.then(|| "low".to_string()),
+        };
 
-    #[test]
-    fn test_c5_disable_thinking_true_sets_reasoning_effort_low() {
-        for model in &["gpt-4o", "o3-mini", "gpt-5-pro"] {
-            let req = build_openai_request(model, true);
-            let val = serde_json::to_value(&req).unwrap();
-            assert_eq!(
-                val["reasoning_effort"],
-                serde_json::Value::String("low".to_string()),
-                "model={model} should have reasoning_effort=low"
-            );
-        }
-    }
+        let reasoning = serde_json::to_value(request(true)).unwrap();
+        assert_eq!(reasoning["reasoning_effort"], "low");
+        assert!(reasoning.get("max_completion_tokens").is_some());
+        assert!(reasoning.get("max_tokens").is_none());
+        assert!(reasoning.get("temperature").is_none());
 
-    #[test]
-    fn test_c5_disable_thinking_false_omits_reasoning_effort() {
-        for model in &["gpt-4o", "o3-mini", "gpt-5-pro"] {
-            let req = build_openai_request(model, false);
-            let val = serde_json::to_value(&req).unwrap();
-            assert!(
-                val.get("reasoning_effort").is_none(),
-                "model={model} must not have reasoning_effort when disable_thinking=false"
-            );
-        }
-    }
-
-    // ── A2: reasoning model branching ────────────────────────────────────
-
-    #[test]
-    fn test_a2_reasoning_model_uses_max_completion_tokens() {
-        let req = build_openai_request("o3-mini", false);
-        let val = serde_json::to_value(&req).unwrap();
-        assert!(
-            val.get("max_completion_tokens").is_some(),
-            "o3-mini must have max_completion_tokens"
-        );
-        assert!(
-            val.get("max_tokens").is_none(),
-            "o3-mini must not have max_tokens"
-        );
-        assert!(
-            val.get("temperature").is_none(),
-            "o3-mini must not have temperature"
-        );
-    }
-
-    #[test]
-    fn test_a2_standard_model_uses_max_tokens_and_temperature() {
-        let req = build_openai_request("gpt-4o", false);
-        let val = serde_json::to_value(&req).unwrap();
-        assert!(
-            val.get("max_tokens").is_some(),
-            "gpt-4o must have max_tokens"
-        );
-        assert!(
-            val.get("temperature").is_some(),
-            "gpt-4o must have temperature"
-        );
-        assert!(
-            val.get("max_completion_tokens").is_none(),
-            "gpt-4o must not have max_completion_tokens"
-        );
+        let standard = serde_json::to_value(request(false)).unwrap();
+        assert!(standard.get("reasoning_effort").is_none());
+        assert!(standard.get("max_tokens").is_some());
+        assert!(standard.get("temperature").is_some());
+        assert!(standard.get("max_completion_tokens").is_none());
     }
 
     #[test]

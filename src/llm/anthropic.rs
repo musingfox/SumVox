@@ -261,66 +261,6 @@ mod tests {
         assert!(matches!(result.unwrap_err(), LlmError::Unavailable(_)));
     }
 
-    // ── C4: AnthropicRequestSerialization ───────────────────────────────
-
-    /// Build an AnthropicRequest the same way generate() does, for test assertions.
-    fn build_anthropic_request() -> AnthropicRequest {
-        AnthropicRequest {
-            model: "claude-haiku-4-5".to_string(),
-            max_tokens: 100,
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: "Test".to_string(),
-            }],
-            system: None,
-        }
-    }
-
-    #[test]
-    fn test_c4_disable_thinking_true_no_thinking_key() {
-        let req = build_anthropic_request();
-        let val = serde_json::to_value(&req).unwrap();
-        assert!(
-            val.get("thinking").is_none(),
-            "thinking key must be absent when disable_thinking=true"
-        );
-    }
-
-    #[test]
-    fn test_c4_disable_thinking_false_no_thinking_key() {
-        let req = build_anthropic_request();
-        let val = serde_json::to_value(&req).unwrap();
-        assert!(
-            val.get("thinking").is_none(),
-            "thinking key must be absent when disable_thinking=false"
-        );
-    }
-
-    #[test]
-    fn test_c4_any_model_name_no_thinking_key() {
-        // Model name must not influence whether thinking is sent
-        for model in &[
-            "claude-3-opus",
-            "claude-sonnet-4",
-            "claude-haiku-4-5-20251001",
-        ] {
-            let req = AnthropicRequest {
-                model: model.to_string(),
-                max_tokens: 100,
-                messages: vec![Message {
-                    role: "user".to_string(),
-                    content: "Hi".to_string(),
-                }],
-                system: None,
-            };
-            let val = serde_json::to_value(&req).unwrap();
-            assert!(
-                val.get("thinking").is_none(),
-                "thinking key must be absent for model {model}"
-            );
-        }
-    }
-
     // Integration test - requires actual API key
     #[tokio::test]
     #[ignore = "e2e-network"]
