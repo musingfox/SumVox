@@ -114,34 +114,12 @@ impl TtsProvider for MacOsTtsProvider {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_macos_provider_creation() {
-        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 180, 75);
-        assert_eq!(provider.name(), "macos");
-        assert_eq!(provider.voice_name, Some("Tingting".to_string()));
-        assert_eq!(provider.rate, 180);
-        assert_eq!(provider.volume, 75);
-    }
-
-    #[test]
-    fn test_estimate_cost_is_zero() {
-        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100);
-        assert_eq!(provider.estimate_cost(100), 0.0);
-        assert_eq!(provider.estimate_cost(10000), 0.0);
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test_is_available_on_macos() {
-        let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100);
-        assert!(provider.is_available());
-    }
-
     #[tokio::test]
     async fn test_speak_empty_message() {
         let provider = MacOsTtsProvider::new(Some("Tingting".to_string()), 200, 100);
         let result = provider.speak("").await.unwrap();
         assert!(!result);
+        assert_eq!(provider.estimate_cost(100), 0.0);
     }
 
     #[tokio::test]

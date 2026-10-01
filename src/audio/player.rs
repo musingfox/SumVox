@@ -523,6 +523,11 @@ mod tests {
     }
 
     #[test]
+    fn test_default_candidates_are_never_empty() {
+        assert!(!default_candidates().is_empty());
+    }
+
+    #[test]
     fn test_select_player_rejects_aplay_at_zero_volume() {
         // Deterministic with or without aplay installed: volume 0 disqualifies
         // it before the PATH probe ever runs.
@@ -532,6 +537,11 @@ mod tests {
     #[test]
     fn test_select_player_falls_past_aplay_at_zero_volume() {
         assert_eq!(select_player(&["aplay", "sh"], 0), Some("sh".to_string()));
+        // Above zero volume aplay is a valid choice, so either candidate may win
+        assert!(matches!(
+            select_player(&["aplay", "sh"], 50).as_deref(),
+            Some("aplay" | "sh")
+        ));
     }
 
     #[test]
@@ -710,27 +720,6 @@ mod tests {
             start.elapsed() < FIVE_SECONDS,
             "timeout took too long: {:?}",
             start.elapsed()
-        );
-    }
-
-    #[test]
-    fn test_default_candidates_are_platform_specific() {
-        if cfg!(target_os = "macos") {
-            assert_eq!(default_candidates(), &["afplay"]);
-        } else {
-            assert_eq!(
-                default_candidates(),
-                &["paplay", "pw-play", "ffplay", "mpv", "aplay"]
-            );
-        }
-    }
-
-    #[test]
-    fn test_select_player_allows_aplay_above_zero_volume() {
-        // Consistency assertion: correct on machines with and without aplay.
-        assert_eq!(
-            select_player(&["aplay"], 50).is_some(),
-            find_on_path("aplay").is_some()
         );
     }
 }

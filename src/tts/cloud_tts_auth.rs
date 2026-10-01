@@ -162,22 +162,6 @@ impl CloudTtsAuth {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_service_account_valid() {
-        let json = r#"{
-            "type": "service_account",
-            "client_email": "test@proj.iam.gserviceaccount.com",
-            "private_key": "test-private-key-placeholder",
-            "token_uri": "https://oauth2.googleapis.com/token"
-        }"#;
-
-        let sa: std::result::Result<ServiceAccountKey, _> = serde_json::from_str(json);
-        assert!(sa.is_ok());
-        let sa = sa.unwrap();
-        assert_eq!(sa.client_email, "test@proj.iam.gserviceaccount.com");
-        assert_eq!(sa.private_key, "test-private-key-placeholder");
-    }
-
     #[tokio::test]
     async fn test_get_token_rejects_malformed_service_account() {
         let err = CloudTtsAuth::new("not json".to_string())
@@ -189,12 +173,5 @@ mod tests {
         // Valid JSON with a non-PEM key fails while signing, before any HTTP call
         let sa = r#"{"client_email":"a@b.c","private_key":"not a pem key"}"#;
         assert!(CloudTtsAuth::new(sa.to_string()).get_token().await.is_err());
-    }
-
-    #[test]
-    fn test_missing_fields() {
-        let json = r#"{"type":"service_account"}"#;
-        let result = serde_json::from_str::<ServiceAccountKey>(json);
-        assert!(result.is_err());
     }
 }

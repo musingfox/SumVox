@@ -402,6 +402,22 @@ mod tests {
         assert_eq!("gcloud".parse::<TtsEngine>().ok(), Some(TtsEngine::Google));
         assert_eq!("auto".parse::<TtsEngine>().ok(), Some(TtsEngine::Auto));
         assert!("unknown".parse::<TtsEngine>().is_err());
+
+        // Display and FromStr agree on the canonical name of every engine
+        for engine in [
+            TtsEngine::MacOS,
+            TtsEngine::Google,
+            TtsEngine::CloudTts,
+            TtsEngine::Xai,
+            TtsEngine::ElevenLabs,
+            TtsEngine::OpenAi,
+            TtsEngine::AudioFile,
+            TtsEngine::Espeak,
+            TtsEngine::Piper,
+            TtsEngine::Auto,
+        ] {
+            assert_eq!(engine.to_string().parse::<TtsEngine>().ok(), Some(engine));
+        }
     }
 
     #[test]
@@ -572,12 +588,6 @@ mod tests {
             "piper_tts".parse::<TtsEngine>().ok(),
             Some(TtsEngine::Piper)
         );
-    }
-
-    #[test]
-    fn test_new_engines_display_as_their_canonical_tag() {
-        assert_eq!(TtsEngine::Espeak.to_string(), "espeak");
-        assert_eq!(TtsEngine::Piper.to_string(), "piper");
     }
 
     #[test]
@@ -777,24 +787,11 @@ mod tests {
     }
 
     #[test]
-    fn test_cloud_tts_display() {
-        assert_eq!(TtsEngine::CloudTts.to_string(), "cloud_tts");
-    }
-
-    #[test]
     fn test_google_still_maps_to_google() {
         assert!(matches!(
             "google".parse::<TtsEngine>(),
             Ok(TtsEngine::Google)
         ));
-    }
-
-    #[test]
-    fn test_tts_engine_display() {
-        assert_eq!(TtsEngine::MacOS.to_string(), "macos");
-        assert_eq!(TtsEngine::Google.to_string(), "google");
-        assert_eq!(TtsEngine::CloudTts.to_string(), "cloud_tts");
-        assert_eq!(TtsEngine::Auto.to_string(), "auto");
     }
 
     #[test]

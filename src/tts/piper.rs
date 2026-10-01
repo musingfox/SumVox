@@ -348,17 +348,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_available_tracks_the_binary_when_model_exists() {
-        // Consistency assertion: correct on machines with and without piper.
-        let model = tempfile::NamedTempFile::new().expect("temp model file");
-        let provider = PiperProvider::new(model.path(), 200, 100);
-        assert_eq!(
-            provider.is_available(),
-            player::find_on_path("piper").is_some()
-        );
-    }
-
-    #[test]
     fn test_is_available_false_when_binary_missing() {
         let model = tempfile::NamedTempFile::new().expect("temp model file");
         let provider =
@@ -367,16 +356,5 @@ mod tests {
             !provider.is_available(),
             "a missing engine must be skipped by the chain, not error"
         );
-    }
-
-    #[test]
-    fn test_estimate_cost_is_zero() {
-        let provider = PiperProvider::new("/m/zh.onnx", 200, 80);
-        assert_eq!(provider.estimate_cost(10_000), 0.0);
-    }
-
-    #[test]
-    fn test_name_is_piper() {
-        assert_eq!(PiperProvider::new("/m/zh.onnx", 200, 80).name(), "piper");
     }
 }

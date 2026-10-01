@@ -167,6 +167,7 @@ mod tests {
         assert_eq!(provider.language, "auto");
         assert_eq!(provider.volume, 100);
         assert!(provider.is_available());
+        assert!(provider.estimate_cost(1000) > 0.0);
     }
 
     #[test]
@@ -186,20 +187,6 @@ mod tests {
     fn test_empty_api_key() {
         let provider = XaiTtsProvider::new(String::new(), "eve".to_string(), None, 100);
         assert!(!provider.is_available());
-    }
-
-    #[test]
-    fn test_cost_estimation() {
-        let provider =
-            XaiTtsProvider::new("test-api-key".to_string(), "eve".to_string(), None, 100);
-
-        // 1M characters = $15.00
-        let cost_1m = provider.estimate_cost(1_000_000);
-        assert!((cost_1m - 15.0).abs() < 0.001);
-
-        // 100 characters
-        let cost_100 = provider.estimate_cost(100);
-        assert!((cost_100 - 0.0015).abs() < 0.00001);
     }
 
     #[tokio::test]

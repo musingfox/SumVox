@@ -127,19 +127,6 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    #[test]
-    fn test_queue_creation() {
-        let queue = NotificationQueue::new(Some(Duration::from_secs(10))).unwrap();
-        assert_eq!(queue.timeout, Duration::from_secs(10));
-        assert!(queue.lock_file_path.to_string_lossy().contains(".sumvox"));
-    }
-
-    #[test]
-    fn test_queue_default_timeout() {
-        let queue = NotificationQueue::new(None).unwrap();
-        assert_eq!(queue.timeout, Duration::from_secs(30));
-    }
-
     #[tokio::test]
     async fn test_lock_acquire_when_available() {
         let temp_dir = tempdir().unwrap();

@@ -191,19 +191,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_anthropic_provider_creation() {
-        let provider = AnthropicProvider::with_base_url(
-            "test-key".to_string(),
-            "claude-haiku-4-5".to_string(),
-            ANTHROPIC_API_BASE.to_string(),
-            Duration::from_secs(10),
-        );
-
-        assert_eq!(provider.name(), "anthropic");
-        assert!(provider.is_available());
-    }
-
-    #[test]
     fn test_is_available_with_key() {
         let provider = AnthropicProvider::with_base_url(
             "sk-ant-test-key".to_string(),
@@ -212,6 +199,7 @@ mod tests {
             Duration::from_secs(10),
         );
 
+        assert_eq!(provider.name(), "anthropic");
         assert!(provider.is_available());
     }
 

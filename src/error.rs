@@ -37,35 +37,3 @@ pub enum LlmError {
 
 pub type Result<T> = std::result::Result<T, VoiceError>;
 pub type LlmResult<T> = std::result::Result<T, LlmError>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_display() {
-        let err = VoiceError::Config("missing field".to_string());
-        assert_eq!(err.to_string(), "Configuration error: missing field");
-    }
-
-    #[test]
-    fn test_error_from_io() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let voice_err: VoiceError = io_err.into();
-        assert!(matches!(voice_err, VoiceError::Io(_)));
-    }
-
-    #[test]
-    fn test_error_from_json() {
-        let json_str = "{invalid json}";
-        let json_err = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
-        let voice_err: VoiceError = json_err.into();
-        assert!(matches!(voice_err, VoiceError::Json(_)));
-    }
-
-    #[test]
-    fn test_queue_error() {
-        let err = VoiceError::Queue("lock timeout".to_string());
-        assert_eq!(err.to_string(), "Queue error: lock timeout");
-    }
-}

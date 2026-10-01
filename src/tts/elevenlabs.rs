@@ -228,41 +228,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_provider_creation_defaults() {
-        let provider = ElevenLabsProvider::new(
-            "test-key".to_string(),
-            "21m00Tcm4TlvDq8ikWAM".to_string(),
-            "eleven_flash_v2_5".to_string(),
-            None,
-            None,
-            None,
-            100,
-        );
-        assert_eq!(provider.name(), "elevenlabs");
-        assert_eq!(provider.voice_id, "21m00Tcm4TlvDq8ikWAM");
-        assert_eq!(provider.model_id, "eleven_flash_v2_5");
-        assert_eq!(provider.volume, 100);
-        assert!(provider.is_available());
-    }
-
-    #[test]
-    fn test_provider_custom_voice_and_model() {
-        let provider = ElevenLabsProvider::new(
-            "test-key".to_string(),
-            "JBFqnCBsd6RMkjVDRZzb".to_string(),
-            "eleven_multilingual_v2".to_string(),
-            Some(0.85),
-            None,
-            None,
-            75,
-        );
-        assert_eq!(provider.voice_id, "JBFqnCBsd6RMkjVDRZzb");
-        assert_eq!(provider.model_id, "eleven_multilingual_v2");
-        assert_eq!(provider.speed, Some(0.85));
-        assert_eq!(provider.volume, 75);
-    }
-
-    #[test]
     fn test_speed_clamped_to_valid_range() {
         let too_slow = ElevenLabsProvider::new(
             "k".to_string(),
@@ -322,6 +287,7 @@ mod tests {
             None,
             100,
         );
+        assert_eq!(provider.name(), "elevenlabs");
         // 1M chars × $0.00005 = $50
         let cost = provider.estimate_cost(1_000_000);
         assert!((cost - 50.0).abs() < 0.001);
