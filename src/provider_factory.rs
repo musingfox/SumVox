@@ -225,6 +225,7 @@ mod tests {
 
     #[test]
     fn test_create_by_name_google() {
+        let _env = crate::test_support::env_guard();
         let result = ProviderFactory::create_by_name(
             "google",
             "gemini-2.5-flash",
@@ -238,6 +239,7 @@ mod tests {
 
     #[test]
     fn test_create_by_name_ollama() {
+        let _env = crate::test_support::env_guard();
         let result = ProviderFactory::create_by_name(
             "ollama",
             "llama3.2",
@@ -251,6 +253,7 @@ mod tests {
 
     #[test]
     fn test_create_by_name_missing_api_key() {
+        let _env = crate::test_support::env_guard();
         // Clear any env vars
         env::remove_var("GEMINI_API_KEY");
 

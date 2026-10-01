@@ -843,6 +843,7 @@ mod tests {
 
     #[test]
     fn test_get_openai_api_key_from_config() {
+        let _env = crate::test_support::env_guard();
         let provider = openai_tts_provider(Some("sk-test".to_string()));
         assert_eq!(provider.get_openai_api_key(), Some("sk-test".to_string()));
 
